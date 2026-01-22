@@ -53,6 +53,7 @@ const handleProviderLogin = async (providerHandler) => {
           :class="`${p.color} w-full text-white font-semibold py-2 px-4 rounded flex items-center justify-center transition hover:opacity-90`"
           :disabled="loading"
         >
+          <i :class="`${p.icon} mr-2`"></i>
           Sign in with {{ p.name }}
         </button>
       </div>

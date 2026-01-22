@@ -14,8 +14,16 @@ const handleReset = async () => {
   message.value = '';
   errorMsg.value = '';
 
+  const actionCodeSettings = {
+    // 1. Point to your hosted PWA URL or localhost for dev
+    // IMPORTANT: You must add this URL to "Authorized Domains" in Firebase Console -> Auth -> Settings
+    url: `${window.location.origin}/auth/action`, 
+    handleCodeInApp: true,
+  };
+
   try {
-    await sendPasswordResetEmail(auth, email.value);
+    // 2. Pass settings as the second argument
+    await sendPasswordResetEmail(auth, email.value, actionCodeSettings);
     message.value = "Password reset link sent! Check your inbox.";
   } catch (e) {
     errorMsg.value = getErrorMessage(e);

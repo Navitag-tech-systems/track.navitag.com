@@ -6,13 +6,12 @@ import {
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import { auth } from '@/firebase';
 
-// 1. Add new providers here
 export const supportedProviders = [
   {
     id: 'google',
     name: 'Google',
-    icon: 'google-icon', // You can use an SVG or class string here
-    color: 'bg-red-600',
+    icon: 'fa-brands fa-google', // FontAwesome class
+    color: 'bg-red-600 hover:bg-red-700',
     handler: async () => {
       const result = await FirebaseAuthentication.signInWithGoogle();
       const credential = GoogleAuthProvider.credential(result.credential.idToken);
@@ -22,8 +21,8 @@ export const supportedProviders = [
   {
     id: 'facebook',
     name: 'Facebook',
-    icon: 'facebook-icon',
-    color: 'bg-blue-600',
+    icon: 'fa-brands fa-facebook-f', // FontAwesome class
+    color: 'bg-blue-600 hover:bg-blue-700',
     handler: async () => {
       const result = await FirebaseAuthentication.signInWithFacebook();
       const credential = FacebookAuthProvider.credential(result.credential.accessToken);
@@ -32,8 +31,8 @@ export const supportedProviders = [
   }
 ];
 
-// 2. Generic error parser
 export const getErrorMessage = (error) => {
+  // ... keep existing error parser ...
   switch (error.code) {
     case 'auth/user-not-found': return 'No account found with this email.';
     case 'auth/wrong-password': return 'Incorrect password.';

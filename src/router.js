@@ -4,6 +4,7 @@ import HomeView from '@/views/home/index.vue'
 import LoginView from '@/views/login/index.vue'
 import SignupView from '@/views/signup/index.vue'
 import ForgotPasswordView from '@/views/pwReset/index.vue'
+import authCallback from '@/views/authCallback/index.vue';
 
 const router = createRouter({
   // createWebHistory works for Capacitor apps (http://localhost or capacitor://)
@@ -29,6 +30,11 @@ const router = createRouter({
       path: '/forgot-password',
       name: 'forgot-password',
       component: ForgotPasswordView
+    },
+    {
+      path: '/auth/action', // <--- The callback route
+      name: 'auth-action',
+      component: authCallback
     }
   ]
 })
