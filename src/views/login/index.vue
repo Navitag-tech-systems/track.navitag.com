@@ -1,0 +1,88 @@
+<script setup>
+import { ref } from 'vue';
+import { useRouter } from 'vue-router';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { auth } from '@/firebase';
+import { supportedProviders, getErrorMessage } from '@/utils/auth';
+
+const email = ref('');
+const password = ref('');
+const errorMsg = ref('');
+const loading = ref(false);
+const router = useRouter();
+
+// Email Login
+const handleLogin = async () => {
+  loading.value = true;
+  errorMsg.value = '';
+  try {
+    await signInWithEmailAndPassword(auth, email.value, password.value);
+    router.replace('/');
+  } catch (e) {
+    errorMsg.value = getErrorMessage(e);
+  } finally {
+    loading.value = false;
+  }
+};
+
+// Provider Login (Google/Facebook)
+const handleProviderLogin = async (providerHandler) => {
+  loading.value = true;
+  errorMsg.value = '';
+  try {
+    await providerHandler();
+    router.replace('/');
+  } catch (e) {
+    errorMsg.value = "Sign in failed: " + e.message;
+  } finally {
+    loading.value = false;
+  }
+};
+</script>
+
+<template>
+  <div class="flex flex-col items-center justify-center min-h-screen p-4 bg-gray-50 pt-safe-top">
+    <div class="w-full max-w-sm bg-white p-6 rounded-lg shadow-md">
+      <h1 class="text-2xl font-bold mb-6 text-center text-gray-800">Welcome Back</h1>
+      
+      <div class="space-y-3 mb-6">
+        <button 
+          v-for="p in supportedProviders" 
+          :key="p.id"
+          @click="handleProviderLogin(p.handler)"
+          :class="`${p.color} w-full text-white font-semibold py-2 px-4 rounded flex items-center justify-center transition hover:opacity-90`"
+          :disabled="loading"
+        >
+          Sign in with {{ p.name }}
+        </button>
+      </div>
+
+      <div class="relative flex py-2 items-center">
+        <div class="flex-grow border-t border-gray-300"></div>
+        <span class="flex-shrink mx-4 text-gray-400 text-sm">Or with email</span>
+        <div class="flex-grow border-t border-gray-300"></div>
+      </div>
+
+      <form @submit.prevent="handleLogin" class="mt-4">
+        <input v-model="email" type="email" placeholder="Email" required class="w-full border p-2 rounded mb-3 focus:ring-2 focus:ring-blue-500 outline-none" />
+        <div class="mb-4">
+          <input v-model="password" type="password" placeholder="Password" required class="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
+          <div class="text-right mt-1">
+            <RouterLink to="/forgot-password" class="text-xs text-blue-600 hover:underline">Forgot password?</RouterLink>
+          </div>
+        </div>
+        
+        <button type="submit" :disabled="loading" class="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-2 px-4 rounded transition disabled:opacity-50">
+          {{ loading ? 'Loading...' : 'Sign In' }}
+        </button>
+      </form>
+
+      <p v-if="errorMsg" class="text-red-500 mt-4 text-center text-sm">{{ errorMsg }}</p>
+
+      <div class="mt-6 text-center text-sm text-gray-600">
+        Don't have an account? 
+        <RouterLink to="/signup" class="text-blue-600 hover:underline">Sign Up</RouterLink>
+      </div>
+    </div>
+  </div>
+</template>

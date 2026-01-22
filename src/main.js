@@ -1,36 +1,49 @@
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';
 import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from './firebase'; // Import the auth instance we made earlier
+import { auth } from './firebase'; 
 import { useUserStore } from './stores/user';
-import './style.css'; // Tailwind 4 import
+import router from './router'; // Import the router
+import './style.css'; 
 import App from './App.vue';
+import { App as CapacitorApp } from '@capacitor/app'; // Import Capacitor App plugin
 
 const app = createApp(App);
 const pinia = createPinia();
 
 app.use(pinia);
+app.use(router); // Use the router
 
-// --- The Critical Auth Bridge ---
-// We access the store OUTSIDE the component (requires pinia instance to be active)
 const userStore = useUserStore(pinia);
 
-// Wait for Firebase to check local storage
+// Firebase listener
 onAuthStateChanged(auth, async (firebaseUser) => {
   if (firebaseUser) {
-    // User is logged in
     userStore.setUser(firebaseUser);
-    
-    // Get the PHP Token immediately
     const token = await firebaseUser.getIdToken();
     userStore.setToken(token);
     
-    console.log("User restored:", firebaseUser.email);
+    // Redirect to home if user was on login page
+    if (router.currentRoute.value.path === '/login') {
+      router.replace('/');
+    }
   } else {
-    // User is logged out
     userStore.clearUser();
-    console.log("No user found");
+    
+    // Redirect to login if user was on a protected page
+    if (router.currentRoute.value.meta.requiresAuth) {
+      router.replace('/login');
+    }
   }
 });
+
+// Handle Deep Links (Password Resets / Email Verifications)
+CapacitorApp.addListener('appUrlOpen', (data) => {
+  // data.url contains the URL the app was opened with
+  console.log('App opened with URL:', data.url);
+  // You can parse this URL to detect if it's a firebase auth action
+  // and route the user to a specific handler page if needed.
+});
+
 
 app.mount('#app');
