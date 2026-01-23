@@ -1,5 +1,11 @@
 {
   "appId": "com.navitag.track",
   "appName": "Naitag Track",
-  "webDir": "dist"
+  "webDir": "dist",
+  "plugins": {
+    "FirebaseAuthentication": {
+      "skipNativeAuth": false,
+      "providers": ["google.com", "facebook.com", "apple.com", "microsoft.com"]
+    }
+  }
 }

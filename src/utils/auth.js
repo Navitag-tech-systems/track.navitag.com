@@ -1,7 +1,7 @@
 import { 
   GoogleAuthProvider, 
   FacebookAuthProvider, 
-  OAuthProvider, // <--- Add this import
+  OAuthProvider, 
   signInWithCredential 
 } from 'firebase/auth';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
@@ -30,20 +30,35 @@ export const supportedProviders = [
       return signInWithCredential(auth, credential);
     }
   },
-  // --- Add Apple Provider ---
   {
     id: 'apple',
     name: 'Apple',
     icon: 'fa-brands fa-apple',
     color: 'bg-black hover:bg-gray-800',
     handler: async () => {
-      // On the web, this triggers the standard Firebase popup/redirect flow
       const result = await FirebaseAuthentication.signInWithApple();
-      
       const provider = new OAuthProvider('apple.com');
       const credential = provider.credential({
         idToken: result.credential.idToken,
-        rawNonce: result.credential.rawNonce, // Required for Apple security
+        rawNonce: result.credential.rawNonce,
+      });
+      return signInWithCredential(auth, credential);
+    }
+  },
+  {
+    id: 'microsoft',
+    name: 'Microsoft',
+    icon: 'fa-brands fa-microsoft',
+    color: 'bg-green-600 hover:bg-green-700',
+    handler: async () => {
+      // 1. Native Sign In
+      const result = await FirebaseAuthentication.signInWithMicrosoft();
+      
+      // 2. Web Layer Sign In
+      const provider = new OAuthProvider('microsoft.com');
+      const credential = provider.credential({
+        idToken: result.credential.idToken,
+        accessToken: result.credential.accessToken // Optional, but good for Graph API
       });
       
       return signInWithCredential(auth, credential);
