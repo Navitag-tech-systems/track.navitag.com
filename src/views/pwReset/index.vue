@@ -17,7 +17,7 @@ const handleReset = async () => {
   const actionCodeSettings = {
     // 1. Point to your hosted PWA URL or localhost for dev
     // IMPORTANT: You must add this URL to "Authorized Domains" in Firebase Console -> Auth -> Settings
-    url: `${window.location.origin}/auth/action`, 
+    url: `https://track.navitag.com/auth/action`, 
     handleCodeInApp: true,
   };
 

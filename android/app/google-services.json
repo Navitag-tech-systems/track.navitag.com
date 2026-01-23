@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "729666105352",
+    "project_id": "track-navitag-com",
+    "storage_bucket": "track-navitag-com.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:729666105352:android:2ae55c5a649148ea0ca1bd",
+        "android_client_info": {
+          "package_name": "com.navitag.track"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "729666105352-jdode7op4ll6ao5l9ns536tnv6n630qo.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.navitag.track",
+            "certificate_hash": "9bbfbb1a16e30fcd48b15af0f1b574733fd4e9e5"
+          }
+        },
+        {
+          "client_id": "729666105352-tiifpru1tiqoj8ron95ndil7hdatcibi.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC_7YOBORsi1W4udQd852JLVYmKKbuko1Y"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "729666105352-tiifpru1tiqoj8ron95ndil7hdatcibi.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "729666105352-6mnkdf9otlh0p2fkkrb6khjv95qjh15a.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.navitag.track"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
