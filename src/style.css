@@ -32,3 +32,7 @@ html, body, #app {
   overscroll-behavior-y: none; /* Disables "pull-to-refresh" bounce effect */
   -webkit-tap-highlight-color: transparent; /* Removes blue highlight on tap */
 }
+
+.h-safe-top {
+  height: env(safe-area-inset-top);
+}
