@@ -4,4 +4,7 @@
     <string name="title_activity_main">Naitag Track</string>
     <string name="package_name">com.navitag.track</string>
     <string name="custom_url_scheme">com.navitag.track</string>
+    <string name="facebook_app_id">2081300759284546</string>
+    <string name="fb_login_protocol_scheme">2081300759284546</string>
+    <string name="facebook_client_token">84e97664182a33412a5001d650cb261d</string>
 </resources>
