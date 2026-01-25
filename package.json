@@ -13,7 +13,6 @@
     "test:unit": "vitest"
   },
   "dependencies": {
-    "@capacitor-community/fcm": "^8.1.0",
     "@capacitor-firebase/authentication": "^8.0.1",
     "@capacitor-firebase/messaging": "^8.0.1",
     "@capacitor/android": "^8.0.1",
@@ -21,7 +20,6 @@
     "@capacitor/cli": "^8.0.1",
     "@capacitor/core": "^8.0.1",
     "@capacitor/ios": "^8.0.1",
-    "@capacitor/push-notifications": "^8.0.0",
     "@fortawesome/fontawesome-free": "^7.1.0",
     "@tailwindcss/vite": "^4.1.18",
     "firebase": "^12.8.0",

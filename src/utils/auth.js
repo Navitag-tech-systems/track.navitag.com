@@ -11,6 +11,7 @@ export const supportedProviders = [
   {
     id: 'google',
     name: 'Google',
+    color: 'bg-red-400',
     handler: async () => {
       const result = await FirebaseAuthentication.signInWithGoogle();
       const credential = GoogleAuthProvider.credential(result.credential.idToken);
@@ -20,6 +21,7 @@ export const supportedProviders = [
   {
     id: 'apple',
     name: 'Apple',
+    color: 'bg-black',
     handler: async () => {
       const result = await FirebaseAuthentication.signInWithApple();
       const provider = new OAuthProvider('apple.com');
@@ -33,6 +35,7 @@ export const supportedProviders = [
   {
     id: 'facebook',
     name: 'Facebook',
+    color: 'bg-blue-400',
     handler: async () => {
       const result = await FirebaseAuthentication.signInWithFacebook();
       const credential = FacebookAuthProvider.credential(result.credential.accessToken);
