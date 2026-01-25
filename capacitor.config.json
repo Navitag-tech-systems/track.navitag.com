@@ -5,7 +5,7 @@
   "plugins": {
     "FirebaseAuthentication": {
       "skipNativeAuth": false,
-      "providers": ["google.com", "facebook.com", "apple.com", "microsoft.com"]
+      "providers": ["google.com", "facebook.com", "apple.com"]
     },
     "FirebaseMessaging": {
       "presentationOptions": ["alert", "badge", "sound"]

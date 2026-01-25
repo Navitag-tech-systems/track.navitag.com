@@ -11,8 +11,6 @@ export const supportedProviders = [
   {
     id: 'google',
     name: 'Google',
-    icon: 'fa-brands fa-google',
-    color: 'bg-red-600 hover:bg-red-700',
     handler: async () => {
       const result = await FirebaseAuthentication.signInWithGoogle();
       const credential = GoogleAuthProvider.credential(result.credential.idToken);
@@ -20,47 +18,24 @@ export const supportedProviders = [
     }
   },
   {
-    id: 'facebook',
-    name: 'Facebook',
-    icon: 'fa-brands fa-facebook-f',
-    color: 'bg-blue-600 hover:bg-blue-700',
-    handler: async () => {
-      const result = await FirebaseAuthentication.signInWithFacebook();
-      const credential = FacebookAuthProvider.credential(result.credential.accessToken);
-      return signInWithCredential(auth, credential);
-    }
-  },
-  {
     id: 'apple',
     name: 'Apple',
-    icon: 'fa-brands fa-apple',
-    color: 'bg-black hover:bg-gray-800',
     handler: async () => {
       const result = await FirebaseAuthentication.signInWithApple();
       const provider = new OAuthProvider('apple.com');
       const credential = provider.credential({
         idToken: result.credential.idToken,
-        rawNonce: result.credential.rawNonce,
+        rawNonce: result.credential.rawNonce, // Required for Apple
       });
       return signInWithCredential(auth, credential);
     }
   },
   {
-    id: 'microsoft',
-    name: 'Microsoft',
-    icon: 'fa-brands fa-microsoft',
-    color: 'bg-green-600 hover:bg-green-700',
+    id: 'facebook',
+    name: 'Facebook',
     handler: async () => {
-      // 1. Native Sign In
-      const result = await FirebaseAuthentication.signInWithMicrosoft();
-      
-      // 2. Web Layer Sign In
-      const provider = new OAuthProvider('microsoft.com');
-      const credential = provider.credential({
-        idToken: result.credential.idToken,
-        accessToken: result.credential.accessToken // Optional, but good for Graph API
-      });
-      
+      const result = await FirebaseAuthentication.signInWithFacebook();
+      const credential = FacebookAuthProvider.credential(result.credential.accessToken);
       return signInWithCredential(auth, credential);
     }
   }
