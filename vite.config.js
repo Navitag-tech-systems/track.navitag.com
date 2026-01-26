@@ -23,19 +23,20 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (id.includes('node_modules')) {
-            // Split Firebase into its own chunk
-            if (id.includes('firebase')) {
-              return 'firebase';
-            }
-            // Split Vue ecosystem into its own chunk
+            // 1. Group Vue ecosystem
             if (id.includes('vue') || id.includes('pinia')) {
               return 'vue-vendor';
             }
-            // Split Capacitor into its own chunk
+            // 2. Group ALL Capacitor stuff (Core + Plugins + Capacitor-Firebase)
+            // Checking this BEFORE firebase ensures plugins stay with the core
             if (id.includes('@capacitor')) {
               return 'capacitor-vendor';
             }
-            // Put everything else (like html5-qrcode, fontawesome) in a vendor chunk
+            // 3. Group pure Firebase SDK
+            if (id.includes('firebase')) {
+              return 'firebase';
+            }
+            // 4. Everything else
             return 'vendor';
           }
         }
