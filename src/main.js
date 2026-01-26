@@ -9,6 +9,7 @@ import App from './App.vue';
 import { App as CapacitorApp } from '@capacitor/app'; // Import Capacitor App plugin
 import '@fortawesome/fontawesome-free/css/all.css'; // <--- Add this line
 
+
 const app = createApp(App);
 const pinia = createPinia();
 
