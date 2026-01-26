@@ -1,58 +1,77 @@
 <script setup>
-import { ref, onMounted } from 'vue';
-import { BarcodeScanner } from '@capacitor-mlkit/barcode-scanning';
-import { Capacitor } from '@capacitor/core';
-import "barcode-detector/polyfill"; // <--- Add the polyfill
+import { ref, onUnmounted, nextTick } from 'vue';
+import { Html5Qrcode } from 'html5-qrcode';
 
-const isDesktop = ref(false);
 const scanResult = ref('');
-
-onMounted(() => {
-  const userAgent = navigator.userAgent.toLowerCase();
-  const isMobileOS = /android|iphone|ipad|ipod/.test(userAgent);
-  
-  // Disable if it's a web platform AND not a mobile OS
-  if (Capacitor.getPlatform() === 'web' && !isMobileOS) {
-    isDesktop.value = true;
-  }
-});
+const isScanning = ref(false);
+const scannerInstance = ref(null);
 
 const startScan = async () => {
-  if (isDesktop.value) return;
+  scanResult.value = '';
+  isScanning.value = true;
+
+  // Wait for the DOM to update so the "reader" div exists
+  await nextTick();
 
   try {
-    // Check/Request permission (Works on both native and mobile web)
-    const status = await BarcodeScanner.checkPermissions();
-    if (status.camera !== 'granted') {
-      await BarcodeScanner.requestPermissions();
-    }
+    const html5QrCode = new Html5Qrcode("reader");
+    scannerInstance.value = html5QrCode;
 
-    // Use the .scan() method for a simple overlay or read from image
-    // Note: on Web, this triggers the browser's camera permission prompt
-    const { barcodes } = await BarcodeScanner.scan();
-    
-    if (barcodes.length > 0) {
-      scanResult.value = barcodes[0].displayValue;
-    }
-  } catch (e) {
-    alert("Scanner error: " + e.message);
+    // Configuration for the scanner
+    const config = { 
+      fps: 10, 
+      qrbox: { width: 250, height: 250 },
+      aspectRatio: 1.0 
+    };
+
+    // Start the camera (prefer back camera)
+    await html5QrCode.start(
+      { facingMode: "environment" }, 
+      config,
+      (decodedText) => {
+        // Success callback
+        scanResult.value = decodedText;
+        stopScan();
+      },
+      (errorMessage) => {
+        // Error callback (fires frequently while scanning, usually ignored)
+      }
+    );
+  } catch (err) {
+    console.error("Failed to start scanner", err);
+    alert("Camera error: " + err);
+    stopScan();
   }
 };
+
+const stopScan = async () => {
+  if (scannerInstance.value) {
+    try {
+      if (scannerInstance.value.isScanning) {
+        await scannerInstance.value.stop();
+      }
+      scannerInstance.value.clear();
+    } catch (err) {
+      console.warn("Error stopping scanner", err);
+    }
+    scannerInstance.value = null;
+  }
+  isScanning.value = false;
+};
+
+// Cleanup if user navigates away
+onUnmounted(() => {
+  stopScan();
+});
 </script>
 
 <template>
-  <div class="p-4 border rounded-lg bg-white shadow-sm">
+  <div v-if="!isScanning" class="p-4 border rounded-lg bg-white shadow-sm">
     <h3 class="font-bold mb-2">QR/Barcode Scanner</h3>
     
-    <div v-if="isDesktop" class="bg-gray-100 p-3 rounded text-center text-gray-400 text-sm">
-      <i class="fa-solid fa-camera-slash mb-1 block"></i>
-      Scanner unavailable on computer
-    </div>
-
     <button 
-      v-else
       @click="startScan" 
-      class="bg-green-600 text-white px-4 py-2 rounded flex items-center justify-center w-full"
+      class="bg-green-600 text-white px-4 py-2 rounded flex items-center justify-center w-full cursor-pointer hover:bg-green-700 transition"
     >
       <i class="fa-solid fa-qrcode mr-2"></i> Scan Code
     </button>
@@ -61,4 +80,36 @@ const startScan = async () => {
       Result: <strong>{{ scanResult }}</strong>
     </p>
   </div>
+
+  <Teleport to="body">
+    <div v-if="isScanning" class="fixed inset-0 z-[100] bg-black">
+      
+      <div id="reader" class="w-full h-full object-cover"></div>
+
+      <div class="absolute inset-0 flex flex-col items-center justify-between p-10 pointer-events-none">
+        
+        <div class="mt-20 w-64 h-64 border-2 border-white/70 rounded-lg shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]"></div>
+        
+        <div class="pointer-events-auto">
+          <button 
+            @click="stopScan"
+            class="bg-red-600 text-white px-8 py-3 rounded-full font-bold shadow-lg hover:bg-red-700 active:scale-95 transition"
+          >
+            Cancel Scan
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </Teleport>
 </template>
+
+<style scoped>
+/* Ensure the html5-qrcode video element fills the screen properly */
+:deep(#reader video) {
+  object-fit: cover;
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: 0 !important;
+}
+</style>

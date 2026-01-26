@@ -1,8 +1,5 @@
 @import "tailwindcss";
 
-/* Define the Safe Area Utilities for Mobile Notches 
-  Tailwind 4 automatically picks these up as utility classes.
-*/
 @layer utilities {
   .pt-safe-top {
     padding-top: env(safe-area-inset-top);
@@ -17,7 +14,6 @@
     padding-right: env(safe-area-inset-right);
   }
   
-  /* Utility for a fixed bottom navbar (common in apps) */
   .bottom-nav-fix {
     padding-bottom: calc(1rem + env(safe-area-inset-bottom));
   }
@@ -29,10 +25,13 @@ html, body, #app {
   width: 100%;
   margin: 0;
   padding: 0;
-  overscroll-behavior-y: none; /* Disables "pull-to-refresh" bounce effect */
-  -webkit-tap-highlight-color: transparent; /* Removes blue highlight on tap */
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .h-safe-top {
   height: env(safe-area-inset-top);
 }
+
+/* REMOVED: Scanner Transparency Rules are no longer needed 
+   because html5-qrcode runs inside the normal DOM. */
