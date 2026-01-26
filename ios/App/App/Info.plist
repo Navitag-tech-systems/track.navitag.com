@@ -47,5 +47,9 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>We need camera access to scan QR codes for tracking devices.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>We need your location to show your position relative to tracked assets.</string>
 </dict>
 </plist>
