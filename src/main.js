@@ -24,12 +24,7 @@ onAuthStateChanged(auth, async (firebaseUser) => {
     userStore.setUser(firebaseUser);
     const token = await firebaseUser.getIdToken();
     userStore.setToken(token);
-    
-    // Redirect to home if user was on login page
-    router.replace('/');
-    /*if (router.currentRoute.value.path === '/login') {
-      router.replace('/');
-    }*/
+    router.replace('/'); // Redirect to home on login
   } else {
     userStore.clearUser();
     

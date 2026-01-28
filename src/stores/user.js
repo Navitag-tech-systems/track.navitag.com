@@ -9,7 +9,6 @@ export const useUserStore = defineStore('user', () => {
   const loading = ref(true); // "Is Firebase checking the disk?"
   const fcmToken = ref(null);
 
-
   // Getters (Computed properties)
   const isLoggedIn = computed(() => user.value !== null);
 

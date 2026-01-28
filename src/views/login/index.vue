@@ -14,10 +14,11 @@ const loading = ref(false);
 // Email Login
 const handleLogin = async () => {
   loading.value = true;
-  errorMsg.value = '';
+  errorMsg.value = 'log: starting login';
   try {
-    await signInWithEmailAndPassword(auth, email.value, password.value);
-    //router.replace('/');
+    let user = await signInWithEmailAndPassword(auth, email.value, password.value);
+
+    errorMsg.value = 'log: ' + user.user.uid;
   } catch (e) {
     errorMsg.value = getErrorMessage(e);
   } finally {
@@ -25,12 +26,14 @@ const handleLogin = async () => {
   }
 };
 
-// Provider Login (Google/Facebook)
+// Provider Login (Google/Facebook/Apple)
 const handleProviderLogin = async (providerHandler) => {
   loading.value = true;
-  errorMsg.value = '';
+  errorMsg.value = 'log: starting login';
   try {
-    await providerHandler();
+    let creds = await providerHandler();
+    console.log(creds)
+    errorMsg.value = 'log: '+ creds.user.uid;
     //router.replace('/');
   } catch (e) {
     errorMsg.value = "Sign in failed: " + e.message;
