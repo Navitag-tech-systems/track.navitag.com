@@ -2,6 +2,7 @@ import UIKit
 import Capacitor
 import Firebase // Make sure this is imported
 import FirebaseAuth
+import FacebookCore
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -37,9 +38,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
-        // Called when the app was launched with a url. Feel free to add additional processing here,
-        // but if you want the App API to support tracking app url opens, make sure to keep this call
-        // Required for Capawesome Auth + Messaging to handle callbacks correctly
+        // Handle Facebook URL redirects
+        if ApplicationDelegate.shared.application(app, open: url, sourceApplication: options[.sourceApplication] as? String, annotation: options[.annotation]) {
+            return true
+        }
+
         if Auth.auth().canHandle(url) {
             return true
         }

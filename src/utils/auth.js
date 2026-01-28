@@ -23,20 +23,6 @@ export const supportedProviders = [
     name: 'Apple',
     color: 'bg-black',
     handler: async () => {
-      const result = await FirebaseAuthentication.signInWithApple();
-      const provider = new OAuthProvider('apple.com');
-      const credential = provider.credential({
-        idToken: result.credential.idToken,
-        rawNonce: result.credential.rawNonce, // Required for Apple
-      });
-      return signInWithCredential(auth, credential);
-    }
-  },
-  {
-    id: 'apple',
-    name: 'Apple',
-    color: 'bg-black',
-    handler: async () => {
       // 1. Start the sign-in process
       const result = await FirebaseAuthentication.signInWithApple();
       

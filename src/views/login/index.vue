@@ -31,7 +31,7 @@ const handleProviderLogin = async (providerHandler) => {
   errorMsg.value = '';
   try {
     await providerHandler();
-    router.replace('/');
+    //router.replace('/');
   } catch (e) {
     errorMsg.value = "Sign in failed: " + e.message;
   } finally {
