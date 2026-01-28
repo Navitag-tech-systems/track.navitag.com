@@ -32,7 +32,7 @@ export const supportedProviders = [
       const credential = provider.credential({
         idToken: result.credential.idToken,
         // Map the nonce correctly. The plugin typically provides 'nonce'.
-        rawNonce: result.credential.rawNonce || result.credential.nonce, 
+        rawNonce: result.credential.nonce
       });
 
       // 3. Sign in the Web SDK using the credentials from the Native/Plugin result
