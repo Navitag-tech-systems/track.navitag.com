@@ -33,6 +33,28 @@ export const supportedProviders = [
     }
   },
   {
+    id: 'apple',
+    name: 'Apple',
+    color: 'bg-black',
+    handler: async () => {
+      // 1. Start the sign-in process
+      const result = await FirebaseAuthentication.signInWithApple();
+      
+      // 2. CHECK: If the plugin already signed the user in, just return the user
+      if (result.user) {
+        return result; 
+      }
+
+      // 3. Fallback: Only if result.user is missing (e.g., skipNativeAuth was true)
+      const provider = new OAuthProvider('apple.com');
+      const credential = provider.credential({
+        idToken: result.credential.idToken,
+        rawNonce: result.credential.rawNonce, // Ensure this is correctly named from result
+      });
+      return signInWithCredential(auth, credential);
+    }
+  },
+  {
     id: 'facebook',
     name: 'Facebook',
     color: 'bg-blue-400',
