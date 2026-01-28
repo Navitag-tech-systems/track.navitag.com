@@ -32,6 +32,16 @@ async function sha256(input) {
 }
 
 /* ------------------------------------------------------------------
+ * Prevent duplicate sign-in attempts
+ * ------------------------------------------------------------------ */
+
+const signingIn = {
+  google: false,
+  apple: false,
+  facebook: false
+};
+
+/* ------------------------------------------------------------------
  * Auth providers
  * ------------------------------------------------------------------ */
 
@@ -41,11 +51,22 @@ export const supportedProviders = [
     name: 'Google',
     color: 'bg-red-400',
     handler: async () => {
-      const result = await FirebaseAuthentication.signInWithGoogle();
-      const credential = GoogleAuthProvider.credential(
-        result?.credential?.idToken
-      );
-      return signInWithCredential(auth, credential);
+      if (signingIn.google) {
+        throw new Error('Sign-in already in progress');
+      }
+
+      try {
+        signingIn.google = true;
+
+        const result = await FirebaseAuthentication.signInWithGoogle();
+        const credential = GoogleAuthProvider.credential(
+          result?.credential?.idToken
+        );
+
+        return await signInWithCredential(auth, credential);
+      } finally {
+        signingIn.google = false;
+      }
     }
   },
 
@@ -54,27 +75,51 @@ export const supportedProviders = [
     name: 'Apple',
     color: 'bg-black',
     handler: async () => {
-      // 1️⃣ Generate nonce
-      const rawNonce = generateNonce();
-      const hashedNonce = await sha256(rawNonce);
-
-      // 2️⃣ Apple Sign-In (native iOS / web fallback)
-      const result = await FirebaseAuthentication.signInWithApple({
-        nonce: hashedNonce
-      });
-
-      if (!result?.credential?.idToken) {
-        throw new Error('Apple Sign-In failed: missing identity token');
+      if (signingIn.apple) {
+        throw new Error('Sign-in already in progress');
       }
 
-      // 3️⃣ Exchange Apple credential for Firebase credential
-      const provider = new OAuthProvider('apple.com');
-      const credential = provider.credential({
-        idToken: result.credential.idToken,
-        rawNonce
-      });
+      try {
+        signingIn.apple = true;
 
-      return signInWithCredential(auth, credential);
+        // 1️⃣ Generate a FRESH nonce for this attempt
+        const rawNonce = generateNonce();
+        const hashedNonce = await sha256(rawNonce);
+
+        console.log('[Apple SSO] Starting with nonce:', rawNonce.substring(0, 10) + '...');
+
+        // 2️⃣ Native Apple Sign-In (iOS) with hashed nonce
+        const result = await FirebaseAuthentication.signInWithApple({
+          nonce: hashedNonce,
+          scopes: ['email', 'name']
+        });
+
+        console.log('[Apple SSO] Native sign-in completed');
+
+        if (!result?.credential?.idToken) {
+          throw new Error('Apple Sign-In failed: missing identity token');
+        }
+
+        // 3️⃣ Exchange Apple credential for Firebase credential
+        // IMPORTANT: Use the original (unhashed) rawNonce here
+        const provider = new OAuthProvider('apple.com');
+        const credential = provider.credential({
+          idToken: result.credential.idToken,
+          rawNonce // Use the original unhashed nonce
+        });
+
+        console.log('[Apple SSO] Exchanging for Firebase credential');
+        const userCredential = await signInWithCredential(auth, credential);
+        console.log('[Apple SSO] Success');
+
+        return userCredential;
+
+      } catch (error) {
+        console.error('[Apple SSO] Error:', error);
+        throw error;
+      } finally {
+        signingIn.apple = false;
+      }
     }
   },
 
@@ -83,11 +128,22 @@ export const supportedProviders = [
     name: 'Facebook',
     color: 'bg-blue-400',
     handler: async () => {
-      const result = await FirebaseAuthentication.signInWithFacebook();
-      const credential = FacebookAuthProvider.credential(
-        result?.credential?.accessToken
-      );
-      return signInWithCredential(auth, credential);
+      if (signingIn.facebook) {
+        throw new Error('Sign-in already in progress');
+      }
+
+      try {
+        signingIn.facebook = true;
+
+        const result = await FirebaseAuthentication.signInWithFacebook();
+        const credential = FacebookAuthProvider.credential(
+          result?.credential?.accessToken
+        );
+
+        return await signInWithCredential(auth, credential);
+      } finally {
+        signingIn.facebook = false;
+      }
     }
   }
 ];
@@ -112,6 +168,7 @@ export const getErrorMessage = (error) => {
       return 'An account already exists with the same email address.';
     case 'auth/invalid-credential':
     case 'auth/invalid-idp-response':
+    case 'auth/missing-or-invalid-nonce':
       return 'Sign-in failed. Please try again.';
     default:
       return error?.message || 'Authentication failed.';
