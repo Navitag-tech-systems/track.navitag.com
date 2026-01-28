@@ -9,7 +9,7 @@ const email = ref('');
 const password = ref('');
 const errorMsg = ref('');
 const loading = ref(false);
-const router = useRouter();
+//const router = useRouter();
 
 // Email Login
 const handleLogin = async () => {
@@ -17,7 +17,7 @@ const handleLogin = async () => {
   errorMsg.value = '';
   try {
     await signInWithEmailAndPassword(auth, email.value, password.value);
-    router.replace('/');
+    //router.replace('/');
   } catch (e) {
     errorMsg.value = getErrorMessage(e);
   } finally {
