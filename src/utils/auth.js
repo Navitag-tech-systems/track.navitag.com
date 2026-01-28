@@ -23,20 +23,20 @@ export const supportedProviders = [
     name: 'Apple',
     color: 'bg-black',
     handler: async () => {
-      // 1. Start the sign-in process
+      // 1. Perform Native Sign-In (iOS) or Web Sign-In
       const result = await FirebaseAuthentication.signInWithApple();
       
-      // 2. CHECK: If the plugin already signed the user in, just return the user
-      if (result.user) {
-        return result; 
-      }
-
-      // 3. Fallback: Only if result.user is missing (e.g., skipNativeAuth was true)
+      // 2. Extract tokens. 
+      // Note: The plugin usually returns 'nonce' while OAuthProvider expects 'rawNonce'.
       const provider = new OAuthProvider('apple.com');
       const credential = provider.credential({
         idToken: result.credential.idToken,
-        rawNonce: result.credential.rawNonce, // Ensure this is correctly named from result
+        // Map the nonce correctly. The plugin typically provides 'nonce'.
+        rawNonce: result.credential.rawNonce || result.credential.nonce, 
       });
+
+      // 3. Sign in the Web SDK using the credentials from the Native/Plugin result
+      // This ensures 'onAuthStateChanged' in main.js fires and updates your Pinia store.
       return signInWithCredential(auth, credential);
     }
   },
