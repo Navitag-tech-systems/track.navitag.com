@@ -5,7 +5,6 @@ import {
   signInWithCredential
 } from 'firebase/auth';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
-import { Capacitor } from '@capacitor/core'; // (Import Capacitor)
 import { auth } from '@/firebase';
 
 /* ------------------------------------------------------------------
@@ -83,59 +82,37 @@ export const supportedProviders = [
       try {
         signingIn.apple = true;
 
-        // CHECK PLATFORM: If Native, use skipNativeAuth (Web Flow)
-        if (Capacitor.isNativePlatform()) {
-          console.log('[Apple SSO] Native Platform detected. Using skipNativeAuth: true');
-          
-          // When skipNativeAuth is true, the plugin uses the Firebase JS SDK internally.
-          // This handles the nonce automatically and signs the user in directly.
-          // We do NOT need to generate a nonce or call signInWithCredential manually.
-          const result = await FirebaseAuthentication.signInWithApple({
-            skipNativeAuth: true,
-            scopes: ['email', 'name']
-          });
+        // 1️⃣ Generate a fresh nonce for THIS attempt
+        const rawNonce = generateNonce();
+        const hashedNonce = await sha256(rawNonce);
 
-          console.log('[Apple SSO] Web-flow sign-in completed');
-          
-          // Return the result (UserCredential-like object) to satisfy the caller
-          return result;
+        console.log('[Apple SSO] Starting sign-in');
 
-        } else {
-          // EXISTING LOGIC for Web/Other (Manual Nonce + Double Sign-In)
-          
-          // 1. Generate a FRESH nonce for this attempt
-          const rawNonce = generateNonce();
-          const hashedNonce = await sha256(rawNonce);
+        // 2️⃣ Always use skipNativeAuth to avoid double consumption
+        const result = await FirebaseAuthentication.signInWithApple({
+          skipNativeAuth: true,
+          nonce: hashedNonce,
+          scopes: ['email', 'name']
+        });
 
-          console.log('[Apple SSO] Starting with nonce:', rawNonce.substring(0, 10) + '...');
-
-          // 2. Native Apple Sign-In (iOS) with hashed nonce
-          const result = await FirebaseAuthentication.signInWithApple({
-            nonce: hashedNonce,
-            scopes: ['email', 'name']
-          });
-
-          console.log('[Apple SSO] Native sign-in completed');
-
-          if (!result?.credential?.idToken) {
-            throw new Error('Apple Sign-In failed: missing identity token');
-          }
-
-          // 3. Exchange Apple credential for Firebase credential
-          // IMPORTANT: Use the original (unhashed) rawNonce here
-          const provider = new OAuthProvider('apple.com');
-          const credential = provider.credential({
-            idToken: result.credential.idToken,
-            rawNonce // Use the original unhashed nonce
-          });
-
-          console.log('[Apple SSO] Exchanging for Firebase credential');
-          const userCredential = await signInWithCredential(auth, credential);
-          console.log('[Apple SSO] Success');
-
-          return userCredential;
+        if (!result?.credential?.idToken) {
+          throw new Error('Apple Sign-In failed: missing identity token');
         }
 
+        // 3️⃣ Exchange Apple token for Firebase credential (JS SDK)
+        const provider = new OAuthProvider('apple.com');
+        const credential = provider.credential({
+          idToken: result.credential.idToken,
+          rawNonce
+        });
+
+        console.log('[Apple SSO] Exchanging credential with Firebase');
+
+        const userCredential = await signInWithCredential(auth, credential);
+
+        console.log('[Apple SSO] Firebase sign-in successful');
+
+        return userCredential;
       } catch (error) {
         console.error('[Apple SSO] Error:', error);
         throw error;
