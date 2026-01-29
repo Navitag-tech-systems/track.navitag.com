@@ -22,9 +22,6 @@ function generateNonce(length = 32) {
   return result;
 }
 
-// REMOVED: sha256 function is no longer needed in this file
-// The Native Plugin handles the hashing internally.
-
 /* ------------------------------------------------------------------
  * Prevent duplicate sign-in attempts
  * ------------------------------------------------------------------ */
@@ -52,11 +49,16 @@ export const supportedProviders = [
       try {
         signingIn.google = true;
 
-        const result = await FirebaseAuthentication.signInWithGoogle();
+        // Use skipNativeAuth: true to get credentials without native sign-in
+        const result = await FirebaseAuthentication.signInWithGoogle({
+          skipNativeAuth: true
+        });
+        
         const credential = GoogleAuthProvider.credential(
           result?.credential?.idToken
         );
 
+        // Sign in on web layer only
         return await signInWithCredential(auth, credential);
       } finally {
         signingIn.google = false;
@@ -76,16 +78,15 @@ export const supportedProviders = [
       try {
         signingIn.apple = true;
 
-        // 1️⃣ Generate a fresh RAW nonce
         const rawNonce = generateNonce();
         
         console.log('[Apple SSO] Starting sign-in');
 
-        // 2️⃣ Call Native Plugin with the RAW nonce.
-        // The Plugin will SHA256 hash it automatically before sending to Apple.
+        // Use skipNativeAuth: true - this prevents native Firebase sign-in
+        // but still gives you the native Apple Sign-In UI
         const result = await FirebaseAuthentication.signInWithApple({
-          skipNativeAuth: false, // Force Native System UI
-          nonce: rawNonce,       // Pass RAW value here
+          skipNativeAuth: true,  // KEY CHANGE: Set to true
+          nonce: rawNonce,
           scopes: ['email', 'name']
         });
 
@@ -93,18 +94,15 @@ export const supportedProviders = [
           throw new Error('Apple Sign-In failed: missing identity token');
         }
 
-        // 3️⃣ Exchange Apple token for Firebase credential
-        // Pass the same RAW nonce to Firebase. Firebase will hash it 
-        // and compare it to the hash inside the ID Token.
         const provider = new OAuthProvider('apple.com');
         const credential = provider.credential({
           idToken: result.credential.idToken,
-          rawNonce: rawNonce // Pass RAW value here
+          rawNonce: rawNonce
         });
 
         console.log('[Apple SSO] Exchanging credential with Firebase');
 
-        // This triggers onAuthStateChanged in your main.js
+        // Sign in on web layer only
         const userCredential = await signInWithCredential(auth, credential);
 
         console.log('[Apple SSO] Firebase sign-in successful');
@@ -131,11 +129,16 @@ export const supportedProviders = [
       try {
         signingIn.facebook = true;
 
-        const result = await FirebaseAuthentication.signInWithFacebook();
+        // Use skipNativeAuth: true
+        const result = await FirebaseAuthentication.signInWithFacebook({
+          skipNativeAuth: true
+        });
+        
         const credential = FacebookAuthProvider.credential(
           result?.credential?.accessToken
         );
 
+        // Sign in on web layer only
         return await signInWithCredential(auth, credential);
       } finally {
         signingIn.facebook = false;
@@ -166,6 +169,8 @@ export const getErrorMessage = (error) => {
     case 'auth/invalid-idp-response':
     case 'auth/missing-or-invalid-nonce':
       return 'Sign-in failed. Please try again.';
+    case 'auth/credential-already-in-use':
+      return 'This credential is already associated with a different account.';
     default:
       return error?.message || 'Authentication failed.';
   }
