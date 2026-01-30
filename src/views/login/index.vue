@@ -1,7 +1,7 @@
 <script setup>
 import { ref } from 'vue';
-import { useRouter } from 'vue-router';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+
+//import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '@/firebase';
 import { supportedProviders, getErrorMessage } from '@/utils/auth';
 

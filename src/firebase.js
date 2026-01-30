@@ -1,6 +1,7 @@
 import { initializeApp } from "firebase/app";
-import { getAuth, indexedDBLocalPersistence, initializeAuth } from "firebase/auth";
-import { Capacitor } from "@capacitor/core";
+
+import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
+//import { Capacitor } from "@capacitor/core";
 
 // 1. Your Web Config from Firebase Console
 const firebaseConfig = {
@@ -22,21 +23,7 @@ const firebaseConfig = {
 };
 
 // 2. Initialize App
-export const app = initializeApp(firebaseConfig);
+initializeApp(firebaseConfig);
 
-// 3. Initialize Auth with Persistence
-// This ensures the user stays logged in even if the app closes
-let auth;
+export const auth = FirebaseAuthentication;
 
-if (Capacitor.isNativePlatform()) {
-    // Mobile: Use standard initialization, Capacitor handles persistence natively usually
-    // But sometimes we need to force IndexedDB if local storage is flaky
-    auth = initializeAuth(app, {
-        persistence: indexedDBLocalPersistence
-    });
-} else {
-    // Web
-    auth = getAuth(app);
-}
-
-export { auth };

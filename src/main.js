@@ -1,6 +1,5 @@
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';
-import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './firebase'; 
 import { useUserStore } from './stores/user';
 import router from './router'; // Import the router
@@ -18,17 +17,17 @@ app.use(router); // Use the router
 
 const userStore = useUserStore(pinia);
 
-// Firebase listener
-onAuthStateChanged(auth, async (firebaseUser) => {
+// Replace Web SDK listener with Capawesome plugin listener
+auth.addListener('authStateChange', async (data) => {
+  const firebaseUser = data.user;
   if (firebaseUser) {
     userStore.setUser(firebaseUser);
-    const token = await firebaseUser.getIdToken();
-    userStore.setToken(token);
-    router.replace('/'); // Redirect to home on login
+    // The plugin provides the token in the user object or via getIdToken()
+    const result = await auth.getIdToken();
+    userStore.setToken(result.token);
+    router.replace('/');
   } else {
     userStore.clearUser();
-    
-    // Redirect to login if user was on a protected page
     if (router.currentRoute.value.meta.requiresAuth) {
       router.replace('/login');
     }

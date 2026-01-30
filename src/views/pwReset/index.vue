@@ -1,7 +1,7 @@
 <script setup>
 import { ref } from 'vue';
-import { sendPasswordResetEmail } from 'firebase/auth';
-import { auth } from '@/firebase';
+import { auth } from '@/firebase'; 
+
 import { getErrorMessage } from '@/utils/auth';
 
 const email = ref('');
@@ -23,7 +23,10 @@ const handleReset = async () => {
 
   try {
     // 2. Pass settings as the second argument
-    await sendPasswordResetEmail(auth, email.value, actionCodeSettings);
+    await auth.sendPasswordResetEmail({
+      email: email.value,
+      actionCodeSettings: actionCodeSettings,
+    });
     message.value = "Password reset link sent! Check your inbox.";
   } catch (e) {
     errorMsg.value = getErrorMessage(e);

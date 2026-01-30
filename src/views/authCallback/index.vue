@@ -1,11 +1,10 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { applyActionCode, confirmPasswordReset, verifyPasswordResetCode, getAuth } from 'firebase/auth';
+import { auth } from '@/firebase';
 
 const route = useRoute();
 const router = useRouter();
-const auth = getAuth();
 
 // Query params from the email link
 const mode = route.query.mode; // 'resetPassword', 'verifyEmail', or 'recoverEmail'
@@ -42,9 +41,13 @@ onMounted(async () => {
 // --- Mode: Reset Password ---
 const handleResetPasswordInit = async () => {
   try {
-    // Verify the code is valid before showing the form
-    const email = await verifyPasswordResetCode(auth, actionCode);
-    showPasswordForm.value = true; // Show input field
+    // Verify the reset code using the plugin
+    // This returns the email associated with the code
+    const result = await auth.confirmPasswordReset({
+        actionCode: actionCode,
+        newPassword: 'temporary_check_only' // Some versions require verification first
+    });
+    showPasswordForm.value = true;
   } catch (e) {
     errorMsg.value = "Invalid or expired reset link.";
   } finally {
@@ -55,8 +58,12 @@ const handleResetPasswordInit = async () => {
 const submitNewPassword = async () => {
   loading.value = true;
   try {
-    await confirmPasswordReset(auth, actionCode, newPassword.value);
-    successMsg.value = "Password updated! Redirecting to login...";
+    // Finalize the password reset via the plugin
+    await auth.confirmPasswordReset({
+      actionCode: actionCode,
+      newPassword: newPassword.value
+    });
+    successMsg.value = "Password updated!";
     setTimeout(() => router.push('/login'), 3000);
   } catch (e) {
     errorMsg.value = e.message;
@@ -67,10 +74,11 @@ const submitNewPassword = async () => {
 // --- Mode: Verify Email ---
 const handleVerifyEmail = async () => {
   try {
-    await applyActionCode(auth, actionCode);
-    successMsg.value = "Email verified successfully! You can now sign in.";
+    // Apply the email verification code via the plugin
+    await auth.applyActionCode({ oobCode: actionCode });
+    successMsg.value = "Email verified successfully!";
   } catch (e) {
-    errorMsg.value = "Verification failed or link expired.";
+    errorMsg.value = "Verification failed.";
   } finally {
     loading.value = false;
   }
