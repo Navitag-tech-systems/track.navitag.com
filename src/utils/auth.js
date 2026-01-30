@@ -52,6 +52,15 @@ export const supportedProviders = [
   }
 ];
 
+
+export const signInWithEmailAndPassword = async (email, password) => {
+  const result = await auth.signInWithEmailAndPassword({
+    email: email,
+    password: password,
+  });
+  return result.user;
+};
+
 /* ------------------------------------------------------------------
  * Error handling
  * ------------------------------------------------------------------ */

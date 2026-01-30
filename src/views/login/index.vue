@@ -1,9 +1,7 @@
 <script setup>
 import { ref } from 'vue';
 
-//import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '@/firebase';
-import { supportedProviders, getErrorMessage } from '@/utils/auth';
+import { supportedProviders, getErrorMessage, signInWithEmailAndPassword } from '@/utils/auth';
 
 const email = ref('');
 const password = ref('');
@@ -16,7 +14,7 @@ const handleLogin = async () => {
   loading.value = true;
   errorMsg.value = 'log: starting login';
   try {
-    let user = await signInWithEmailAndPassword(auth, email.value, password.value);
+    let user = await signInWithEmailAndPassword(email.value, password.value);
 
     errorMsg.value = 'log: ' + user.user.uid;
   } catch (e) {
