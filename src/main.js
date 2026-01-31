@@ -1,6 +1,7 @@
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';
 import { auth } from './firebase'; 
+import { setUserId } from './utils/analytics';
 import { useUserStore } from './stores/user';
 import router from './router'; // Import the router
 import './style.css'; 
@@ -25,6 +26,8 @@ auth.addListener('authStateChange', async (data) => {
     // The plugin provides the token in the user object or via getIdToken()
     const result = await auth.getIdToken();
     userStore.setToken(result.token);
+    // set user ID for analytics
+    await setUserId(firebaseUser.uid);
     router.replace('/');
   } else {
     userStore.clearUser();
