@@ -1,17 +1,14 @@
 <script setup>
 import { useUserStore } from '@/stores/user';
-import { useRouter } from 'vue-router';
-import { getAuth, signOut } from 'firebase/auth';
+
+import { signOut } from '@/utils/auth';
 import LocationPicker from '@/components/LocationPicker.vue';
 import BarcodeScanner from '@/components/BarcodeScanner.vue';
 
 const userStore = useUserStore();
-const router = useRouter();
 
 const handleLogout = async () => {
-  const auth = getAuth();
-  await signOut(auth);
-  router.replace('/login');
+  await signOut();
 };
 </script>
 

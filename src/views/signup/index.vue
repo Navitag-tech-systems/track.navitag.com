@@ -1,8 +1,7 @@
 <script setup>
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { auth } from '@/firebase'; 
-import { supportedProviders, getErrorMessage } from '@/utils/auth'; // Import providers
+import { supportedProviders, getErrorMessage, createUserWithEmailAndPassword } from '@/utils/auth'; // Import providers
 
 const email = ref('');
 const password = ref('');
@@ -51,10 +50,7 @@ const handleSignup = async () => {
   errorMsg.value = '';
 
   try {
-    await auth.createUserWithEmailAndPassword({
-      email: email.value,
-      password: password.value,
-    });
+    await createUserWithEmailAndPassword(email.value, password.value);
     router.push('/');
   } catch (e) {
     errorMsg.value = getErrorMessage(e);

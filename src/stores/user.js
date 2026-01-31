@@ -18,7 +18,9 @@ export const useUserStore = defineStore('user', () => {
     
     if (status.receive === 'granted') {
       // 2. Get device token
-      const result = await FirebaseMessaging.getToken();
+      const result = await FirebaseMessaging.getToken({
+        vapidKey: 'BNfYDc6R8T-d0Mbmv8Idhmu0Ufl5zqiK9GSty0XNKDkp38ETHDV74t2BwmjiEd4aN-GYobZbLq-r_I_ga25a--Q', // <-- Paste your key here
+      });
       fcmToken.value = result.token;
       
       // 3. Listen for foreground notifications

@@ -52,14 +52,58 @@ export const supportedProviders = [
   }
 ];
 
-
 export const signInWithEmailAndPassword = async (email, password) => {
-  const result = await auth.signInWithEmailAndPassword({
-    email: email,
-    password: password,
-  });
-  return result.user;
+  try {
+    console.log('[Email/Password] Starting sign-in');
+    const result = await auth.signInWithEmailAndPassword({
+      email: email,
+      password: password,
+    });
+    
+    return result.user;
+  } catch (error) {
+    console.error('[Email/Password] Error:', error);
+    throw error;
+  }
 };
+
+export const signOut = async () => {
+  try {
+    console.log('[Sign Out] Signing out user');
+    const result = await auth.signOut()
+    console.log('[Sign Out] Sign-out successful');
+    return result;
+  } catch (error) {
+    console.error('[Sign Out] Error:', error);
+    throw error;
+  }
+};
+
+export const sendResetPasswordEmail = async (options) => {
+  try{
+    console.log('[Password Reset] Sending reset email');
+    const result = await auth.sendPasswordResetEmail(options);
+    console.log('[Password Reset] Reset email sent');
+    return result;
+  } catch (error) {
+    console.error('[Password Reset] Error:', error);
+    throw error;
+  }
+}
+
+export const createUserWithEmailAndPassword = async (email, password) => {
+  try {
+    console.log('[Email/Password] Starting sign-up'); 
+    const result = await auth.createUserWithEmailAndPassword({
+      email: email,
+      password: password,
+    });
+    return result.user;
+  } catch (error) {
+    console.error('[Email/Password] Error:', error);
+    throw error;
+  }
+}
 
 /* ------------------------------------------------------------------
  * Error handling
@@ -89,3 +133,4 @@ export const getErrorMessage = (error) => {
       return error?.message || 'Authentication failed.';
   }
 };
+
