@@ -1,24 +1,5 @@
 @import "tailwindcss";
 
-@layer utilities {
-  .pt-safe-top {
-    padding-top: env(safe-area-inset-top);
-  }
-  .pb-safe-bottom {
-    padding-bottom: env(safe-area-inset-bottom);
-  }
-  .pl-safe-left {
-    padding-left: env(safe-area-inset-left);
-  }
-  .pr-safe-right {
-    padding-right: env(safe-area-inset-right);
-  }
-  
-  .bottom-nav-fix {
-    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
-  }
-}
-
 /* Global App Resets */
 html, body, #app {
   height: 100%;
@@ -27,10 +8,6 @@ html, body, #app {
   padding: 0;
   overscroll-behavior-y: none;
   -webkit-tap-highlight-color: transparent;
-}
-
-.h-safe-top {
-  height: env(safe-area-inset-top);
 }
 
 /* REMOVED: Scanner Transparency Rules are no longer needed 

@@ -13,6 +13,8 @@
     "test:unit": "vitest"
   },
   "dependencies": {
+    "@burkaloo/leaflet-vue3": "^0.1.12",
+    "@capacitor-firebase/analytics": "^8.0.1",
     "@capacitor-firebase/authentication": "^8.0.1",
     "@capacitor-firebase/messaging": "^8.0.1",
     "@capacitor/android": "^8.0.1",
@@ -22,11 +24,14 @@
     "@capacitor/geolocation": "^8.0.0",
     "@capacitor/ios": "^8.0.1",
     "@fortawesome/fontawesome-free": "^7.1.0",
+    "@geoman-io/leaflet-geoman-free": "^2.19.2",
     "@tailwindcss/vite": "^4.1.18",
     "firebase": "^12.8.0",
     "html5-qrcode": "^2.3.8",
+    "leaflet": "^1.9.4",
+    "leaflet-rotate": "^0.2.8",
     "pinia": "^3.0.4",
-    "vue": "^3.5.26",
+    "vue": "^3.5.27",
     "vue-router": "^4.6.4"
   },
   "devDependencies": {
