@@ -25,11 +25,16 @@ auth.addListener('authStateChange', async (data) => {
   const firebaseUser = data.user;
   if (firebaseUser) {
     userStore.setUser(firebaseUser);
+    if(!firebaseUser.emailVerified){
+      //send email verification
+    }
+    
     // The plugin provides the token in the user object or via getIdToken()
     const result = await auth.getIdToken();
     userStore.setToken(result.token);
     // set user ID for analytics
     await setUserId(firebaseUser.uid);
+    
     router.replace('/');
   } else {
     userStore.clearUser();
