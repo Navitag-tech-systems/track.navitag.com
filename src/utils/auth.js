@@ -8,7 +8,8 @@ export const supportedProviders = [
   {
     id: 'google',
     name: 'Google',
-    color: 'bg-red-400',
+    color: 'bg-red-500', // Adjusted to standard Google red
+    icon: 'fa-brands fa-google', // FontAwesome brand icon
     handler: async () => {
       try {
         console.log('[Google SSO] Starting sign-in');
@@ -21,24 +22,10 @@ export const supportedProviders = [
     }
   },
   {
-    id: 'apple',
-    name: 'Apple',
-    color: 'bg-black',
-    handler: async () => {
-      try {        
-        console.log('[Apple SSO] Starting sign-in');
-        const result = await auth.signInWithApple();
-        return result.user;
-      } catch (error) {
-        console.error('[Apple SSO] Error:', error);
-        throw error;
-      } 
-    }
-  },
-  {
     id: 'facebook',
     name: 'Facebook',
-    color: 'bg-blue-400',
+    color: 'bg-blue-600', // Adjusted to standard Facebook blue
+    icon: 'fa-brands fa-facebook-f', // FontAwesome brand icon
     handler: async () => {
       try {
         console.log('[Facebook SSO] Starting sign-in');
@@ -46,6 +33,22 @@ export const supportedProviders = [
         return result.user;
       } catch (error) {
         console.error('[Facebook SSO] Error:', error);
+        throw error;
+      } 
+    }
+  },
+  {
+    id: 'apple',
+    name: 'Apple',
+    color: 'bg-black',
+    icon: 'fa-brands fa-apple', // FontAwesome brand icon
+    handler: async () => {
+      try {        
+        console.log('[Apple SSO] Starting sign-in');
+        const result = await auth.signInWithApple();
+        return result.user;
+      } catch (error) {
+        console.error('[Apple SSO] Error:', error);
         throw error;
       } 
     }

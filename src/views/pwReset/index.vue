@@ -1,5 +1,6 @@
 <script setup>
 import { ref } from 'vue';
+import { RouterLink } from 'vue-router'; // Ensure RouterLink is imported
 import { getErrorMessage, sendResetPasswordEmail } from '@/utils/auth';
 
 const email = ref('');
@@ -13,14 +14,11 @@ const handleReset = async () => {
   errorMsg.value = '';
 
   const actionCodeSettings = {
-    // 1. Point to your hosted PWA URL or localhost for dev
-    // IMPORTANT: You must add this URL to "Authorized Domains" in Firebase Console -> Auth -> Settings
     url: `https://track.navitag.com/auth/action`, 
     handleCodeInApp: true,
   };
 
   try {
-    // 2. Pass settings as the second argument
     await sendResetPasswordEmail({
       email: email.value,
       actionCodeSettings: actionCodeSettings,
@@ -46,10 +44,10 @@ const handleReset = async () => {
           type="email" 
           placeholder="Enter your email" 
           required
-          class="w-full border p-2 rounded mb-4 focus:ring-2 focus:ring-blue-500 outline-none"
+          class="w-full border p-1 text-sm rounded mb-4 focus:ring-2 focus:ring-blue-500 outline-none"
         />
         
-        <button type="submit" :disabled="loading" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition disabled:opacity-50">
+        <button type="submit" :disabled="loading" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 text-sm rounded transition disabled:opacity-50 cursor-pointer">
           {{ loading ? 'Sending...' : 'Send Reset Link' }}
         </button>
       </form>

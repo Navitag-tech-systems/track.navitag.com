@@ -1,6 +1,7 @@
 <script setup>
 import { ref } from 'vue';
 import { useUserStore } from '@/stores/user';
+import { RouterLink } from 'vue-router'; // <--- Add this import
 
 import { supportedProviders, getErrorMessage, signInWithEmailAndPassword } from '@/utils/auth';
 
@@ -51,9 +52,9 @@ const handleProviderLogin = async (providerHandler) => {
       <div v-show="userStore.countryCode !== null" class="text-center text-gray-500 mb-3 font-semibold">Country Server: {{ userStore.countryCode }}</div>
 
       <form @submit.prevent="handleLogin" class="mt-4">
-        <input v-model="email" type="email" placeholder="Email" required class="w-full border p-2 rounded mb-3 focus:ring-2 focus:ring-blue-500 outline-none" />
+        <input v-model="email" type="email" placeholder="Email" required class="w-full border p-1 rounded mb-3 focus:ring-2 focus:ring-blue-500 outline-none" />
         <div class="mb-4">
-          <input v-model="password" type="password" placeholder="Password" required class="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
+          <input v-model="password" type="password" placeholder="Password" required class="w-full border p-1 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
           <div class="text-right mt-1">
             <RouterLink to="/forgot-password" class="text-xs text-blue-600 hover:underline">Forgot password?</RouterLink>
           </div>
@@ -71,22 +72,22 @@ const handleProviderLogin = async (providerHandler) => {
         <RouterLink to="/signup" class="text-blue-600 hover:underline">Sign Up</RouterLink>
       </div>
 
-      <div class="relative flex py-2 items-center">
+      <div class="relative flex py-5 items-center">
         <div class="flex-grow border-t border-gray-300"></div>
         <span class="flex-shrink mx-4 text-gray-400 text-sm">Or Login With</span>
         <div class="flex-grow border-t border-gray-300"></div>
       </div>
 
-      <div class="space-y-3 mb-6">
+      <div class="flex justify-center space-x-4 mb-6 mt-2">
         <button 
           v-for="p in supportedProviders" 
           :key="p.id"
           @click="handleProviderLogin(p.handler)"
-          :class="`${p.color} w-full text-white font-semibold py-2 px-4 rounded flex items-center justify-center transition hover:opacity-90`"
+          :class="`${p.color} w-12 h-12 text-white rounded-full flex items-center justify-center transition hover:opacity-90 shadow-sm cursor-pointer`"
           :disabled="loading"
+          :title="`Sign in with ${p.name}`"
         >
-          <i :class="`${p.icon} mr-2`"></i>
-          Sign in with {{ p.name }}
+          <i :class="`${p.icon} text-xl`"></i>
         </button>
       </div>
     </div>
