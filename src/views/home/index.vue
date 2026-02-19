@@ -1,6 +1,6 @@
 <script setup>
+import { signOut } from '@/utils/auth';
 import { useUserStore } from '@/stores/user';
-
 
 //import LocationPicker from '@/components/LocationPicker.vue';
 //import BarcodeScanner from '@/components/BarcodeScanner.vue';
@@ -15,7 +15,7 @@ const userStore = useUserStore();
     <h1 class="text-2xl font-bold mb-4">Navitag Track</h1>
     <div class="mt-8 bg-white shadow rounded p-4 text-center">
       <p class="mb-4 text-sm text-gray-500">Account: {{ userStore.user?.email }}</p>
-      <button @click="handleLogout" class="text-red-500 text-sm font-semibold">
+      <button @click="signOut" class="text-red-500 text-sm font-semibold">
         Sign Out
       </button>
     </div>

@@ -13,7 +13,7 @@ const userStore = useUserStore();
     <p class="text-gray-500 text-sm">Navitag GPS tracking</p>
   </div>
 
-  <RouterView v-else />
+  <RouterView />
 </template>
 
 <style>
