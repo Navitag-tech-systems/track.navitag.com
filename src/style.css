@@ -1,14 +1,21 @@
 @import "tailwindcss";
 
-/* Global App Resets */
+@import "tailwindcss";
+
+@theme {
+  /* Capacitor 8 SystemBars Plugin Polyfill -> standard env() -> 0px fallback */
+  --spacing-safe-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --spacing-safe-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --spacing-safe-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
+  --spacing-safe-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
+}
+
 html, body, #app {
-  height: 100%;
+  /* 100dvh is still the modern standard for mobile web browsers */
+  height: 100dvh; 
   width: 100%;
   margin: 0;
   padding: 0;
   overscroll-behavior-y: none;
   -webkit-tap-highlight-color: transparent;
 }
-
-/* REMOVED: Scanner Transparency Rules are no longer needed 
-   because html5-qrcode runs inside the normal DOM. */

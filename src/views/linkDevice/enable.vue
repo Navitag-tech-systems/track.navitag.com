@@ -39,7 +39,7 @@ const enableDevice = async () => {
 </script>
 
 <template>
-  <div class="flex flex-col min-h-screen bg-gray-50 pt-safe-top">
+  <div class="flex flex-col bg-gray-50 flex-1">
     <div class="bg-white p-4 shadow-sm flex items-center">
       <button @click="router.back()" class="text-gray-600 mr-4 cursor-pointer hover:text-gray-900">
         <i class="fa-solid fa-arrow-left text-xl"></i>

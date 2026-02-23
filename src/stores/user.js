@@ -1,7 +1,9 @@
 import { defineStore } from 'pinia';
 import { ref, computed, watch } from 'vue';
 import { FirebaseMessaging } from '@capacitor-firebase/messaging';
+import { setUserId } from '@/utils/analytics';
 import { baseUrl } from '@/utils/variables';
+import { auth } from '@/firebase'; 
 import ky from 'ky';
 
 export const useUserStore = defineStore('user', () => {
@@ -15,7 +17,8 @@ export const useUserStore = defineStore('user', () => {
   const server_url = ref(null); // Now stores domain name only (e.g., "traccar.domain.com")
   const server_token = ref(null);
   const server_connect = ref(false);
-  const socket = ref(null); 
+  const socket = ref(null);
+
 
   // Getters
   const isLoggedIn = computed(() => user.value !== null && user.value !== false);
@@ -39,13 +42,34 @@ export const useUserStore = defineStore('user', () => {
   });
 
   async function initPushNotifications() {
-    const status = await FirebaseMessaging.requestPermissions();
+    if (window.location.protocol === 'http:') {
+      // fail silently
+      return false
+    }
+    let status = await FirebaseMessaging.checkPermissions();
+    
+    if (status.receive !== 'granted') {
+      status = await FirebaseMessaging.requestPermissions();
+    }
     
     if (status.receive === 'granted') {
       const result = await FirebaseMessaging.getToken({
         vapidKey: 'BNfYDc6R8T-d0Mbmv8Idhmu0Ufl5zqiK9GSty0XNKDkp38ETHDV74t2BwmjiEd4aN-GYobZbLq-r_I_ga25a--Q',
       });
       fcmToken.value = result.token;
+      
+      // Send the token to your custom backend
+      if (result.token) {
+        try {
+          await ky.post(`${baseUrl}/user/fcm-token`, {
+            json: { fcm_token: result.token },
+            headers: { Authorization: `Bearer ${idToken.value}` }
+          }).json();
+          console.log('Successfully retrieved & saved FCM Token:', result.token);
+        } catch (err) {
+          console.error('Failed to send FCM token to backend:', err);
+        }
+      }
       
       FirebaseMessaging.addListener('notificationReceived', (event) => {
         console.log('Notification:', event.notification);
@@ -54,16 +78,17 @@ export const useUserStore = defineStore('user', () => {
   }
 
   // Actions
-  function setUser(firebaseUser) {
+  async function setUser(firebaseUser) {
     user.value = firebaseUser;
     if (firebaseUser){
-      initPushNotifications(); 
+      // The plugin provides the token in the user object or via getIdToken()
+      const result = await auth.getIdToken();
+      idToken.value = result.token;
+      initPushNotifications();
       backendSync();
+      // set user ID for analytics
+      await setUserId(firebaseUser.uid);
     } 
-  }
-
-  function setToken(token) {
-    idToken.value = token;
   }
 
   function clearUser() {
@@ -75,16 +100,24 @@ export const useUserStore = defineStore('user', () => {
     socket.value = null;
   }
 
-  async function backendSync() {
+  async function backendSync(token = null) {
+
     try {
       const data = { 'country_code': countryCode.value };
       if (name.value) data.name = name.value;
       if (phone.value) data.phone = phone.value;
 
+      let firebaseToken = token == null ? idToken.value : token 
+
+      if(firebaseToken == null) {
+        console.log('no token')
+        return false
+      }
+
       const syncRes = await ky.post(`${baseUrl}/user/sync`, {
         json: data,
         headers: {
-          Authorization: `Bearer ${idToken.value}`
+          Authorization: `Bearer ${firebaseToken}`
         }
       }).json();
 
@@ -105,12 +138,11 @@ export const useUserStore = defineStore('user', () => {
       return;
     }
 
-    // Helper to attempt Traccar session connection (Appends https://)
-    const trySession = async (token) => {
-      if (!token) return false;
+    // 1. Helper to check if an active session cookie (JSESSIONID) already exists
+    const tryExistingSession = async () => {
       try {
         const response = await ky.get(`https://${server_url.value}/api/session`, {
-          searchParams: { token: token }
+          credentials: 'include' // Tells the browser to send existing cookies
         }).json();
         return response && response.id;
       } catch (e) {
@@ -118,7 +150,21 @@ export const useUserStore = defineStore('user', () => {
       }
     };
 
-    // Helper to request a new token from the custom backend
+    // 2. Helper to attempt login with a specific token and save the new session cookie
+    const tryTokenLogin = async (token) => {
+      if (!token) return false;
+      try {
+        const response = await ky.get(`https://${server_url.value}/api/session`, {
+          searchParams: { token: token },
+          credentials: 'include' // Tells the browser to save the JSESSIONID cookie returned
+        }).json();
+        return response && response.id;
+      } catch (e) {
+        return false;
+      }
+    };
+
+    // 3. Helper to request a new token from your custom backend
     const refreshServerToken = async () => {
       try {
         const tokenRes = await ky.post(`${baseUrl}/server/token`, {
@@ -140,17 +186,23 @@ export const useUserStore = defineStore('user', () => {
 
     let success = false;
 
-    if (server_token.value === false || !server_token.value) {
-      console.log('No token present. Generating new token...');
-      const newToken = await refreshServerToken();
-      success = await trySession(newToken);
-    } else {
-      success = await trySession(server_token.value);
+    // STEP 1: Try existing session cookie
+    console.log('Checking for active Traccar session...');
+    success = await tryExistingSession();
 
+    if (!success) {
+      console.log('No active session found. Trying existing token...');
+      
+      // STEP 2: Try existing saved token
+      if (server_token.value) {
+        success = await tryTokenLogin(server_token.value);
+      }
+
+      // STEP 3: If still no success (no token or invalid token), generate a new one
       if (!success) {
-        console.log('Existing token failed. Refreshing...');
+        console.log('Token invalid or missing. Generating new token...');
         const newToken = await refreshServerToken();
-        success = await trySession(newToken);
+        success = await tryTokenLogin(newToken);
       }
     }
 
@@ -179,7 +231,7 @@ export const useUserStore = defineStore('user', () => {
     const socketInstance = new WebSocket(`wss://${server_url.value}/api/socket`);
 
     socketInstance.onopen = () => {
-      console.log('Traccar WebSocket connection established.');
+      console.log('WebSocket connection established.');
     };
 
     socketInstance.onmessage = (event) => {
@@ -236,6 +288,6 @@ export const useUserStore = defineStore('user', () => {
 
   return { 
     user, idToken, countryCode, loading, isLoggedIn, 
-    setUser, setToken, clearUser, serverConnect, connectSocket 
+    setUser, clearUser, serverConnect, connectSocket, server_url, server_token, server_connect, socket, name, phone
   };
 });

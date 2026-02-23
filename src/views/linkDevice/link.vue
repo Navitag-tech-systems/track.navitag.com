@@ -57,12 +57,12 @@ const linkDeviceToAccount = async (skipActivation = false) => {
 </script>
 
 <template>
-  <div class="flex flex-col min-h-screen bg-gray-50 pt-safe-top">
+  <div class="flex flex-col flex-1 bg-gray-50">
     <div class="bg-white p-4 shadow-sm flex items-center">
       <button @click="router.back()" class="text-gray-600 mr-4 cursor-pointer hover:text-gray-900">
         <i class="fa-solid fa-arrow-left text-xl"></i>
       </button>
-      <h1 class="text-xl font-bold text-gray-800">Name Your Tracker</h1>
+      <h1 class="text-xl font-bold text-gray-800">Add Device</h1>
     </div>
 
     <div class="flex-1 flex flex-col p-6 text-center mt-4">
@@ -76,7 +76,7 @@ const linkDeviceToAccount = async (skipActivation = false) => {
       </p>
 
       <div class="text-left w-full max-w-sm mx-auto">
-        <label class="block text-sm font-medium text-gray-700 mb-1">Tracker Name</label>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Device Name</label>
         <input 
           v-model="deviceName" 
           type="text" 
@@ -84,13 +84,12 @@ const linkDeviceToAccount = async (skipActivation = false) => {
           required 
           class="w-full border p-3 text-sm rounded-xl focus:ring-2 focus:ring-blue-500 outline-none mb-2"
         />
-        <p class="text-[11px] text-gray-400 italic">Give your tracker a recognizable name.</p>
         
         <p v-if="errorMsg" class="text-red-500 mt-2 text-sm">{{ errorMsg }}</p>
       </div>
     </div>
 
-    <div class="p-6 bg-white shadow-[0_-4px_10px_-2px_rgba(0,0,0,0.05)] pb-safe-bottom">
+    <div class="p-6 bg-white shadow-[0_-4px_10px_-2px_rgba(0,0,0,0.05)]">
       <button 
         @click="linkDeviceToAccount(false)" 
         :disabled="loading"
@@ -105,7 +104,7 @@ const linkDeviceToAccount = async (skipActivation = false) => {
         :disabled="loading"
         class="w-full mt-4 text-sm text-gray-500 font-semibold hover:text-gray-800 cursor-pointer disabled:opacity-50 transition-colors"
       >
-        Link only (Skip Activation)
+        Skip Activation
       </button>
     </div>
   </div>

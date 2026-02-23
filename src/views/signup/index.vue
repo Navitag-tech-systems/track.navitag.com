@@ -69,7 +69,7 @@ const handleSignup = async () => {
 </script>
 
 <template>
-  <div class="flex flex-col items-center justify-center min-h-screen p-4 bg-gray-50 pt-safe-top">
+  <div class="flex flex-col items-center justify-center flex-1 p-4 bg-gray-50">
     <div class="w-full max-w-sm bg-white p-6 rounded-lg shadow-md">
       <h1 class="text-2xl font-bold mb-4 text-center text-gray-800">Create Account</h1>
 

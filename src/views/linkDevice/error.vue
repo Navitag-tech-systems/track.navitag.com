@@ -9,7 +9,7 @@ const errorMessage = route.query.message || 'There was an unexpected problem lin
 </script>
 
 <template>
-  <div class="flex flex-col min-h-screen bg-gray-50 pt-safe-top">
+  <div class="flex flex-col flex-1 bg-gray-50 ">
     <div class="bg-white p-4 shadow-sm flex items-center">
       <button @click="router.push('/')" class="text-gray-600 mr-4 cursor-pointer hover:text-gray-900">
         <i class="fa-solid fa-arrow-left text-xl"></i>
@@ -28,7 +28,7 @@ const errorMessage = route.query.message || 'There was an unexpected problem lin
       </p>
     </div>
 
-    <div class="p-6 bg-white shadow-[0_-4px_10px_-2px_rgba(0,0,0,0.05)] pb-safe-bottom">
+    <div class="p-6 bg-white shadow-[0_-4px_10px_-2px_rgba(0,0,0,0.05)]">
       <button 
         @click="router.push('/')"
         class="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-4 px-4 rounded-xl transition cursor-pointer text-lg shadow-md active:scale-[0.98]"

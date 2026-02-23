@@ -2,6 +2,9 @@
   "appId": "com.navitag.track",
   "appName": "Naitag Track",
   "webDir": "dist",
+  "android": {
+    "adjustMarginsForEdgeToEdge": "auto"
+  },
   "plugins": {
     "FirebaseAuthentication": {
       "skipNativeAuth": false,
