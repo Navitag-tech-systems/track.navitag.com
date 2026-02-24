@@ -1,8 +1,8 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { useUserStore } from '@/stores/user';
-import { useDevicesStore } from '@/stores/devices';
+import { useUserStore } from '@/stores/user-backup';
+import { useDevicesStore } from '@/stores/devices-backup';
 import { baseUrl } from '@/utils/variables';
 import ky from 'ky';
 

@@ -1,9 +1,9 @@
 <script setup>
 import { ref, watch, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { useUserStore } from '@/stores/user';
-import { useDevicesStore } from '@/stores/devices';
-import ky from 'ky';
+import { useUserStore } from '@/stores/user-backup';
+import { useDevicesStore } from '@/stores/devices-backup';
+import { CapacitorHttp } from '@capacitor/core';
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -49,15 +49,23 @@ const saveToTraccar = async (latLngs) => {
     
     const areaString = `POLYGON ((${points.join(', ')}))`;
 
-    // Save directly to Traccar API
-    const newGeofence = await ky.post(`https://${userStore.server_url}/api/geofences`, {
-      json: {
+    const options = {
+      url: `https://${userStore.server_url}/api/geofences`,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      data: {
         name: geofenceName.value.trim(),
         area: areaString,
-        description: '' // Optional description
+        description: '' 
       },
-      credentials: 'include' // Important for Traccar JSESSIONID cookie
-    }).json();
+      // This replaces credentials: 'include' to handle the JSESSIONID
+      withCredentials: true, 
+    };
+
+    const response = await CapacitorHttp.post(options);
+    const newGeofence = response.data;
 
     // Update local Pinia store immediately to reflect changes on the map
     // Note: Store keeps [lat, lon] format for Leaflet, while Server gets WKT [lon, lat]

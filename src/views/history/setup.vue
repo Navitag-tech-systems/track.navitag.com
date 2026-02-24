@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { useDevicesStore } from '@/stores/devices';
+import { useDevicesStore } from '@/stores/devices-backup';
 import DatePicker from '@/components/datePicker.vue'; // Importing your component
 
 const route = useRoute();

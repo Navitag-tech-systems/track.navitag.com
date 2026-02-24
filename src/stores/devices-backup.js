@@ -1,8 +1,8 @@
 import { defineStore } from 'pinia';
 import { ref, watch, computed, reactive } from 'vue';
+import ky from 'ky';
 import { useUserStore } from './user-backup';
 import { useRouter } from 'vue-router';
-import { CapacitorHttp } from '@capacitor/core';
 
 export const useDevicesStore = defineStore('devices', () => {
   const userStore = useUserStore();
@@ -21,15 +21,9 @@ export const useDevicesStore = defineStore('devices', () => {
   async function fetchDevices() {
     if (!userStore.server_url) return;
     try {
-      const options = {
-        url: `https://${userStore.server_url}/api/devices`,
-        // Capacitor handles cookies/credentials automatically on native 
-        // platforms when 'withCredentials' is true.
-        withCredentials: true, 
-      };
-
-      const response = await CapacitorHttp.get(options);
-      let retArr = response.data;
+      let retArr = await ky.get(`https://${userStore.server_url}/api/devices`, {
+        credentials: 'include' 
+      }).json();
 
       if(retArr.length < 1){
         router.push('/linkdevice/teaser')
@@ -49,13 +43,9 @@ export const useDevicesStore = defineStore('devices', () => {
   async function fetchGeofences() {
     if (!userStore.server_url) return;
     try {
-      const options = {
-        url: `https://${userStore.server_url}/api/geofences`,
-        withCredentials: true,
-      };
-
-      const response = await CapacitorHttp.get(options);
-      let retArr = response.data;
+      let retArr = await ky.get(`https://${userStore.server_url}/api/geofences`, {
+        credentials: 'include' 
+      }).json();
 
       retArr.forEach(g => {
         let parsedPoints = [];

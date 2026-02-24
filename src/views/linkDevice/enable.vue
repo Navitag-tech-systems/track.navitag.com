@@ -1,9 +1,9 @@
 <script setup>
 import { ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { useUserStore } from '@/stores/user';
+import { useUserStore } from '@/stores/user-backup';
 import { baseUrl } from '@/utils/variables';
-import ky from 'ky';
+import { CapacitorHttp } from '@capacitor/core';
 
 const route = useRoute();
 const router = useRouter();
@@ -16,12 +16,18 @@ const enableDevice = async () => {
   loading.value = true;
 
   try {
-    await ky.post(`${baseUrl}/device/enable`, {
-      json: { imei: imei },
+    const options = {
+      url: `${baseUrl}/device/enable`,
+      method: 'POST',
       headers: {
-        Authorization: `Bearer ${userStore.idToken}`
-      }
-    }).json();
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${userStore.idToken}`
+      },
+      data: { imei: imei }
+    };
+
+    const response = await CapacitorHttp.post(options);
+    const data = response.data;
 
     // Route to success page on success
     router.push('/linkdevice/success?activated=true');

@@ -1,7 +1,7 @@
 <script setup>
 import { computed } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
-import { useDevicesStore } from '@/stores/devices';
+import { useDevicesStore } from '@/stores/devices-backup';
 
 const router = useRouter();
 const deviceStore = useDevicesStore();
@@ -19,7 +19,7 @@ const deleteGeofence = (id) => {
   if (confirm('Are you sure you want to delete this geofence?')) {
     console.log('Deleting geofence ID:', id);
     // TODO: Add an API call to delete from the Traccar server
-    // e.g., await ky.delete(`https://${userStore.server_url}/api/geofences/${id}`)
+    // e.g., capacitor http delete(`https://${userStore.server_url}/api/geofences/${id}`)
     // and then remove it from the local store: delete deviceStore.geofences[id]
   }
 };

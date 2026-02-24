@@ -1,6 +1,6 @@
 <script setup>
 import { ref } from 'vue';
-import { useUserStore } from '@/stores/user';
+import { useUserStore } from '@/stores/user-backup';
 import { RouterLink } from 'vue-router'; // <--- Add this import
 
 import { supportedProviders, getErrorMessage, signInWithEmailAndPassword } from '@/utils/auth';

@@ -1,10 +1,10 @@
 import { defineStore } from 'pinia';
 import { ref, computed, watch } from 'vue';
 import { FirebaseMessaging } from '@capacitor-firebase/messaging';
-import { CapacitorHttp, Capacitor } from '@capacitor/core'; 
 import { setUserId } from '@/utils/analytics';
 import { baseUrl } from '@/utils/variables';
 import { auth } from '@/firebase'; 
+import ky from 'ky';
 
 export const useUserStore = defineStore('user', () => {
   // State
@@ -14,19 +14,19 @@ export const useUserStore = defineStore('user', () => {
   const countryCode = ref(null);
   const name = ref(null);
   const phone = ref(null);
-  const server_url = ref(null); // Stores domain name ONLY (e.g., "traccar.domain.com")
+  const server_url = ref(null); // Now stores domain name only (e.g., "traccar.domain.com")
   const server_token = ref(null);
   const server_connect = ref(false);
   const socket = ref(null);
-  const sessionId = ref(null); 
+
 
   // Getters
   const isLoggedIn = computed(() => user.value !== null && user.value !== false);
 
   const loading = computed(() => {
-    if (user.value === null) {
+    if(user.value === null){
       return true;
-    } else if (user.value === false) { 
+    } else if(user.value === false){ 
       return countryCode.value === null; 
     } else {
       return !server_connect.value;
@@ -35,7 +35,6 @@ export const useUserStore = defineStore('user', () => {
 
   // Watcher: Reactively connect when server_token changes
   watch(server_token, (newToken, oldToken) => {
-    // Only connect if we have a token and a URL (assumed to be domain only)
     if (newToken && newToken !== oldToken && server_url.value) {
       console.log('server_token changed. Triggering serverConnect()...');
       serverConnect();
@@ -43,12 +42,10 @@ export const useUserStore = defineStore('user', () => {
   });
 
   async function initPushNotifications() {
-    const platform = Capacitor.getPlatform();
-    // Only skip on actual web browser (http), not native webview (http://localhost)
-    if (platform === 'web' && window.location.protocol === 'http:') {
-      return false;
+    if (window.location.protocol === 'http:') {
+      // fail silently
+      return false
     }
-
     let status = await FirebaseMessaging.checkPermissions();
     
     if (status.receive !== 'granted') {
@@ -61,23 +58,19 @@ export const useUserStore = defineStore('user', () => {
       });
       fcmToken.value = result.token;
       
+      // Send the token to your custom backend
       if (result.token) {
         try {
-          await CapacitorHttp.post({
-            url: `${baseUrl}/user/fcm-token`,
-            headers: { 
-              'Authorization': `Bearer ${idToken.value}`,
-              'Content-Type': 'application/json' 
-            },
-            data: { fcm_token: result.token }
-          });
-          console.log('Successfully retrieved & saved FCM Token');
+          await ky.post(`${baseUrl}/user/fcm-token`, {
+            json: { fcm_token: result.token },
+            headers: { Authorization: `Bearer ${idToken.value}` }
+          }).json();
+          console.log('Successfully retrieved & saved FCM Token:', result.token);
         } catch (err) {
           console.error('Failed to send FCM token to backend:', err);
         }
       }
       
-      await FirebaseMessaging.removeAllListeners();
       FirebaseMessaging.addListener('notificationReceived', (event) => {
         console.log('Notification:', event.notification);
       });
@@ -87,11 +80,13 @@ export const useUserStore = defineStore('user', () => {
   // Actions
   async function setUser(firebaseUser) {
     user.value = firebaseUser;
-    if (firebaseUser) {
+    if (firebaseUser){
+      // The plugin provides the token in the user object or via getIdToken()
       const result = await auth.getIdToken();
       idToken.value = result.token;
       initPushNotifications();
       backendSync();
+      // set user ID for analytics
       await setUserId(firebaseUser.uid);
     } 
   }
@@ -103,32 +98,28 @@ export const useUserStore = defineStore('user', () => {
     server_token.value = null;
     server_connect.value = false;
     socket.value = null;
-    sessionId.value = null;
   }
 
   async function backendSync(token = null) {
+
     try {
       const data = { 'country_code': countryCode.value };
       if (name.value) data.name = name.value;
       if (phone.value) data.phone = phone.value;
 
-      let firebaseToken = token == null ? idToken.value : token;
+      let firebaseToken = token == null ? idToken.value : token 
 
-      if (firebaseToken == null) {
-        console.log('no token');
-        return false;
+      if(firebaseToken == null) {
+        console.log('no token')
+        return false
       }
 
-      const response = await CapacitorHttp.post({
-        url: `${baseUrl}/user/sync`,
+      const syncRes = await ky.post(`${baseUrl}/user/sync`, {
+        json: data,
         headers: {
-          'Authorization': `Bearer ${firebaseToken}`,
-          'Content-Type': 'application/json'
-        },
-        data: data
-      });
-
-      const syncRes = response.data;
+          Authorization: `Bearer ${firebaseToken}`
+        }
+      }).json();
 
       if (syncRes.name) name.value = syncRes.name;
       if (syncRes.phone) phone.value = syncRes.phone;
@@ -147,44 +138,45 @@ export const useUserStore = defineStore('user', () => {
       return;
     }
 
+    // 1. Helper to check if an active session cookie (JSESSIONID) already exists
     const tryExistingSession = async () => {
       try {
-        const response = await CapacitorHttp.get({
-          url: `https://${server_url.value}/api/session`
-        });
-        return response.status === 200 && response.data && response.data.id;
+        const response = await ky.get(`https://${server_url.value}/api/session`, {
+          credentials: 'include' // Tells the browser to send existing cookies
+        }).json();
+        return response && response.id;
       } catch (e) {
         return false;
       }
     };
 
+    // 2. Helper to attempt login with a specific token and save the new session cookie
     const tryTokenLogin = async (token) => {
       if (!token) return false;
       try {
-        const response = await CapacitorHttp.get({
-          url: `https://${server_url.value}/api/session`,
-          params: { token: token }
-        });
-        return response.status === 200 && response.data && response.data.id;
+        const response = await ky.get(`https://${server_url.value}/api/session`, {
+          searchParams: { token: token },
+          credentials: 'include' // Tells the browser to save the JSESSIONID cookie returned
+        }).json();
+        return response && response.id;
       } catch (e) {
         return false;
       }
     };
 
+    // 3. Helper to request a new token from your custom backend
     const refreshServerToken = async () => {
       try {
-        const response = await CapacitorHttp.post({
-          url: `${baseUrl}/server/token`,
+        const tokenRes = await ky.post(`${baseUrl}/server/token`, {
+          json: { server_url: server_url.value },
           headers: {
-            'Authorization': `Bearer ${idToken.value}`,
-            'Content-Type': 'application/json'
-          },
-          data: { server_url: server_url.value }
-        });
+            Authorization: `Bearer ${idToken.value}`
+          }
+        }).json();
 
-        if (response.data.status === 'success' && response.data.server_token) {
-          server_token.value = response.data.server_token;
-          return response.data.server_token;
+        if (tokenRes.status === 'success' && tokenRes.server_token) {
+          server_token.value = tokenRes.server_token;
+          return tokenRes.server_token;
         }
       } catch (error) {
         console.error('Failed to generate new server token:', error);
@@ -193,15 +185,20 @@ export const useUserStore = defineStore('user', () => {
     };
 
     let success = false;
+
+    // STEP 1: Try existing session cookie
     console.log('Checking for active Traccar session...');
     success = await tryExistingSession();
 
     if (!success) {
       console.log('No active session found. Trying existing token...');
+      
+      // STEP 2: Try existing saved token
       if (server_token.value) {
         success = await tryTokenLogin(server_token.value);
       }
 
+      // STEP 3: If still no success (no token or invalid token), generate a new one
       if (!success) {
         console.log('Token invalid or missing. Generating new token...');
         const newToken = await refreshServerToken();
@@ -209,9 +206,9 @@ export const useUserStore = defineStore('user', () => {
       }
     }
 
+    // Finalize connection state
     if (success) {
       console.log('Successfully connected to Traccar session');
-      await syncSessionId(); 
       server_connect.value = true;
     } else {
       console.error('Failed to establish Traccar session');
@@ -219,6 +216,7 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  // Socket connection (Appends wss://)
   function connectSocket(onMessageCallback) {
     if (!server_url.value) {
       console.error('Cannot connect socket: No server URL provided.');
@@ -229,16 +227,8 @@ export const useUserStore = defineStore('user', () => {
       socket.value.close();
     }
 
-    // Explicitly use secure websocket protocol (wss://) with domain
-    let wsUrl = `wss://${server_url.value}/api/socket`;
-    
-    // Append JSESSIONID if available; deleted the ?token fallback as requested
-    if (sessionId.value) {
-      wsUrl += `;jsessionid=${sessionId.value}`;
-    }
-
-    console.log('Connecting socket...');
-    const socketInstance = new WebSocket(wsUrl);
+    // Explicitly use secure websocket protocol
+    const socketInstance = new WebSocket(`wss://${server_url.value}/api/socket`);
 
     socketInstance.onopen = () => {
       console.log('WebSocket connection established.');
@@ -273,49 +263,31 @@ export const useUserStore = defineStore('user', () => {
     socket.value = socketInstance;
   }
 
-  async function syncSessionId() {
-    if (!server_url.value) return;
-    try {
-      const response = await CapacitorHttp.getCookies({
-        url: `https://${server_url.value}`
-      });
-      // Find the JSESSIONID cookie
-      const sessionCookie = response.cookies.find(c => c.key === 'JSESSIONID');
-      if (sessionCookie) {
-        sessionId.value = sessionCookie.value;
-        console.log('Synced Traccar Session ID:', sessionId.value);
-      }
-    } catch (e) {
-      console.warn('Failed to sync cookies:', e);
-    }
-  }
-
+  // Validate Session (Appends https://)
   async function validateSession() {
     if (!server_url.value || !server_token.value) return;
 
     try {
-      const response = await CapacitorHttp.get({
-        url: `https://${server_url.value}/api/session`,
-        params: { token: server_token.value }
-      });
+      const response = await ky.get(`https://${server_url.value}/api/session`, {
+        searchParams: { token: server_token.value }
+      }).json();
 
-      if (response.status !== 200 || !response.data || !response.data.id) {
+      if (!response || !response.id) {
         throw new Error('Session response invalid');
       }
       
       console.log('Traccar session is still valid. Waiting for reconnect...');
-      await syncSessionId();
     } catch (error) {
       console.warn('Traccar session is invalid. Resetting connection state.');
       server_connect.value = false;
       server_token.value = false;
+      
       serverConnect();
     }
   }
 
   return { 
     user, idToken, countryCode, loading, isLoggedIn, 
-    setUser, clearUser, serverConnect, connectSocket, 
-    server_url, server_token, server_connect, socket, name, phone
+    setUser, clearUser, serverConnect, connectSocket, server_url, server_token, server_connect, socket, name, phone
   };
 });

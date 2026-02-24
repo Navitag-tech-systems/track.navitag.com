@@ -3,7 +3,7 @@ import { createPinia } from 'pinia';
 import { auth } from './firebase'; 
 import ky from 'ky';
 
-import { useUserStore } from './stores/user';
+import { useUserStore } from './stores/user-backup';
 import router from './router'; // Import the router
 import './style.css'; 
 import App from './App.vue';

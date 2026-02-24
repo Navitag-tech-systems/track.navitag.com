@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { useUserStore } from '@/stores/user'
+import { useUserStore } from '@/stores/user-backup'
 
 import trackView from '@/views/map/index.vue'
 import geoView from '@/views/map/geofence.vue'

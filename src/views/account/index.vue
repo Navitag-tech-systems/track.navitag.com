@@ -1,11 +1,11 @@
 <script setup>
 import { ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { useUserStore } from '@/stores/user';
+import { useUserStore } from '@/stores/user-backup';
 import { signOut } from '@/utils/auth';
 import { auth } from '@/firebase'; 
 import { baseUrl } from '@/utils/variables';
-import ky from 'ky';
+import { CapacitorHttp } from '@capacitor/core';
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -135,12 +135,18 @@ const updateProfile = async () => {
   }
 
   try {
-    const response = await ky.post(`${baseUrl}/user/update`, {
-      json: payload,
+    const options = {
+      url: `${baseUrl}/user/update`,
+      method: 'POST', // Explicitly set the method
       headers: {
-        Authorization: `Bearer ${userStore.idToken}`
-      }
-    }).json();
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${userStore.idToken}`
+      },
+      data: payload, // In Capacitor, 'data' is used for the request body
+    };
+
+    const response = await CapacitorHttp.post(options);
+    const data = response.data;
 
     if (response.status === 'success') {
       profileMessage.value = 'Profile updated successfully.';

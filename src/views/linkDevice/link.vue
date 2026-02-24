@@ -1,9 +1,9 @@
 <script setup>
 import { ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { useUserStore } from '@/stores/user';
+import { useUserStore } from '@/stores/user-backup';
 import { baseUrl } from '@/utils/variables';
-import ky from 'ky';
+import { CapacitorHttp } from '@capacitor/core';
 
 const route = useRoute();
 const router = useRouter();
@@ -24,17 +24,23 @@ const linkDeviceToAccount = async (skipActivation = false) => {
   errorMsg.value = '';
 
   try {
-    const response = await ky.post(`${baseUrl}/user/link-device`, {
-      json: {
+    const options = {
+      url: `${baseUrl}/user/link-device`,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${userStore.idToken}`
+      },
+      data: {
         imei: imei,
         name: deviceName.value.trim()
-      },
-      headers: {
-        Authorization: `Bearer ${userStore.idToken}`
       }
-    }).json();
+    };
 
-    if (response.status === 'success') {
+    const response = await CapacitorHttp.post(options);
+    const data = response.data; // This is the equivalent of .json()
+
+    if (data.status === 'success') {
       // Route based on whether the user chose to skip activation
       if (skipActivation) {
         router.push(`/linkdevice/success?activated=false`);
@@ -42,7 +48,7 @@ const linkDeviceToAccount = async (skipActivation = false) => {
         router.push(`/linkdevice/enable/${imei}`);
       }
     } else {
-      throw new Error(response.message || 'Unknown error occurred.');
+      throw new Error(data.message || 'Unknown error occurred.');
     }
   } catch (error) {
     console.error('Failed to link device:', error);

@@ -12,6 +12,9 @@
     },
     "FirebaseMessaging": {
       "presentationOptions": ["alert", "badge", "sound"]
+    },
+    "CapacitorHttp": {
+      "enabled": true
     }
   }
 }

@@ -1,8 +1,8 @@
 <script setup>
 import { computed } from 'vue';
 import { useRoute, RouterView } from 'vue-router';
-import { useUserStore } from '@/stores/user';
-import { useDevicesStore } from './stores/devices';
+import { useUserStore } from '@/stores/user-backup';
+import { useDevicesStore } from './stores/devices-backup';
 import BottomNav from './components/bottomNav.vue';
 import Loading from '@/components/loading.vue';
 import { getPlatformInfo, liqKey } from './utils/variables';
