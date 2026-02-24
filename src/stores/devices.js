@@ -154,7 +154,7 @@ export const useDevicesStore = defineStore('devices', () => {
         // B. Update Map Markers
         const isOnline = device.status === "online";
         const isIgnitionOn = pos.attributes?.ignition;
-        const markerColor = (isOnline && isIgnitionOn) ? "#22c55e" : "#ffcbd1";
+        const markerColor = (isOnline && isIgnitionOn) ? "#57f491" : "#ffcbd1";
 
         if (deviceId in deviceMarkers) {
           // Update mapUpdate ref for specific map pan/zoom triggers

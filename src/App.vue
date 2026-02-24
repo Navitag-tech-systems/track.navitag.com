@@ -51,6 +51,7 @@ const showNav = computed(() => {
           :liqkey="liqKey" 
           :route="deviceStore.activeRoute"
           tileLayer="liq"
+          :deviceUpdate="deviceStore.mapUpdate"
           @poly-save="(data) => deviceStore.draftPolygon = data"
 
         />

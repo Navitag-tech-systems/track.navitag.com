@@ -154,12 +154,22 @@ const formatDate = (dateString) => {
         class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 relative overflow-hidden transition-all hover:shadow-md"
         :class="{ 'border-red-200': getWarnings(device).length > 0 }"
       >
-        <div class="flex justify-between items-start mb-3">
+        <div class="flex items-start mb-3">
+          <button class="p-1 rounded me-2">
+            <i class="fa-solid fa-gear text-black-500 mt-0.5"></i>
+          </button>
+
           <div>
             <h2 class="text-lg font-bold text-gray-800 leading-tight">{{ device.name || 'Unnamed Tracker' }}</h2>
             <p class="text-[11px] text-gray-400 font-mono mt-0.5">IMEI: {{ device.uniqueId }}</p>
           </div>
+
           
+
+          
+
+          <div class="flex-1"></div>
+
           <div class="flex items-center space-x-1.5 px-2 py-1 rounded-md border"
                :class="isOffline(device) ? 'bg-red-50 border-red-100 text-red-600' : 'bg-green-50 border-green-100 text-green-600'">
             <span class="relative flex h-2.5 w-2.5">

@@ -19,6 +19,7 @@ import LinkDeviceTeaser from '@/views/linkDevice/addOrBuy.vue'
 
 import ListDevices from '@/views/lists/devices.vue'
 import ListGeofences from '@/views/lists/geofences.vue'
+import DeviceById from '@/views/lists/deviceById.vue'
 
 import historySetup from '@/views/history/setup.vue'
 import historyRoute from '@/views/history/dailyRoute.vue'
@@ -95,6 +96,12 @@ const router = createRouter({
       path: '/list/geofences',
       name: 'list-geofences',
       component: ListGeofences,
+      meta: { requiresAuth: true, activeTab: 'list' } 
+    },
+    {
+      path: '/devices/:id',
+      name: 'device-detail',
+      component: DeviceById,
       meta: { requiresAuth: true, activeTab: 'list' } 
     },
     {
