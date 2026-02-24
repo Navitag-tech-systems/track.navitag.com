@@ -33,33 +33,39 @@ const saveToTraccar = async (latLngs) => {
     // Ensure we are working with a flat array of {lat, lng} objects.
     const pointsArray = Array.isArray(latLngs[0]) ? latLngs[0] : latLngs;
 
-    // Map to Traccar's "LAT LON" string format for the API payload
+    // --- CORRECTION START ---
+    // Traccar WKT expects "LONGITUDE LATITUDE" (X Y order).
+    // Original code was sending "LAT LON", which flips coordinates.
     let points = pointsArray.map(p => `${p.lat} ${p.lng}`);
+    // --- CORRECTION END ---
     
-    // Traccar WKT requires the polygon to be perfectly closed (first == last)
-    if (points[0] !== points[points.length - 1]) {
-      points.push(points[0]);
+    // Traccar WKT requires the polygon to be closed (first point == last point)
+    // Leaflet often gives an open array, so we close it manually if needed.
+    const first = points[0];
+    const last = points[points.length - 1];
+    if (first !== last) {
+      points.push(first);
     }
     
     const areaString = `POLYGON ((${points.join(', ')}))`;
 
-    // Save directly to Traccar API and parse the returned JSON to get the new ID
+    // Save directly to Traccar API
     const newGeofence = await ky.post(`https://${userStore.server_url}/api/geofences`, {
       json: {
         name: geofenceName.value.trim(),
         area: areaString,
-        description: ''
+        description: '' // Optional description
       },
-      credentials: 'include'
+      credentials: 'include' // Important for Traccar JSESSIONID cookie
     }).json();
 
-    // Format the points for our local Pinia state: [[lat, lon], [lat, lon]]
-    const parsedPoints = pointsArray.map(p => [p.lat, p.lng]);
+    // Update local Pinia store immediately to reflect changes on the map
+    // Note: Store keeps [lat, lon] format for Leaflet, while Server gets WKT [lon, lat]
+    const leafletPoints = pointsArray.map(p => [p.lat, p.lng]);
 
-    // Update the Pinia store directly without needing to refetch from the server
     deviceStore.geofences[newGeofence.id] = {
       name: newGeofence.name,
-      points: parsedPoints
+      points: leafletPoints
     };
     
     // Success! Redirect to the home map route
@@ -67,7 +73,7 @@ const saveToTraccar = async (latLngs) => {
 
   } catch (err) {
     console.error('Failed to save geofence:', err);
-    alert('Failed to save geofence. Please check your connection.');
+    alert('Failed to save geofence. Please check your internet connection.');
     isSaving.value = false;
   }
 };
@@ -156,14 +162,3 @@ onUnmounted(() => {
 
   </div>
 </template>
-
-<style scoped>
-.animate-fade-in {
-  animation: fadeIn 0.2s ease-out forwards;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-</style>

@@ -8,12 +8,12 @@ export const useDevicesStore = defineStore('devices', () => {
   const userStore = useUserStore();
 
   const devices = reactive({});
-  const geofences = reactive({}); // Fixed: Made this a reactive object
+  const geofences = reactive({}); 
   const loading = ref(false);
   const error = ref(null);
   const deviceSelected = ref(null);
   const mapUpdate = ref(null);
-  const draftPolygon = ref(null); // <-- ADD THIS LINE
+  const draftPolygon = ref(null); 
   const deviceMarkers = reactive({});
   const activeRoute = ref({ line: [], markers: {} });
   const router = useRouter()
@@ -35,6 +35,8 @@ export const useDevicesStore = defineStore('devices', () => {
     } catch (err) {
       console.error('Error fetching devices:', err);
       throw err;
+    } finally {
+      console.log('Fetched All Devices')
     }
   }
 
@@ -48,19 +50,15 @@ export const useDevicesStore = defineStore('devices', () => {
       retArr.forEach(g => {
         let parsedPoints = [];
 
-        // Traccar sends areas as WKT strings, e.g., "POLYGON ((14.6 120.98, 14.5 120.97))"
         if (g.area && g.area.startsWith('POLYGON')) {
-          // Remove the word POLYGON and all parentheses
           const coordsString = g.area.replace('POLYGON', '').replace(/[()]/g, '').trim();
           
-          // Split by comma to get coordinate pairs, then split by space to get lat/lon
           parsedPoints = coordsString.split(',').map(coord => {
-            const [lat, lon] = coord.trim().split(/\s+/);
-            return [parseFloat(lat), parseFloat(lon)];
+            const [x, y] = coord.trim().split(/\s+/); 
+            return [parseFloat(x), parseFloat(y)];
           });
         }
 
-        // Assign to reactive object in your requested format
         geofences[g.id] = {
           name: g.name,
           points: parsedPoints
@@ -69,15 +67,15 @@ export const useDevicesStore = defineStore('devices', () => {
     } catch (err) {
       console.error('Error fetching geofences:', err);
       throw err;
+    }finally{
+      console.log('Fetched All Geofences')
     }
   }
 
-  // Combine both fetch requests
   async function fetchAll() {
     loading.value = true;
     error.value = null;
     try {
-      // Both functions run in parallel for faster loading
       await Promise.all([fetchDevices(), fetchGeofences()]);
       userStore.connectSocket(socketMsgCallback);  
       
@@ -87,16 +85,14 @@ export const useDevicesStore = defineStore('devices', () => {
   }
   
   function clearData() {
-    // Clear reactive objects by iterating and deleting keys
     Object.keys(devices).forEach(key => delete devices[key]);
     Object.keys(deviceMarkers).forEach(key => delete deviceMarkers[key]);
-    Object.keys(geofences).forEach(key => delete geofences[key]); // Properly clear reactive geofences
+    Object.keys(geofences).forEach(key => delete geofences[key]); 
     
     error.value = null;
     mapUpdate.value = null;
   }
 
-  // --- THE WATCHER ---
   watch(
     () => userStore.server_connect,
     (isConnected) => {
@@ -109,35 +105,33 @@ export const useDevicesStore = defineStore('devices', () => {
     { immediate: true }
   );
 
-  // --- THE WEBSOCKET CALLBACK ---
   function socketMsgCallback(data) {
     
-    // 1. HANDLE DEVICE STATUS UPDATES (Online/Offline)
     if ("devices" in data) {
       data.devices.forEach((d) => {
         if (devices[d.id]) {
-          Object.assign(devices[d.id], d); // Update existing
+          Object.assign(devices[d.id], d); 
         } else {
-          devices[d.id] = d; // Add new
+          devices[d.id] = d; 
         }
       });
     }
 
-    // 2. HANDLE GPS POSITION UPDATES
     if ("positions" in data) {
       data.positions.forEach((pos) => {
         const deviceId = pos.deviceId;
         const device = devices[deviceId];
 
-        if (!device) return; // Skip if we don't have this device in memory
+        if (!device) return; 
 
-        // A. Update the nested object in devices reactive state safely
         Object.assign(device, {
           ignition: pos.attributes?.ignition || false,
           speed: pos.speed,
           event: pos.attributes?.event || pos.event,
           power: pos.attributes?.power,
           battery: pos.attributes?.battery,
+          sat: pos.attributes?.sat, 
+          hdop: pos.attributes?.hdop, // <--- ADDED HDOP HERE
           latlon: [pos.latitude, pos.longitude],
           bearing: pos.course,
           accuracy: pos.accuracy,
@@ -148,16 +142,15 @@ export const useDevicesStore = defineStore('devices', () => {
           mobileCountryCode: pos.network?.cellTowers?.[0]?.mobileCountryCode,
           mobileNetworkCode: pos.network?.cellTowers?.[0]?.mobileNetworkCode,
           address: pos.address,
-          geofences: pos.geofenceIds 
+          geofences: pos.geofenceIds,
+          valid: pos.valid // Ensure 'valid' is tracked
         });
 
-        // B. Update Map Markers
         const isOnline = device.status === "online";
         const isIgnitionOn = pos.attributes?.ignition;
         const markerColor = (isOnline && isIgnitionOn) ? "#57f491" : "#ffcbd1";
 
         if (deviceId in deviceMarkers) {
-          // Update mapUpdate ref for specific map pan/zoom triggers
           mapUpdate.value = {
             id: deviceId, 
             latlon: [pos.latitude, pos.longitude],
@@ -165,7 +158,6 @@ export const useDevicesStore = defineStore('devices', () => {
             color: markerColor,
           };
         } else {
-          // It's NOT on the map yet, add to the buffer
           deviceMarkers[deviceId] = {
             latlon: [pos.latitude, pos.longitude],
             bearing: pos.course,
@@ -187,7 +179,6 @@ export const useDevicesStore = defineStore('devices', () => {
     console.log('Processed WebSocket Data:', data);
   }
 
-  // --- COMPUTED PROPERTIES ---
   const deviceMarkerKeys = computed(() => {
     return Object.keys(deviceMarkers);
   });
@@ -212,7 +203,7 @@ export const useDevicesStore = defineStore('devices', () => {
     deviceSelectedObject,
     deviceSelected,
     mapUpdate,
-    draftPolygon, // <-- ADD THIS LINE
+    draftPolygon, 
     activeRoute,
     fetchDevices,
     fetchGeofences,

@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useUserStore } from '@/stores/user';
 import { useDevicesStore } from '@/stores/devices';
+import { baseUrl } from '@/utils/variables';
 import ky from 'ky';
 
 const route = useRoute();
@@ -23,7 +24,7 @@ const fetchHistory = async () => {
   errorMsg.value = '';
 
   try {
-    const response = await ky.post(`https://${userStore.server_url}/history/positions`, {
+    const response = await ky.post(`https://${baseUrl}/history/positions`, {
       json: {
         date: dateParam,
         imei: Number(imei) 

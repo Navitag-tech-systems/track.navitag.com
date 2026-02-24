@@ -52,8 +52,9 @@ const showNav = computed(() => {
           :route="deviceStore.activeRoute"
           tileLayer="liq"
           :deviceUpdate="deviceStore.mapUpdate"
+          :activeId="deviceStore.deviceSelected === null ? null : deviceStore.deviceSelected+''"
           @poly-save="(data) => deviceStore.draftPolygon = data"
-
+          @marker-select="(data) => deviceStore.deviceSelected = Array.isArray(data) ? +data[0]: +data"
         />
       </div>
 

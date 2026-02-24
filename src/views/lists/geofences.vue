@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue';
-import { useRouter } from 'vue-router';
+import { RouterLink, useRouter } from 'vue-router';
 import { useDevicesStore } from '@/stores/devices';
 
 const router = useRouter();
@@ -75,9 +75,6 @@ const deleteGeofence = (id) => {
             </div>
             <div>
               <h3 class="font-bold text-gray-800 leading-tight">{{ geofence.name }}</h3>
-              <p class="text-xs text-gray-400 mt-0.5">
-                Polygon area ({{ geofence.points?.length || 0 }} points)
-              </p>
             </div>
           </div>
 
@@ -89,6 +86,18 @@ const deleteGeofence = (id) => {
             <i class="fa-solid fa-trash-can"></i>
           </button>
         </div>
+
+        <RouterLink to="/addgeo" class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex justify-center items-center transition-all hover:shadow-md">
+          <div class="flex items-center gap-4">
+
+            <div class="w-10 h-10 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center shrink-0">
+              <i class="fa-solid fa-plus"></i>
+            </div>
+            <div>
+              <h3 class="font-bold text-gray-800 leading-tight">NEW GEOFENCE</h3>
+            </div>
+          </div>
+        </RouterLink>
       </div>
 
     </div>

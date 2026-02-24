@@ -1,7 +1,5 @@
 @import "tailwindcss";
 
-@import "tailwindcss";
-
 @theme {
   /* Capacitor 8 SystemBars Plugin Polyfill -> standard env() -> 0px fallback */
   --spacing-safe-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));

@@ -8,8 +8,29 @@ const deviceStore = useDevicesStore();
 
 // --- State ---
 const searchQuery = ref('');
-const filterBy = ref('all'); // 'all', 'online', 'offline', 'ignition', 'warning'
-const sortBy = ref('name');  // 'name', 'lastUpdate'
+const filterBy = ref('all'); 
+const sortBy = ref('name'); 
+
+// --- Actions ---
+const toggleSelection = (id) => {
+  if (deviceStore.deviceSelected === id) {
+    deviceStore.deviceSelected = null;
+  } else {
+    deviceStore.deviceSelected = id;
+  }
+};
+
+const goToHistory = (uniqueId) => {
+  router.push(`/history/${uniqueId}`);
+};
+
+const goToDetails = (id) => {
+  router.push(`/devices/${id}`);
+};
+
+const goToSettings = (id) => {
+  router.push(`/devices/${id}`);
+};
 
 // --- Helpers ---
 const isOffline = (device) => {
@@ -17,8 +38,7 @@ const isOffline = (device) => {
 };
 
 const getSignalLevel = (signal) => {
-  if (signal === undefined || signal === null) return 'Disconnected';
-  // Handles typical dBm (negative numbers) or 0-5 scale
+  if (signal === undefined || signal === null) return 'N/A';
   if (signal < 0) {
     if (signal >= -75) return 'Good';
     if (signal >= -95) return 'Fair';
@@ -29,33 +49,57 @@ const getSignalLevel = (signal) => {
   return 'Low';
 };
 
+// Standard Li-ion Voltage Map (3.7V Nominal, 4.2V Max)
+const getBatteryPercentage = (val) => {
+  if (val === undefined || val === null) return 'N/A';
+  const v = Number(val);
+  
+  if (isNaN(v)) return 'N/A';
+  if (v >= 4.20) return '100%';
+  if (v >= 4.10) return '90%';
+  if (v >= 4.00) return '80%';
+  if (v >= 3.90) return '70%';
+  if (v >= 3.80) return '60%';
+  if (v >= 3.70) return '50%';
+  if (v >= 3.65) return '20%';
+  if (v >= 3.60) return '10%';
+  return '0%'; // Critical
+};
+
+const getGpsQuality = (device) => {
+  const sat = device.sat || 0;
+  const hdop = device.hdop || 0;
+  const valid = device.valid;
+
+  if (!valid && sat === 0) return { label: 'No Fix', color: 'text-red-500', icon: 'fa-satellite' };
+  if (sat < 4 || (hdop > 0 && hdop > 6)) return { label: 'Bad', color: 'text-orange-500', icon: 'fa-satellite' };
+  if (sat < 7 || (hdop > 0 && hdop > 2.5)) return { label: 'Fair', color: 'text-yellow-600', icon: 'fa-satellite' };
+  if (sat < 12 || (hdop > 0 && hdop > 1)) return { label: 'Good', color: 'text-blue-500', icon: 'fa-satellite' };
+  return { label: 'Excellent', color: 'text-green-600', icon: 'fa-satellite' };
+};
+
 const getWarnings = (device) => {
   const warnings = [];
-  if (isOffline(device)) {
-    warnings.push('Device is offline');
-  }
   if (device.power !== undefined && device.power !== null && device.power < 5) {
     warnings.push('Low Power (< 5V)');
   }
   const signal = getSignalLevel(device.signalLevel);
-  if (signal === 'Low' || signal === 'Disconnected') {
-    warnings.push(`Network: ${signal}`);
+  if (signal === 'Low') {
+    warnings.push(`Weak Network`);
   }
   return warnings;
 };
 
-// --- Processed Devices (Search, Filter, Sort) ---
+// --- Processed Devices ---
 const processedDevices = computed(() => {
   let arr = Object.values(deviceStore.devices);
 
-  // 1. Search
   if (searchQuery.value.trim()) {
     arr = arr.filter(device => 
       device.name?.toLowerCase().includes(searchQuery.value.toLowerCase())
     );
   }
 
-  // 2. Filter
   if (filterBy.value !== 'all') {
     arr = arr.filter(device => {
       if (filterBy.value === 'online') return !isOffline(device);
@@ -66,7 +110,6 @@ const processedDevices = computed(() => {
     });
   }
 
-  // 3. Sort
   arr.sort((a, b) => {
     if (sortBy.value === 'name') {
       const nameA = a.name || '';
@@ -76,7 +119,7 @@ const processedDevices = computed(() => {
     if (sortBy.value === 'lastUpdate') {
       const timeA = a.lastUpdate ? new Date(a.lastUpdate).getTime() : 0;
       const timeB = b.lastUpdate ? new Date(b.lastUpdate).getTime() : 0;
-      return timeB - timeA; // Descending (newest first)
+      return timeB - timeA; 
     }
     return 0;
   });
@@ -84,7 +127,6 @@ const processedDevices = computed(() => {
   return arr;
 });
 
-// Helper for formatting the Traccar ISO timestamp
 const formatDate = (dateString) => {
   if (!dateString) return 'Waiting for update...';
   const date = new Date(dateString);
@@ -106,7 +148,7 @@ const formatDate = (dateString) => {
             <i class="fa-solid fa-satellite-dish"></i>
             Devices
           </button>
-          <button @click="router.push('/addgeo')" class="pb-3 text-sm font-semibold whitespace-nowrap transition-colors border-b-2 flex items-center gap-2 outline-none cursor-pointer border-transparent text-gray-500 hover:text-gray-700">
+          <button @click="router.push('/list/geofences')" class="pb-3 text-sm font-semibold whitespace-nowrap transition-colors border-b-2 flex items-center gap-2 outline-none cursor-pointer border-transparent text-gray-500 hover:text-gray-700">
             <i class="fa-solid fa-draw-polygon"></i>
             Geofences
           </button>
@@ -151,26 +193,24 @@ const formatDate = (dateString) => {
       <div 
         v-for="device in processedDevices" 
         :key="device.id"
-        class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 relative overflow-hidden transition-all hover:shadow-md"
-        :class="{ 'border-red-200': getWarnings(device).length > 0 }"
+        @click="toggleSelection(device.id)"
+        class="bg-white rounded-xl shadow-sm border p-4 relative overflow-hidden transition-all duration-200 cursor-pointer"
+        :class="[
+          getWarnings(device).length > 0 ? 'border-red-200' : 'border-gray-200',
+          deviceStore.deviceSelected === device.id ? 'ring-2 ring-blue-500 shadow-md' : 'hover:shadow-md'
+        ]"
       >
         <div class="flex items-start mb-3">
-          <button class="p-1 rounded me-2">
-            <i class="fa-solid fa-gear text-black-500 mt-0.5"></i>
-          </button>
-
-          <div>
-            <h2 class="text-lg font-bold text-gray-800 leading-tight">{{ device.name || 'Unnamed Tracker' }}</h2>
-            <p class="text-[11px] text-gray-400 font-mono mt-0.5">IMEI: {{ device.uniqueId }}</p>
+          <div class="p-2 rounded-full bg-blue-50 text-blue-500 mr-3">
+            <i class="fa-solid fa-truck text-lg"></i>
           </div>
 
-          
+          <div class="flex-1 min-w-0">
+            <h2 class="text-lg font-bold text-gray-800 leading-tight truncate">{{ device.name || 'Unnamed Tracker' }}</h2>
+            <p class="text-[11px] text-gray-400 font-mono mt-0.5 truncate">IMEI: {{ device.uniqueId }}</p>
+          </div>
 
-          
-
-          <div class="flex-1"></div>
-
-          <div class="flex items-center space-x-1.5 px-2 py-1 rounded-md border"
+          <div class="flex items-center space-x-1.5 px-2 py-1 rounded-md border shrink-0 ml-2"
                :class="isOffline(device) ? 'bg-red-50 border-red-100 text-red-600' : 'bg-green-50 border-green-100 text-green-600'">
             <span class="relative flex h-2.5 w-2.5">
               <span v-if="!isOffline(device)" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
@@ -183,7 +223,7 @@ const formatDate = (dateString) => {
         </div>
 
         <div v-if="getWarnings(device).length > 0" class="mb-4 bg-red-50 border border-red-100 rounded-lg p-2.5 flex items-start gap-2">
-          <i class="fa-solid fa-triangle-exclamation text-red-500 mt-0.5"></i>
+          <i class="fa-solid fa-triangle-exclamation text-red-500 mt-0.5 text-xs"></i>
           <div class="flex flex-col">
             <span v-for="(warn, idx) in getWarnings(device)" :key="idx" class="text-xs font-semibold text-red-700 leading-tight">
               {{ warn }}
@@ -191,44 +231,77 @@ const formatDate = (dateString) => {
           </div>
         </div>
 
-        <div :class="{ 'opacity-40 saturate-0 pointer-events-none transition-all duration-300': isOffline(device) }">
+        <div :class="{ 'opacity-60 saturate-50': isOffline(device) }">
           
-          <div class="grid grid-cols-2 gap-3 mb-4">
+          <div class="grid grid-cols-2 gap-2 mb-4">
             <div class="flex items-center text-sm text-gray-600 bg-gray-50 p-2 rounded-lg">
-              <div class="w-6 text-blue-500"><i class="fa-solid fa-gauge-high"></i></div>
-              <span class="font-medium">{{ device.speed ? Math.round(device.speed * 1.852) : 0 }} km/h</span>
+              <div class="w-6 text-blue-500 text-center"><i class="fa-solid fa-gauge-high"></i></div>
+              <span class="font-medium ml-1">{{ device.speed ? Math.round(device.speed * 1.852) : 0 }} km/h</span>
             </div>
             
             <div class="flex items-center text-sm text-gray-600 bg-gray-50 p-2 rounded-lg">
-              <div class="w-6" :class="device.ignition ? 'text-green-500' : 'text-gray-400'">
+              <div class="w-6 text-center" :class="device.ignition ? 'text-green-500' : 'text-gray-400'">
                 <i class="fa-solid fa-key"></i>
               </div>
-              <span class="font-medium">{{ device.ignition ? 'Engine ON' : 'Engine OFF' }}</span>
+              <span class="font-medium ml-1">{{ device.ignition ? 'On' : 'Off' }}</span>
             </div>
 
             <div class="flex items-center text-sm text-gray-600 bg-gray-50 p-2 rounded-lg">
-              <div class="w-6 text-yellow-500"><i class="fa-solid fa-bolt"></i></div>
-              <span class="font-medium">{{ device.power !== undefined ? `${device.power}V` : 'N/A' }}</span>
+              <div class="w-6 text-yellow-500 text-center"><i class="fa-solid fa-bolt"></i></div>
+              <span class="font-medium ml-1">{{ device.power !== undefined ? `${Number(device.power).toFixed(2)}V` : 'N/A' }}</span>
+            </div>
+
+            <div class="flex items-center text-sm text-gray-600 bg-gray-50 p-2 rounded-lg">
+              <div class="w-6 text-green-500 text-center"><i class="fa-solid fa-battery-full"></i></div>
+              <span class="font-medium ml-1">{{ getBatteryPercentage(device.battery) }}</span>
             </div>
             
             <div class="flex items-center text-sm text-gray-600 bg-gray-50 p-2 rounded-lg">
-              <div class="w-6 text-purple-500"><i class="fa-solid fa-signal"></i></div>
-              <span class="font-medium uppercase">{{ getSignalLevel(device.signalLevel) }}</span>
+              <div class="w-6 text-purple-500 text-center"><i class="fa-solid fa-signal"></i></div>
+              <span class="font-medium ml-1 uppercase text-xs">{{ getSignalLevel(device.signalLevel) }}</span>
+            </div>
+
+            <div class="flex items-center text-sm text-gray-600 bg-gray-50 p-2 rounded-lg">
+              <div class="w-6 text-center" :class="getGpsQuality(device).color">
+                <i class="fa-solid" :class="getGpsQuality(device).icon"></i>
+              </div>
+              <span class="font-medium ml-1 text-xs">{{ getGpsQuality(device).label }}</span>
+              <span v-if="device.sat" class="ml-auto text-[10px] text-gray-400 font-mono">{{ device.sat }} sats</span>
             </div>
           </div>
 
           <div class="pt-3 border-t border-gray-100">
             <div class="flex items-start text-xs text-gray-600 mb-2">
-              <div class="w-5 mt-0.5 text-gray-400"><i class="fa-solid fa-location-dot"></i></div>
-              <span class="line-clamp-2 leading-tight pr-2">{{ device.address || 'Address calculating...' }}</span>
+              <div class="w-5 mt-0.5 text-gray-400 text-center"><i class="fa-solid fa-location-dot"></i></div>
+              <span class="line-clamp-1 leading-tight">{{ device.address || 'Address calculating...' }}</span>
             </div>
-            <div class="flex items-center text-[10px] text-gray-400">
+            <div class="flex items-center text-[10px] text-gray-400 pl-1">
               <i class="fa-regular fa-clock mr-1.5"></i>
               Updated: {{ formatDate(device.lastUpdate) }}
             </div>
           </div>
 
         </div> 
+
+        <div v-if="deviceStore.deviceSelected === device.id" class="mt-4 pt-3 border-t border-gray-100 flex justify-between items-center animate-fade-in gap-2">
+          
+          <button @click.stop="goToSettings(device.id)" class="flex-1 flex flex-col items-center justify-center bg-gray-50 hover:bg-gray-100 py-2 rounded-lg transition-colors group">
+            <i class="fa-solid fa-gear text-lg text-gray-500 group-hover:text-blue-600 mb-1"></i>
+            <span class="text-[10px] font-bold text-gray-600 group-hover:text-blue-600">Settings</span>
+          </button>
+
+          <button @click.stop="goToHistory(device.uniqueId)" class="flex-1 flex flex-col items-center justify-center bg-gray-50 hover:bg-gray-100 py-2 rounded-lg transition-colors group">
+            <i class="fa-solid fa-clock-rotate-left text-lg text-gray-500 group-hover:text-blue-600 mb-1"></i>
+            <span class="text-[10px] font-bold text-gray-600 group-hover:text-blue-600">History</span>
+          </button>
+
+          <button @click.stop="goToDetails(device.id)" class="flex-1 flex flex-col items-center justify-center bg-gray-50 hover:bg-gray-100 py-2 rounded-lg transition-colors group">
+            <i class="fa-solid fa-circle-info text-lg text-gray-500 group-hover:text-blue-600 mb-1"></i>
+            <span class="text-[10px] font-bold text-gray-600 group-hover:text-blue-600">Details</span>
+          </button>
+
+        </div>
+
       </div>
       
     </div>
@@ -242,5 +315,14 @@ const formatDate = (dateString) => {
 .no-scrollbar {
   -ms-overflow-style: none; 
   scrollbar-width: none; 
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 </style>
