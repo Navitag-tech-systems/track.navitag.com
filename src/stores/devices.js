@@ -2,7 +2,7 @@ import { defineStore } from 'pinia';
 import { ref, watch, computed, reactive } from 'vue';
 import { useUserStore } from './user-backup';
 import { useRouter } from 'vue-router';
-import { CapacitorHttp } from '@capacitor/core';
+import { CapacitorHttp, Capacitor } from '@capacitor/core'; // Import Capacitor
 
 export const useDevicesStore = defineStore('devices', () => {
   const userStore = useUserStore();
@@ -16,33 +16,60 @@ export const useDevicesStore = defineStore('devices', () => {
   const draftPolygon = ref(null); 
   const deviceMarkers = reactive({});
   const activeRoute = ref({ line: [], markers: {} });
-  const router = useRouter()
+  const router = useRouter();
+
+  // Helper to construct headers safely
+  const getAuthHeaders = () => {
+    const headers = {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+    };
+    
+    // CRITICAL FIX: Only manually attach the cookie on Native Platforms (iOS/Android).
+    // Browsers (npm run dev) manage cookies automatically and will block this header.
+    if (Capacitor.isNativePlatform() && userStore.sessionId) {
+      headers['Cookie'] = `JSESSIONID=${userStore.sessionId}`;
+    }
+    
+    return headers;
+  };
 
   async function fetchDevices() {
     if (!userStore.server_url) return;
     try {
       const options = {
         url: `https://${userStore.server_url}/api/devices`,
-        // Capacitor handles cookies/credentials automatically on native 
-        // platforms when 'withCredentials' is true.
+        headers: getAuthHeaders(),
+        // Essential for Web to send cookies, and for Native to handle the cookie jar
         withCredentials: true, 
       };
 
       const response = await CapacitorHttp.get(options);
-      let retArr = response.data;
-
-      if(retArr.length < 1){
-        router.push('/linkdevice/teaser')
+      
+      // Manual 401 check as CapacitorHttp might not throw on error status
+      if (response.status === 401) {
+        throw new Error('Unauthorized');
       }
 
-      retArr.forEach(device => {
-        devices[device.id] = device;
-      });
+      const retArr = response.data;
+
+      if (Array.isArray(retArr) && retArr.length < 1) {
+        router.push('/linkdevice/teaser');
+      }
+
+      if (Array.isArray(retArr)) {
+        retArr.forEach(device => {
+          devices[device.id] = device;
+        });
+      }
     } catch (err) {
       console.error('Error fetching devices:', err);
+      if (err.message === 'Unauthorized') {
+        // Optional: Handle token expiry
+      }
       throw err;
     } finally {
-      console.log('Fetched All Devices')
+      console.log('Fetched All Devices');
     }
   }
 
@@ -51,34 +78,42 @@ export const useDevicesStore = defineStore('devices', () => {
     try {
       const options = {
         url: `https://${userStore.server_url}/api/geofences`,
+        headers: getAuthHeaders(),
         withCredentials: true,
       };
 
       const response = await CapacitorHttp.get(options);
-      let retArr = response.data;
 
-      retArr.forEach(g => {
-        let parsedPoints = [];
+      if (response.status === 401) {
+        throw new Error('Unauthorized');
+      }
 
-        if (g.area && g.area.startsWith('POLYGON')) {
-          const coordsString = g.area.replace('POLYGON', '').replace(/[()]/g, '').trim();
-          
-          parsedPoints = coordsString.split(',').map(coord => {
-            const [x, y] = coord.trim().split(/\s+/); 
-            return [parseFloat(x), parseFloat(y)];
-          });
-        }
+      const retArr = response.data;
 
-        geofences[g.id] = {
-          name: g.name,
-          points: parsedPoints
-        };
-      });
+      if (Array.isArray(retArr)) {
+        retArr.forEach(g => {
+          let parsedPoints = [];
+
+          if (g.area && g.area.startsWith('POLYGON')) {
+            const coordsString = g.area.replace('POLYGON', '').replace(/[()]/g, '').trim();
+            
+            parsedPoints = coordsString.split(',').map(coord => {
+              const [x, y] = coord.trim().split(/\s+/); 
+              return [parseFloat(x), parseFloat(y)];
+            });
+          }
+
+          geofences[g.id] = {
+            name: g.name,
+            points: parsedPoints
+          };
+        });
+      }
     } catch (err) {
       console.error('Error fetching geofences:', err);
       throw err;
-    }finally{
-      console.log('Fetched All Geofences')
+    } finally {
+      console.log('Fetched All Geofences');
     }
   }
 
@@ -88,9 +123,11 @@ export const useDevicesStore = defineStore('devices', () => {
     try {
       await Promise.all([fetchDevices(), fetchGeofences()]);
       userStore.connectSocket(socketMsgCallback);  
-      
     } catch (err) {
       error.value = err.message || 'Failed to fetch tracking data.';
+    } finally {
+      // Ensure loading state is cleared
+      loading.value = false;
     }
   }
   
@@ -116,7 +153,6 @@ export const useDevicesStore = defineStore('devices', () => {
   );
 
   function socketMsgCallback(data) {
-    
     if ("devices" in data) {
       data.devices.forEach((d) => {
         if (devices[d.id]) {
@@ -141,7 +177,7 @@ export const useDevicesStore = defineStore('devices', () => {
           power: pos.attributes?.power,
           battery: pos.attributes?.battery,
           sat: pos.attributes?.sat, 
-          hdop: pos.attributes?.hdop, // <--- ADDED HDOP HERE
+          hdop: pos.attributes?.hdop, 
           latlon: [pos.latitude, pos.longitude],
           bearing: pos.course,
           accuracy: pos.accuracy,
@@ -153,7 +189,7 @@ export const useDevicesStore = defineStore('devices', () => {
           mobileNetworkCode: pos.network?.cellTowers?.[0]?.mobileNetworkCode,
           address: pos.address,
           geofences: pos.geofenceIds,
-          valid: pos.valid // Ensure 'valid' is tracked
+          valid: pos.valid 
         });
 
         const isOnline = device.status === "online";
@@ -185,7 +221,7 @@ export const useDevicesStore = defineStore('devices', () => {
         }
       });
     }
-    loading.value = false
+    loading.value = false;
     console.log('Processed WebSocket Data:', data);
   }
 

@@ -1,8 +1,8 @@
 <script setup>
 import { ref, watch, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { useUserStore } from '@/stores/user-backup';
-import { useDevicesStore } from '@/stores/devices-backup';
+import { useUserStore } from '@/stores/user.js';
+import { useDevicesStore } from '@/stores/devices.js';
 import { CapacitorHttp } from '@capacitor/core';
 
 const router = useRouter();

@@ -14,11 +14,11 @@ export const useUserStore = defineStore('user', () => {
   const countryCode = ref(null);
   const name = ref(null);
   const phone = ref(null);
-  const server_url = ref(null); // Stores domain name ONLY (e.g., "traccar.domain.com")
+  const server_url = ref(null); // Domain name only (e.g., "traccar.domain.com")
   const server_token = ref(null);
   const server_connect = ref(false);
   const socket = ref(null);
-  const sessionId = ref(null); 
+  const sessionId = ref(null); // Track session for WebSockets if needed
 
   // Getters
   const isLoggedIn = computed(() => user.value !== null && user.value !== false);
@@ -35,7 +35,6 @@ export const useUserStore = defineStore('user', () => {
 
   // Watcher: Reactively connect when server_token changes
   watch(server_token, (newToken, oldToken) => {
-    // Only connect if we have a token and a URL (assumed to be domain only)
     if (newToken && newToken !== oldToken && server_url.value) {
       console.log('server_token changed. Triggering serverConnect()...');
       serverConnect();
@@ -50,7 +49,6 @@ export const useUserStore = defineStore('user', () => {
     }
 
     let status = await FirebaseMessaging.checkPermissions();
-    
     if (status.receive !== 'granted') {
       status = await FirebaseMessaging.requestPermissions();
     }
@@ -77,7 +75,6 @@ export const useUserStore = defineStore('user', () => {
         }
       }
       
-      await FirebaseMessaging.removeAllListeners();
       FirebaseMessaging.addListener('notificationReceived', (event) => {
         console.log('Notification:', event.notification);
       });
@@ -113,11 +110,7 @@ export const useUserStore = defineStore('user', () => {
       if (phone.value) data.phone = phone.value;
 
       let firebaseToken = token == null ? idToken.value : token;
-
-      if (firebaseToken == null) {
-        console.log('no token');
-        return false;
-      }
+      if (!firebaseToken) return false;
 
       const response = await CapacitorHttp.post({
         url: `${baseUrl}/user/sync`,
@@ -129,7 +122,6 @@ export const useUserStore = defineStore('user', () => {
       });
 
       const syncRes = response.data;
-
       if (syncRes.name) name.value = syncRes.name;
       if (syncRes.phone) phone.value = syncRes.phone;
 
@@ -219,75 +211,46 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
-  function connectSocket(onMessageCallback) {
-    if (!server_url.value) {
-      console.error('Cannot connect socket: No server URL provided.');
-      return;
-    }
-
-    if (socket.value) {
-      socket.value.close();
-    }
-
-    // Explicitly use secure websocket protocol (wss://) with domain
-    let wsUrl = `wss://${server_url.value}/api/socket`;
-    
-    // Append JSESSIONID if available; deleted the ?token fallback as requested
-    if (sessionId.value) {
-      wsUrl += `;jsessionid=${sessionId.value}`;
-    }
-
-    console.log('Connecting socket...');
-    const socketInstance = new WebSocket(wsUrl);
-
-    socketInstance.onopen = () => {
-      console.log('WebSocket connection established.');
-    };
-
-    socketInstance.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (onMessageCallback && typeof onMessageCallback === 'function') {
-          onMessageCallback(data);
-        } else {
-          if (data.positions) console.log('Live Positions Received:', data.positions);
-          if (data.devices) console.log('Device Status Updates:', data.devices);
-        }
-      } catch (err) {
-        console.error('Error parsing WebSocket message:', err);
-      }
-    };
-
-    socketInstance.onclose = async (e) => {
-      console.log('Traccar WebSocket closed.', e.reason);
-      socket.value = null;
-      await validateSession(); 
-    };
-
-    socketInstance.onerror = async (err) => {
-      console.error('Traccar WebSocket error:', err);
-      socket.value = null;
-      await validateSession(); 
-    };
-
-    socket.value = socketInstance;
-  }
-
   async function syncSessionId() {
     if (!server_url.value) return;
     try {
       const response = await CapacitorHttp.getCookies({
         url: `https://${server_url.value}`
       });
-      // Find the JSESSIONID cookie
       const sessionCookie = response.cookies.find(c => c.key === 'JSESSIONID');
       if (sessionCookie) {
         sessionId.value = sessionCookie.value;
-        console.log('Synced Traccar Session ID:', sessionId.value);
       }
     } catch (e) {
       console.warn('Failed to sync cookies:', e);
     }
+  }
+
+  function connectSocket(onMessageCallback) {
+    if (!server_url.value) return;
+    if (socket.value) socket.value.close();
+
+    let wsUrl = `wss://${server_url.value}/api/socket`;
+    if (sessionId.value) {
+      wsUrl += `;jsessionid=${sessionId.value}`;
+    }
+
+    const socketInstance = new WebSocket(wsUrl);
+    socketInstance.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (onMessageCallback) onMessageCallback(data);
+      } catch (err) {
+        console.error('WebSocket parse error:', err);
+      }
+    };
+
+    socketInstance.onclose = async () => {
+      socket.value = null;
+      await validateSession(); 
+    };
+
+    socket.value = socketInstance;
   }
 
   async function validateSession() {
@@ -299,14 +262,11 @@ export const useUserStore = defineStore('user', () => {
         params: { token: server_token.value }
       });
 
-      if (response.status !== 200 || !response.data || !response.data.id) {
-        throw new Error('Session response invalid');
+      if (response.status !== 200 || !response.data?.id) {
+        throw new Error('Invalid session');
       }
-      
-      console.log('Traccar session is still valid. Waiting for reconnect...');
       await syncSessionId();
     } catch (error) {
-      console.warn('Traccar session is invalid. Resetting connection state.');
       server_connect.value = false;
       server_token.value = false;
       serverConnect();

@@ -1,8 +1,8 @@
 import { defineStore } from 'pinia';
 import { ref, watch, computed, reactive } from 'vue';
-import ky from 'ky';
 import { useUserStore } from './user-backup';
 import { useRouter } from 'vue-router';
+import { CapacitorHttp } from '@capacitor/core';
 
 export const useDevicesStore = defineStore('devices', () => {
   const userStore = useUserStore();
@@ -16,17 +16,22 @@ export const useDevicesStore = defineStore('devices', () => {
   const draftPolygon = ref(null); 
   const deviceMarkers = reactive({});
   const activeRoute = ref({ line: [], markers: {} });
-  const router = useRouter()
+  const router = useRouter();
 
   async function fetchDevices() {
     if (!userStore.server_url) return;
     try {
-      let retArr = await ky.get(`https://${userStore.server_url}/api/devices`, {
-        credentials: 'include' 
-      }).json();
+      const options = {
+        url: `https://${userStore.server_url}/api/devices`,
+        // Essential for Traccar to send/receive JSESSIONID on native platforms
+        withCredentials: true, 
+      };
 
-      if(retArr.length < 1){
-        router.push('/linkdevice/teaser')
+      const response = await CapacitorHttp.get(options);
+      const retArr = response.data;
+
+      if (retArr.length < 1) {
+        router.push('/linkdevice/teaser');
       }
 
       retArr.forEach(device => {
@@ -36,16 +41,20 @@ export const useDevicesStore = defineStore('devices', () => {
       console.error('Error fetching devices:', err);
       throw err;
     } finally {
-      console.log('Fetched All Devices')
+      console.log('Fetched All Devices');
     }
   }
 
   async function fetchGeofences() {
     if (!userStore.server_url) return;
     try {
-      let retArr = await ky.get(`https://${userStore.server_url}/api/geofences`, {
-        credentials: 'include' 
-      }).json();
+      const options = {
+        url: `https://${userStore.server_url}/api/geofences`,
+        withCredentials: true,
+      };
+
+      const response = await CapacitorHttp.get(options);
+      const retArr = response.data;
 
       retArr.forEach(g => {
         let parsedPoints = [];
@@ -67,8 +76,8 @@ export const useDevicesStore = defineStore('devices', () => {
     } catch (err) {
       console.error('Error fetching geofences:', err);
       throw err;
-    }finally{
-      console.log('Fetched All Geofences')
+    } finally {
+      console.log('Fetched All Geofences');
     }
   }
 
@@ -106,7 +115,6 @@ export const useDevicesStore = defineStore('devices', () => {
   );
 
   function socketMsgCallback(data) {
-    
     if ("devices" in data) {
       data.devices.forEach((d) => {
         if (devices[d.id]) {
@@ -131,7 +139,7 @@ export const useDevicesStore = defineStore('devices', () => {
           power: pos.attributes?.power,
           battery: pos.attributes?.battery,
           sat: pos.attributes?.sat, 
-          hdop: pos.attributes?.hdop, // <--- ADDED HDOP HERE
+          hdop: pos.attributes?.hdop,
           latlon: [pos.latitude, pos.longitude],
           bearing: pos.course,
           accuracy: pos.accuracy,
@@ -143,7 +151,7 @@ export const useDevicesStore = defineStore('devices', () => {
           mobileNetworkCode: pos.network?.cellTowers?.[0]?.mobileNetworkCode,
           address: pos.address,
           geofences: pos.geofenceIds,
-          valid: pos.valid // Ensure 'valid' is tracked
+          valid: pos.valid
         });
 
         const isOnline = device.status === "online";
@@ -175,7 +183,7 @@ export const useDevicesStore = defineStore('devices', () => {
         }
       });
     }
-    loading.value = false
+    loading.value = false;
     console.log('Processed WebSocket Data:', data);
   }
 

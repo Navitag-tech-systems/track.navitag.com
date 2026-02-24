@@ -1,7 +1,7 @@
 <script setup>
 import { ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { useUserStore } from '@/stores/user-backup';
+import { useUserStore } from '@/stores/user.js';
 import { signOut } from '@/utils/auth';
 import { auth } from '@/firebase'; 
 import { baseUrl } from '@/utils/variables';

@@ -1,7 +1,7 @@
 <script setup>
 import { ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { useUserStore } from '@/stores/user-backup';
+import { useUserStore } from '@/stores/user.js';
 import { baseUrl } from '@/utils/variables';
 import { CapacitorHttp } from '@capacitor/core';
 

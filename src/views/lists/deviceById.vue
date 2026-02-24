@@ -1,7 +1,7 @@
 <script setup>
 import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { useDevicesStore } from '@/stores/devices-backup';
+import { useDevicesStore } from '@/stores/devices.js';
 
 const route = useRoute();
 const router = useRouter();
