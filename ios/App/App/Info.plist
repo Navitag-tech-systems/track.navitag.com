@@ -102,5 +102,7 @@
 		<string>tserver4.navitag.com</string>
 		<string>tserver5.navitag.com</string> 
 	</array>
+	<key>ITSAppUsesNonExemptEncryption</key>
+  <false/>
 </dict>
 </plist>
