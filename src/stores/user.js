@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed, watch } from 'vue';
 import { FirebaseMessaging } from '@capacitor-firebase/messaging';
-import { CapacitorHttp, Capacitor } from '@capacitor/core'; 
+import { CapacitorHttp, Capacitor, CapacitorCookies } from '@capacitor/core'; 
 import { setUserId } from '@/utils/analytics';
 import { baseUrl } from '@/utils/variables';
 import { auth } from '@/firebase'; 
@@ -14,11 +14,11 @@ export const useUserStore = defineStore('user', () => {
   const countryCode = ref(null);
   const name = ref(null);
   const phone = ref(null);
-  const server_url = ref(null); // Domain name only (e.g., "traccar.domain.com")
+  const server_url = ref(null); 
   const server_token = ref(null);
   const server_connect = ref(false);
   const socket = ref(null);
-  const sessionId = ref(null); // Track session for WebSockets if needed
+  const sessionId = ref(null); 
 
   // Getters
   const isLoggedIn = computed(() => user.value !== null && user.value !== false);
@@ -40,6 +40,28 @@ export const useUserStore = defineStore('user', () => {
       serverConnect();
     }
   });
+
+  // --- HELPER: Extract Session ID from Set-Cookie Header ---
+  const extractSessionIdFromHeaders = (response) => {
+    const headers = response.headers;
+    // Headers can be capitalized differently depending on platform
+    const setCookie = headers['Set-Cookie'] || headers['set-cookie'] || headers['SET-COOKIE'];
+
+    if (!setCookie) return false;
+
+    // Handle cases where Set-Cookie might be an array or a single string
+    const cookieString = Array.isArray(setCookie) ? setCookie.join(';') : setCookie;
+    
+    // Regex to find JSESSIONID value
+    const match = cookieString.match(/JSESSIONID=([^;]+)/i);
+    
+    if (match && match[1]) {
+      sessionId.value = match[1];
+      console.log('✅ Extracted JSESSIONID from headers:', sessionId.value);
+      return true;
+    }
+    return false;
+  };
 
   async function initPushNotifications() {
     const platform = Capacitor.getPlatform();
@@ -139,17 +161,24 @@ export const useUserStore = defineStore('user', () => {
       return;
     }
 
+    // 1. Try Existing Session
     const tryExistingSession = async () => {
       try {
         const response = await CapacitorHttp.get({
           url: `https://${server_url.value}/api/session`
         });
-        return response.status === 200 && response.data && response.data.id;
+        
+        if (response.status === 200 && response.data && response.data.id) {
+          extractSessionIdFromHeaders(response);
+          return true;
+        }
+        return false;
       } catch (e) {
         return false;
       }
     };
 
+    // 2. Try Token Login
     const tryTokenLogin = async (token) => {
       if (!token) return false;
       try {
@@ -157,7 +186,16 @@ export const useUserStore = defineStore('user', () => {
           url: `https://${server_url.value}/api/session`,
           params: { token: token }
         });
-        return response.status === 200 && response.data && response.data.id;
+        
+        if (response.status === 200 && response.data && response.data.id) {
+          const found = extractSessionIdFromHeaders(response);
+          if (!found) {
+             console.warn('Login success, but no Set-Cookie header found. Falling back to native store check.');
+             await syncSessionId();
+          }
+          return true;
+        }
+        return false;
       } catch (e) {
         return false;
       }
@@ -203,7 +241,10 @@ export const useUserStore = defineStore('user', () => {
 
     if (success) {
       console.log('Successfully connected to Traccar session');
-      await syncSessionId(); 
+      // If we still don't have a session ID in memory (failed extraction), check the store
+      if (!sessionId.value) {
+        await syncSessionId();
+      }
       server_connect.value = true;
     } else {
       console.error('Failed to establish Traccar session');
@@ -214,12 +255,21 @@ export const useUserStore = defineStore('user', () => {
   async function syncSessionId() {
     if (!server_url.value) return;
     try {
-      const response = await CapacitorHttp.getCookies({
+      // Use CapacitorCookies (Native) instead of Http
+      // NOTE: server_url is just the domain, so we prepend https://
+      const cookiesMap = await CapacitorCookies.getCookies({
         url: `https://${server_url.value}`
       });
-      const sessionCookie = response.cookies.find(c => c.key === 'JSESSIONID');
-      if (sessionCookie) {
-        sessionId.value = sessionCookie.value;
+      
+      // Access direct property. getCookies returns { "KEY": "VALUE" } object.
+      // There is no .cookies array or .find() method.
+      const sessionValue = cookiesMap['JSESSIONID'];
+      
+      if (sessionValue) {
+        sessionId.value = sessionValue;
+        console.log('Synced Traccar Session ID from Native Store:', sessionId.value);
+      } else {
+        console.warn('No JSESSIONID found in native cookies.');
       }
     } catch (e) {
       console.warn('Failed to sync cookies:', e);
@@ -228,14 +278,65 @@ export const useUserStore = defineStore('user', () => {
 
   function connectSocket(onMessageCallback) {
     if (!server_url.value) return;
-    if (socket.value) socket.value.close();
-
-    let wsUrl = `wss://${server_url.value}/api/socket`;
-    if (sessionId.value) {
-      wsUrl += `;jsessionid=${sessionId.value}`;
+    
+    if (socket.value) {
+      console.log('Closing existing socket...');
+      socket.value.close();
     }
 
-    const socketInstance = new WebSocket(wsUrl);
+    // 1. Prepare URLs (Strip protocol just in case server_url has it)
+    let wsPath = '/api/socket';
+
+    // --- AUTHENTICATION STRATEGY: QUERY PARAMETER (Handled by Caddy) ---
+    // Caddy will take ?session_id=... and inject it as a Cookie header
+    if (!sessionId.value) {
+      console.error('❌ CRITICAL: No Session ID available. WebSocket will fail.');
+      return
+    }
+
+    const wsUrl = `wss://${server_url.value}${wsPath}${sessionId.value ? `?session_id=${sessionId.value}` : ''}`;
+    const probeUrl = `https://${server_url.value}${wsPath}${sessionId.value ? `?session_id=${sessionId.value}` : ''}`; 
+
+    console.log('🔹 Preparing WebSocket connection:', wsUrl);
+
+    // 2. DIAGNOSTIC PROBE: Check URL with HTTP first to see real error
+    (async () => {
+      console.log('🔎 Probing connection authentication...');
+      try {
+        const response = await CapacitorHttp.get({
+          url: probeUrl,
+          headers: {
+            'Accept': 'application/json' 
+          }
+        });
+
+        console.log(`🔎 Probe Result: Status ${response.status}`);
+        
+        if (response.status === 401 || response.status === 403) {
+          console.error('❌ AUTH FAILURE: Server rejected session during probe. Your JSESSIONID is likely invalid or expired.');
+        } else if (response.status === 200 || response.status === 404 || response.status === 400) {
+          // 404/400 is "Success" for a GET probe on a Socket endpoint (means auth passed)
+          console.log('✅ Auth appears valid. Opening real socket...');
+          openRealSocket(wsUrl, onMessageCallback);
+        } else {
+          console.warn('⚠️ Unexpected Probe Status:', response.status);
+          openRealSocket(wsUrl, onMessageCallback); 
+        }
+
+      } catch (err) {
+        console.error('❌ NETWORK/SSL ERROR during probe:', err.message);
+      }
+    })();
+  }
+
+  // 3. The actual WebSocket logic
+  function openRealSocket(url, onMessageCallback) {
+    const socketInstance = new WebSocket(url);
+
+    socketInstance.onopen = () => {
+      console.log('✅ WebSocket connection established!');
+    };
+
     socketInstance.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
@@ -245,9 +346,13 @@ export const useUserStore = defineStore('user', () => {
       }
     };
 
-    socketInstance.onclose = async () => {
+    socketInstance.onclose = (e) => {
+      console.log(`⚠️ WebSocket closed. Code: ${e.code}, Reason: "${e.reason}"`);
       socket.value = null;
-      await validateSession(); 
+    };
+    
+    socketInstance.onerror = (err) => {
+       console.error('❌ WebSocket Error Event (Hidden details). See Probe logs above.');
     };
 
     socket.value = socketInstance;
@@ -265,7 +370,10 @@ export const useUserStore = defineStore('user', () => {
       if (response.status !== 200 || !response.data?.id) {
         throw new Error('Invalid session');
       }
-      await syncSessionId();
+      
+      extractSessionIdFromHeaders(response);
+      if(!sessionId.value) await syncSessionId();
+
     } catch (error) {
       server_connect.value = false;
       server_token.value = false;
