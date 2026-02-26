@@ -1,8 +1,8 @@
 import { defineStore } from 'pinia';
-import { ref, watch, computed, reactive } from 'vue';
+import { ref, computed, reactive } from 'vue';
 import { useUserStore } from '@/stores/user.js';
 import { useRouter } from 'vue-router';
-import { CapacitorHttp, Capacitor } from '@capacitor/core'; 
+import { request } from '@/utils/http'; 
 
 export const useDevicesStore = defineStore('devices', () => {
   const userStore = useUserStore();
@@ -19,21 +19,9 @@ export const useDevicesStore = defineStore('devices', () => {
   const deviceMarkers = reactive({});
   const activeRoute = ref({ line: [], markers: {} });
 
-  // --- Helpers ---
-  const getAuthHeaders = () => {
-    const headers = {
-      'Accept': 'application/json',
-      'Content-Type': 'application/json',
-    };
-    if (Capacitor.isNativePlatform() && userStore.sessionId) {
-      headers['Cookie'] = `JSESSIONID=${userStore.sessionId}`;
-    }
-    return headers;
-  };
-
-  // --- Callback Defined Early ---
-  function socketMsgCallback(data) {
-    console.log('incomming Message: ', JSON.stringify(data))
+  // --- Socket Data Handler (Exposed for Lifecycle Service) ---
+  function processSocketData(data) {
+    // console.log('incoming Message: ', JSON.stringify(data))
     if ("devices" in data) {
       data.devices.forEach((d) => {
         if (devices[d.id]) {
@@ -70,7 +58,7 @@ export const useDevicesStore = defineStore('devices', () => {
           valid: pos.valid 
         });
 
-        // Map Markers
+        // Map Markers Logic
         const isOnline = device.status === "online";
         const isIgnitionOn = pos.attributes?.ignition;
         const markerColor = (isOnline && isIgnitionOn) ? "#57f491" : "#ffcbd1";
@@ -85,86 +73,62 @@ export const useDevicesStore = defineStore('devices', () => {
         };
 
         if (deviceId in deviceMarkers) {
-          console.log('Update Marker', JSON.stringify(markerData))
           mapUpdate.value = markerData;
-
         } else {
-          console.log('add new marker', JSON.stringify(markerData))
           deviceMarkers[deviceId] = markerData;
           mapUpdate.value = markerData;
         }
       });
     }
     loading.value = false;
-    console.log('Processed WebSocket Data');
   }
 
   // --- Actions ---
 
   async function fetchDevices() {
-    console.log('[STEP 2] Entering fetchDevices...');
-    if (!userStore.server_url) {
-      console.log('[STEP 2a] No server_url, aborting.');
-      return;
-    }
+    console.log('[Devices] Fetching devices list...');
+    if (!userStore.server_url) return;
 
     try {
-      console.log('[STEP 3] Sending CapacitorHttp Request for Devices...');
-      const options = {
+      const retArr = await request.send({
         url: `https://${userStore.server_url}/api/devices`,
-        headers: getAuthHeaders(),
-        withCredentials: true,
-        connectTimeout: 10000, // 10s timeout
-        readTimeout: 10000 
-      };
-
-      const response = await CapacitorHttp.get(options);
-      console.log(`[STEP 4] Devices Response: ${response.status}`);
-      
-      if (response.status === 401) throw new Error('Unauthorized');
-
-      const retArr = response.data;
+        isTraccar: true,
+        sessionId: userStore.sessionId
+      });
 
       if (Array.isArray(retArr)) {
-        console.log(`[STEP 5] Processing ${retArr.length} devices...`);
+        // Redirect to teaser if no devices found
         if (retArr.length < 1) {
-             console.log('[STEP 5a] No devices, redirecting.');
+             console.log('[Devices] No devices found, redirecting to teaser.');
              router.push('/linkdevice/teaser');
         }
+        
+        // Populate state
         retArr.forEach(device => {
           devices[device.id] = device;
         });
-      } else {
-        console.warn('[STEP 5-WARN] Response data is not an array:', retArr);
       }
     } catch (err) {
-      console.error('[STEP 2-ERROR] fetchDevices failed:', err);
-      if (err.message === 'Unauthorized') { /* handle */ }
+      console.error('[Devices] Fetch failed:', err);
       throw err;
-    } finally {
-      console.log('[STEP 6] Exiting fetchDevices (Finally Block)');
     }
   }
 
   async function fetchGeofences() {
-    console.log('[STEP 7] Entering fetchGeofences...');
+    console.log('[Geofences] Fetching geofences...');
     if (!userStore.server_url) return;
     try {
-      const options = {
+      const retArr = await request.send({
         url: `https://${userStore.server_url}/api/geofences`,
-        headers: getAuthHeaders(),
-        withCredentials: true,
-      };
+        isTraccar: true,
+        sessionId: userStore.sessionId
+      });
 
-      const response = await CapacitorHttp.get(options);
-      console.log(`[STEP 8] Geofences Response: ${response.status}`);
-
-      if (response.status === 401) throw new Error('Unauthorized');
-
-      const retArr = response.data;
       if (Array.isArray(retArr)) {
         retArr.forEach(g => {
           let parsedPoints = [];
+          
+          // Parse WKT Polygon String
           if (g.area && g.area.startsWith('POLYGON')) {
             const coordsString = g.area.replace('POLYGON', '').replace(/[()]/g, '').trim();
             parsedPoints = coordsString.split(',').map(coord => {
@@ -172,39 +136,27 @@ export const useDevicesStore = defineStore('devices', () => {
               return [parseFloat(x), parseFloat(y)];
             });
           }
+          
           geofences[g.id] = { name: g.name, points: parsedPoints };
         });
       }
     } catch (err) {
-      console.error('[STEP 7-ERROR] fetchGeofences failed:', err);
-    } finally {
-      console.log('[STEP 9] Exiting fetchGeofences');
+      console.error('[Devices] Geofences fetch failed:', err);
     }
   }
 
   async function fetchAll() {
-    console.log('[STEP 1] fetchAll Started');
     loading.value = true;
     error.value = null;
     try {
-      // SEQUENTIAL EXECUTION (Easier to debug than Promise.all)
-      await fetchDevices();
-      await fetchGeofences();
+      // Parallel fetch for speed
+      await Promise.all([fetchDevices(), fetchGeofences()]);
       
-      console.log('[STEP 10] API Calls Done. Connecting Socket...');
-      
-      if (typeof userStore.connectSocket === 'function') {
-        userStore.connectSocket(socketMsgCallback);
-        console.log('[STEP 11] Socket connection initiated.');
-      } else {
-        console.error('[STEP 11-ERROR] connectSocket function missing!');
-      }
-
+      // Note: Socket connection is now handled by Lifecycle Service
     } catch (err) {
-      console.error('[STEP 1-ERROR] fetchAll aborted:', err);
+      console.error('[Devices] fetchAll failed:', err);
       error.value = err.message || 'Failed to fetch tracking data.';
     } finally {
-      console.log('[STEP 12] fetchAll Finished');
     }
   }
   
@@ -216,20 +168,6 @@ export const useDevicesStore = defineStore('devices', () => {
     mapUpdate.value = null;
   }
 
-  // --- Watcher ---
-  watch(
-    () => userStore.server_connect,
-    (isConnected) => {
-      console.log('[STEP 0] Watcher triggered. Connected:', isConnected);
-      if (isConnected) {
-        fetchAll();
-      } else {
-        clearData();
-      }
-    },
-    { immediate: true }
-  );
-
   // --- Getters ---
   const deviceMarkerKeys = computed(() => Object.keys(deviceMarkers));
   const deviceSelectedObject = computed(() => (deviceSelected.value && devices[deviceSelected.value]) || null);
@@ -237,6 +175,7 @@ export const useDevicesStore = defineStore('devices', () => {
   return {
     devices, geofences, loading, error, deviceMarkers, deviceMarkerKeys,
     deviceSelectedObject, deviceSelected, mapUpdate, draftPolygon, activeRoute,
+    processSocketData, 
     fetchDevices, fetchGeofences, fetchAll, clearData
   };
 });

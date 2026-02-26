@@ -20,10 +20,20 @@ const isMapRoute = computed(() => {
   return false;
 });
 
+const masterLoading = computed(() => {
+  if(deviceStore.loading || userStore.loading){
+    return true
+  } else {
+    return false
+  }
+})
+
 const showNav = computed(() => {
   let plat = getPlatformInfo(); // Evaluates platform logic
-  return userStore.isLoggedIn && route.meta.requiresAuth === true;
+  return masterLoading.value === false && userStore.isLoggedIn && route.meta.requiresAuth === true ;
 });
+
+
 </script>
 
 <template>
@@ -44,7 +54,7 @@ const showNav = computed(() => {
         :class="isMapRoute ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'"
       >
         <leafletMap 
-          v-if="userStore.isLoggedIn && userStore.loading === false && deviceStore.loading === false"
+          v-if="userStore.isLoggedIn && masterLoading === false"
           :mode="isMapRoute ? isMapRoute : 'track'" 
           :devices="deviceStore.deviceMarkers" 
           :geos="deviceStore.geofences"
