@@ -5,6 +5,8 @@ import { useUserStore } from '@/stores/user.js';
 import { useDevicesStore } from './stores/devices.js';
 import BottomNav from './components/bottomNav.vue';
 import Loading from '@/components/loading.vue';
+import Error from '@/components/error.vue';
+import NoNet from './components/noNet.vue';
 import { getPlatformInfo, liqKey } from './utils/variables';
 import { leafletMap } from '@burkaloo/leaflet-vue3'
 
@@ -44,6 +46,8 @@ const showNav = computed(() => {
     :class="{ 'pb-safe-bottom': !showNav }"
   >
     <Loading v-if="userStore.loading"/>
+    <Error v-if="userStore.error"/>
+    <NoNet v-if="!userStore.internet"/>
 
     <main 
       class="flex-1 w-full relative"

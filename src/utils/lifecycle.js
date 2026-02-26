@@ -13,6 +13,8 @@ export const LifecycleService = {
 
     const userStore = useUserStore();
 
+    userStore.internet = (await Network.getStatus()).connected // get initial network status
+
     console.log('🚀 Lifecycle Service Initialized');
 
     // 0. PRE-INIT: Fetch Country Code

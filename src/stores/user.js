@@ -21,8 +21,9 @@ export const useUserStore = defineStore('user', () => {
   const socket = ref(null);
   const sessionId = ref(null);
   
-  // App states
-  // Getters
+  const error = ref(false) // assume theres no error
+  const internet = ref(true) // assume theres internet
+  
   const isLoggedIn = computed(() => user.value !== null && user.value !== false);
 
   const loading = computed(() => {
@@ -250,7 +251,7 @@ export const useUserStore = defineStore('user', () => {
   }
 
   return { 
-    user, idToken, countryCode, loading, isLoggedIn, 
+    user, idToken, countryCode, loading, isLoggedIn, internet, error,
     setUser, clearUser, serverConnect, connectSocket, fetchCountryCode, backendSync,
     server_url, server_token, server_connect, socket, name, phone, sessionId
   };
