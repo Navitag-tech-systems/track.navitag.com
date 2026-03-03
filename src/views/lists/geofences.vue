@@ -3,7 +3,7 @@ import { ref, computed } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
 import { useDevicesStore } from '@/stores/devices.js';
 import { useUserStore } from '@/stores/user.js';
-import { CapacitorHttp } from '@capacitor/core';
+import { request } from '@/utils/http';
 
 const router = useRouter();
 const deviceStore = useDevicesStore();
@@ -30,7 +30,10 @@ const confirmDelete = (id) => {
 
 // Helper: The actual delete request
 const sendDeleteRequest = async (id) => {
-  return await CapacitorHttp.delete({
+  return await 
+  
+  
+  CapacitorHttp.delete({
     url: `https://${userStore.server_url}/api/geofences/${id}`,
     withCredentials: true // Crucial: sends the JSESSIONID cookie
   });
@@ -45,26 +48,18 @@ const performDelete = async () => {
 
   try {
     // Attempt 1
-    let response = await sendDeleteRequest(id);
+    let response = await request.send({
+      url: `https://${userStore.server_url}/api/geofences/${id}`,
+      isTraccar: true
+    })
 
-    // If Unauthorized (401), try to reconnect session and retry once
-    if (response.status === 401) {
-      console.warn('Session expired (401). Attempting to reconnect...');
-      
-      // 1. Re-establish session using the store's logic
-      await userStore.serverConnect();
-      
-      // 2. Retry the delete request
-      response = await sendDeleteRequest(id);
-    }
-
-    // Check final result
-    if (response.status === 204 || response.status === 200) {
-      // Remove from local store immediately
+    
+    if (response) {
       delete deviceStore.geofences[id];
       // Close modal
       showDeleteModal.value = false;
       geofenceToDelete.value = null;
+    
     } else {
       console.error('Delete failed with status:', response.status);
       alert('Failed to delete geofence. Please restart the app or log in again.');
@@ -78,7 +73,8 @@ const performDelete = async () => {
 };
 
 const editGeofence = (id) => {
-  router.push(`/map/geo-edit/${id}`);
+  console.log('click')
+  router.push(`/editgeo/geo-${id}/${id}`);
 };
 </script>
 
@@ -87,7 +83,12 @@ const editGeofence = (id) => {
     
     <div class="sticky top-0 z-20 bg-white shadow-sm border-b border-gray-200">
       <div class="p-4">
-        <h1 class="text-xl font-bold text-gray-800 mb-3">Overview</h1>
+        <div class="flex justify-between">
+          <h1 class="text-xl font-bold text-gray-800 mb-3">Overview</h1>
+          <RouterLink to="/addgeo" class="w-10 h-10 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center shrink-0" >
+            <i class="fa-solid fa-plus"></i>
+          </RouterLink>
+        </div>
         
         <div class="flex space-x-6 overflow-x-auto no-scrollbar">
           <button

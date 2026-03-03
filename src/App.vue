@@ -16,9 +16,19 @@ const deviceStore = useDevicesStore();
 
 // Check if we are on the main map screen
 const isMapRoute = computed(() => {
-  if ('mapRoute' in route.meta) {
+  // If the meta flag is strictly the boolean true (using your idea)
+  if (route.meta.mapRoute === true) {
+    // If you literally named the route parameter :mapProp
+    if (route.params.mode) {
+      return route.params.mode;
+    }
+  }
+
+  // Fallback: If mapRoute is a string (like 'track' or 'geo-new')
+  if (typeof route.meta.mapRoute === 'string') {
     return route.meta.mapRoute;
   }
+
   return false;
 });
 
@@ -35,6 +45,13 @@ const showNav = computed(() => {
   return masterLoading.value === false && userStore.isLoggedIn && route.meta.requiresAuth === true ;
 });
 
+const activeGeofences = computed(() => {
+  return { ...deviceStore.geofences };
+});
+
+function trackMapMode(mode){
+  console.log('mode', mode[0])
+}
 
 </script>
 
@@ -45,7 +62,7 @@ const showNav = computed(() => {
     class="flex flex-col h-dvh w-full pt-safe-top bg-gray-50"
     :class="{ 'pb-safe-bottom': !showNav }"
   >
-    <Loading v-if="userStore.loading"/>
+    <Loading v-if="masterLoading"/>
     <Error v-if="userStore.error"/>
     <NoNet v-if="!userStore.internet"/>
 
@@ -58,10 +75,10 @@ const showNav = computed(() => {
         :class="isMapRoute ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'"
       >
         <leafletMap 
-          v-if="userStore.isLoggedIn && masterLoading === false"
+          v-if="userStore.isLoggedIn && masterLoading === false && userStore.socket"
           :mode="isMapRoute ? isMapRoute : 'track'" 
           :devices="deviceStore.deviceMarkers" 
-          :geos="deviceStore.geofences"
+          :geos="activeGeofences"
           :liqkey="liqKey" 
           :route="deviceStore.activeRoute"
           tileLayer="liq"
@@ -69,6 +86,7 @@ const showNav = computed(() => {
           :activeId="deviceStore.deviceSelected === null ? null : deviceStore.deviceSelected+''"
           @poly-save="(data) => deviceStore.draftPolygon = data"
           @marker-select="(data) => deviceStore.deviceSelected = Array.isArray(data) ? +data[0]: +data"
+          @mode-change="trackMapMode"
         />
       </div>
 

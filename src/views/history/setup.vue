@@ -88,7 +88,7 @@ const generateReport = () => {
     return;
   }
   
-  router.push(`/history/${selectedDevice.value.uniqueId}/${selectedDate.value}`);
+  router.push(`/history/${selectedDevice.value.uniqueId}/${selectedDate.value}/route`);
 };
 </script>
 

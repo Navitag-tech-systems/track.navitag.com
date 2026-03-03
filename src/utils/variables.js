@@ -2,6 +2,17 @@ import { Capacitor } from '@capacitor/core';
 export const baseUrl = "https://api.navitag.net/v1"
 export const liqKey = "pk.f34251da8132d1cbfbb1baa7f9925265"
 
+export const categoryMapping = [
+  { map: 'car', server: 'car', icon: 'fa-car' },
+  { map: 'motorcycle', server: 'motorcycle', icon: 'fa-motorcycle' },
+  { map: 'person', server: 'person', icon: 'fa-person' },
+  { map: 'pickup', server: 'pickup', icon: 'fa-truck-pickup' },
+  { map: 'truck4w', server: 'truck', icon: 'fa-truck' },
+  { map: 'truck6w', server: 'trailer', icon: 'fa-truck-moving' },
+  { map: 'pin', server: 'plane', icon: 'fa-map-pin' },
+  { map: 'circle', server: null, icon: 'fa-circle' }
+]
+
 export const getPlatformInfo = () => {
   // Capacitor.getPlatform() returns 'ios', 'android', or 'web'
   const platform = Capacitor.getPlatform();

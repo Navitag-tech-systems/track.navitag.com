@@ -7,124 +7,158 @@ import { useDevicesStore } from '@/stores/devices';
 let isInitialized = false;
 
 export const LifecycleService = {
-  async init() {
+  reconnectTimer: null, // Track the timer to prevent duplicates
+
+  init() {
     if (isInitialized) return;
     isInitialized = true;
 
     const userStore = useUserStore();
 
-    userStore.internet = (await Network.getStatus()).connected // get initial network status
+    Network.getStatus().then(status => {
+      userStore.internet = status.connected;
+    });
 
     console.log('🚀 Lifecycle Service Initialized');
 
-    // 0. PRE-INIT: Fetch Country Code
-    // We await this so that countryCode is available for backendSync when Auth listener fires
-    await userStore.fetchCountryCode();
+    this.countryCodePromise = userStore.fetchCountryCode().then(code => {
+      if (!code) {
+        console.log('error')
+        userStore.error = true;
+      }
+      return code;
+    });
 
-    // ADD if fail to get country code. reroute to error page with locaton
-
-    // 1. AUTH LISTENER (The Entry Point)
     auth.addListener('authStateChange', async (data) => {
       const firebaseUser = data.user;
       
       if (firebaseUser) {
         console.log('✅ Auth State: Logged In');
-        // A. Set User
         await userStore.setUser(firebaseUser);
-        
-        if (!firebaseUser.emailVerified) {
-          // Optional: Handle verification logic
-        }
-
-        // B. Start The Data Sequence
         await this.startSession();
-      } else {
+        } else {
         console.log('🛑 Auth State: Logged Out');
         this.stopSession();
       }
     });
 
-    // 2. APP STATE LISTENER (Background/Foreground)
     App.addListener('appStateChange', async ({ isActive }) => {
       console.log(`📱 App State Changed: ${isActive ? 'Active' : 'Background'}`);
       
+      if(Capacitor.isNativePlatform() === false) return // only stop if native not web
+
+
       if (isActive) {
-        // Resume: Reconnect socket and refresh data if logged in
         if (userStore.isLoggedIn) {
           await this.checkConnectionAndReconnect();
         }
       } else {
-        // Pause: Close socket to save battery, but keep data
         if (userStore.socket) {
           console.log('⏸️ Pausing: Closing WebSocket');
-          userStore.socket.close();
+          // Use the safe disconnect so it doesn't trigger a reconnect while in background
+          userStore.disconnectSocket(); 
         }
       }
     });
 
-    // 3. NETWORK LISTENER (Offline/Online)
     Network.addListener('networkStatusChange', async (status) => {
       console.log(`📡 Network Status: ${status.connected ? 'Online' : 'Offline'}`);
+      userStore.internet = status.connected;
       
       if (status.connected && userStore.isLoggedIn) {
-        // Reconnect logic when internet comes back
         await this.checkConnectionAndReconnect();
       }
     });
   },
 
-  /**
-   * The "Happy Path" sequence to boot up the app data
-   */
   async startSession() {
     const userStore = useUserStore();
     const deviceStore = useDevicesStore();
 
-    // Step 1: Sync with Custom Backend (Get Traccar URL/Token)
-    // This sends countryCode fetched in init()
+    if (this.countryCodePromise) {
+      await this.countryCodePromise;
+    }
+
     const synced = await userStore.backendSync(); 
-    if (synced === false) return; // Explicit check for failure
+    if (!synced) {
+      console.log('error')
+      userStore.error = true;
+      return; 
+    }
 
-    // Step 2: Connect to Traccar (Get Session ID)
     const connected = await userStore.serverConnect();
-    if (!connected) return;
+    if (!connected) {
+      console.log('error')
+      //userStore.error = true;
+      return;
+    } else {
+      //Ge
+    }
 
-    // Step 3: Fetch Static Data (Devices, Geofences)
-    await deviceStore.fetchAll();
+    const fetched = await deviceStore.fetchAll();
+    if (!fetched) {
+      console.log('error')
+      userStore.error = true;
+      return;
+    }
 
-    // Step 4: Connect Realtime Socket
-    // We pass the processor from deviceStore to the connector in userStore
-    userStore.connectSocket(deviceStore.processSocketData); // Ensure processSocketData is exposed in deviceStore
+    // Connect with the disconnect watcher attached
+    userStore.connectSocket(
+      deviceStore.processSocketData,
+      () => this.handleSocketDisconnect()
+    ); 
   },
 
-  /**
-   * Cleanup logic for Logout
-   */
   stopSession() {
     const userStore = useUserStore();
     const deviceStore = useDevicesStore();
+    
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     
     userStore.clearUser();
     deviceStore.clearData();
   },
 
-  /**
-   * Smart Reconnect: Used on App Resume or Network Reconnect
-   */
   async checkConnectionAndReconnect() {
     const userStore = useUserStore();
     const deviceStore = useDevicesStore();
 
-    // 1. Ensure Session is valid
-    const sessionValid = await userStore.serverConnect(); // Checks valid session or refreshes it
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
 
+    const sessionValid = await userStore.serverConnect(); 
     
     if (sessionValid) {
-      // 2. Refresh Data (in case things moved while backgrounded)
-      await deviceStore.fetchAll();
+      const fetched = await deviceStore.fetchAll();
+      if (!fetched) {
+        userStore.error = true;
+        return;
+      }
       
-      // 3. Re-establish Socket
-      userStore.connectSocket(deviceStore.processSocketData);
+      // Connect with the disconnect watcher attached
+      userStore.connectSocket(
+        deviceStore.processSocketData,
+        () => this.handleSocketDisconnect()
+      );
+    } else {
+      userStore.error = true;
     }
+  },
+
+  // --- NEW: Socket Error Watcher ---
+  handleSocketDisconnect() {
+    const userStore = useUserStore();
+    
+    // Do not attempt to reconnect if the user is logged out or the internet is completely offline
+    if (!userStore.isLoggedIn || !userStore.internet) return;
+
+    console.log('🔄 Socket dropped. Attempting to reconnect in 5 seconds...');
+    
+    // Clear any existing timer to prevent multiple reconnect attempts stacking up
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+
+    this.reconnectTimer = setTimeout(async () => {
+      console.log('🔄 Firing auto-reconnect sequence...');
+      await this.checkConnectionAndReconnect();
+    }, 5000); // 5 second backoff
   }
 };

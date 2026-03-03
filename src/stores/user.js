@@ -1,11 +1,12 @@
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue'; // Removed 'watch' import
+import { ref, computed, shallowRef } from 'vue';
 import { FirebaseMessaging } from '@capacitor-firebase/messaging';
 import { Capacitor } from '@capacitor/core'; 
 import { setUserId } from '@/utils/analytics';
 import { baseUrl } from '@/utils/variables';
 import { auth } from '@/firebase'; 
 import { request } from '@/utils/http'; 
+import { useRouter } from 'vue-router'
 
 export const useUserStore = defineStore('user', () => {
   // State
@@ -18,11 +19,12 @@ export const useUserStore = defineStore('user', () => {
   const server_url = ref(null); 
   const server_token = ref(null);
   const server_connect = ref(false);
-  const socket = ref(null);
-  const sessionId = ref(null);
+  const socket = shallowRef(null);
+  const router = useRouter()
+
   
-  const error = ref(false) // assume theres no error
-  const internet = ref(true) // assume theres internet
+  const error = ref(false); // assume theres no error
+  const internet = ref(true); // assume theres internet
   
   const isLoggedIn = computed(() => user.value !== null && user.value !== false);
 
@@ -48,22 +50,29 @@ export const useUserStore = defineStore('user', () => {
         simple: true 
       });
       
-      if (!ipData || !ipData.ip) return null;
+      if (ipData && ipData.ip) {
+        // Step 2: Get Country Info
+        const countryData = await request.send({
+          url: `https://api.ipinfo.io/lite/${ipData.ip}?token=${token}`,
+          simple: true
+        });
 
-      // Step 2: Get Country Info
-      const countryData = await request.send({
-        url: `https://api.ipinfo.io/lite/${ipData.ip}?token=${token}`,
-        simple: true
-      });
-
-      if (countryData && countryData.country_code) {
-        countryCode.value = countryData.country_code;
-        console.log('✅ Country Code Detected:', countryCode.value);
-        return countryCode.value;
+        if (countryData && countryData.country_code) {
+          countryCode.value = countryData.country_code;
+          console.log('✅ Country Code Detected:', countryCode.value);
+          return countryCode.value;
+        }
       }
     } catch (error) {
       console.warn('⚠️ Failed to retrieve location data:', error);
     }
+    
+    // FALLBACK: If IP lookup fails, assign an empty string so the `loading` 
+    // computed property evaluates to false and unlocks the Login screen.
+    if (countryCode.value === null) {
+      countryCode.value = 'Unknown';
+    }
+    
     return null;
   }
 
@@ -111,8 +120,6 @@ export const useUserStore = defineStore('user', () => {
       const result = await auth.getIdToken();
       idToken.value = result.token;
       
-      // We initialize push notifications, but we DO NOT call backendSync here.
-      // LifecycleService will call backendSync immediately after this returns.
       initPushNotifications();
       await setUserId(firebaseUser.uid);
       return true; 
@@ -127,7 +134,7 @@ export const useUserStore = defineStore('user', () => {
     server_token.value = null;
     server_connect.value = false;
     socket.value = null;
-    sessionId.value = null;
+    error.value = false;
   }
 
   async function backendSync(token = null) {
@@ -152,8 +159,8 @@ export const useUserStore = defineStore('user', () => {
       server_url.value = syncRes.server_url || false;
       server_token.value = syncRes.server_token || false;
       return true;
-    } catch (error) {
-      console.error('Backend sync failed:', error);
+    } catch (err) {
+      console.error('Backend sync failed:', err);
       return false;
     }
   }
@@ -165,18 +172,12 @@ export const useUserStore = defineStore('user', () => {
       return false;
     }
 
-    const updateSession = (newId) => {
-      console.log('✅ Session ID updated:', newId);
-      sessionId.value = newId;
-    };
-
+    //try to cookie that is saved
     const tryExistingSession = async () => {
       try {
         const data = await request.send({
           url: `https://${server_url.value}/api/session`,
           isTraccar: true,
-          sessionId: sessionId.value,
-          onSessionSelect: updateSession
         });
         
         return data && data.id;
@@ -185,14 +186,14 @@ export const useUserStore = defineStore('user', () => {
       }
     };
 
-    const tryTokenLogin = async (token) => {
+    //try the token that is saved
+    const tryTokenLogin = async (token) => { // fetches session wih
       if (!token) return false;
       try {
         const data = await request.send({
           url: `https://${server_url.value}/api/session`,
           params: { token: token },
           isTraccar: true,
-          onSessionSelect: updateSession
         });
         
         return data && data.id;
@@ -201,8 +202,27 @@ export const useUserStore = defineStore('user', () => {
       }
     };
 
-    // Note: refreshServerToken is defined but only used if needed logic is added
-    // Currently relying on the flow: Sync -> Token -> Login
+    const generateToken = async () => {
+      try {
+        if (!idToken.value || !server_url.value) return false;
+        const tokenRes = await request.send({
+          url: `${baseUrl}/server/token`,
+          method: 'POST',
+          data: {server_url: server_url.value},
+          token: idToken.value
+        });
+
+        if("server_token" in tokenRes){
+          return tokenRes.server_token 
+        } else {
+          console.log('Server responded with empty token', tokenRes)
+          return false;
+        }
+      } catch (err) {       
+        return false;
+      }
+    }
+
     
     let success = false;
     console.log('Checking for active Traccar session...');
@@ -213,9 +233,6 @@ export const useUserStore = defineStore('user', () => {
       if (server_token.value) {
         success = await tryTokenLogin(server_token.value);
       }
-      
-      // If needed, you could add logic here to refresh token from backend
-      // if the current server_token fails.
     }
 
     if (success) {
@@ -223,36 +240,75 @@ export const useUserStore = defineStore('user', () => {
       server_connect.value = true;
       return true;
     } else {
-      console.error('Failed to establish Traccar session');
-      server_connect.value = false;
-      return false;
+      //no session and invalid token. ask for new token from backend
+      const newtoken = await generateToken()
+
+      if(newtoken){
+        server_token.value = newtoken
+        success = await tryTokenLogin(newtoken);
+        if (success) {
+          console.log('Successfully connected to Traccar session');
+          server_connect.value = true;
+          return true;
+        } else {
+          console.error('new token login has failed');
+          server_connect.value = false;
+          return false;  
+        }
+      } else {
+        console.error('Failed to mint new server token');
+        server_connect.value = false;
+        return false;
+      }
     }
   }
 
-  function connectSocket(onMessageCallback) {
+  // --- ACTION: Safe Disconnect ---
+  function disconnectSocket() {
+    if (socket.value) {
+      console.log('Closing existing socket intentionally...');
+      // Remove listeners so it doesn't trigger the auto-reconnect watcher
+      socket.value.onclose = null;
+      socket.value.onerror = null;
+      socket.value.close();
+      socket.value = null;
+    }
+  }
+
+  // --- ACTION: Connect Socket ---
+  function connectSocket(onMessageCallback, onDisconnectCallback) {
     if (!server_url.value) return;
     
-    if (socket.value) {
-      console.log('Closing existing socket...');
-      socket.value.close();
-    }
+    disconnectSocket(); // Ensure any existing socket is cleanly removed first
 
     const socketInstance = request.connectSocket(
-      { 
-        url: server_url.value,
-        sessionId: sessionId.value
-      },
-      onMessageCallback
+      server_url.value,
+      onMessageCallback,
+      onDisconnectCallback // Pass the watcher down to the HTTP utility
     );
 
     if (socketInstance) {
+      router.push('/')
       socket.value = socketInstance;
+    } else {
+      console.log('final socket connection failed')
+      error.value = true
     }
+  }
+
+  // --- ACTION: Clear User (Update this to use disconnectSocket) ---
+  function clearUser() {
+    disconnectSocket(); // Use the safe disconnect here
+    user.value = false;
+    idToken.value = null;
+    server_token.value = null;
+    server_connect.value = false;
+    error.value = false; 
   }
 
   return { 
     user, idToken, countryCode, loading, isLoggedIn, internet, error,
-    setUser, clearUser, serverConnect, connectSocket, fetchCountryCode, backendSync,
-    server_url, server_token, server_connect, socket, name, phone, sessionId
+    setUser, clearUser, serverConnect, connectSocket, fetchCountryCode, backendSync, disconnectSocket,
+    server_url, server_token, server_connect, socket, name, phone
   };
 });

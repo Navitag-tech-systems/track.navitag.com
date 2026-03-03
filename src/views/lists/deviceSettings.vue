@@ -1,0 +1,177 @@
+<script setup>
+import { ref, computed, onMounted } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { useDevicesStore } from '@/stores/devices.js';
+import { useUserStore } from '@/stores/user.js';
+import { request } from '@/utils/http.js';
+import { categoryMapping } from '@/utils/variables';
+
+const route = useRoute();
+const router = useRouter();
+const deviceStore = useDevicesStore();
+const userStore = useUserStore();
+
+const deviceId = route.params.id;
+
+// Get the device from the store
+const device = computed(() => deviceStore.devices[deviceId]);
+
+const name = ref('');
+const category = ref('');
+const loading = ref(false);
+const errorMsg = ref('');
+const successMsg = ref('');
+
+// Categories supported by your Leaflet component
+
+
+onMounted(() => {
+  if (device.value) {
+    name.value = device.value.name || '';
+    category.value = device.value.category || 'car';
+  } else {
+    errorMsg.value = "Device not found.";
+  }
+});
+
+const saveDevice = async () => {
+  if (!name.value.trim()) {
+    errorMsg.value = 'Device name is required.';
+    return;
+  }
+  
+  loading.value = true;
+  errorMsg.value = '';
+  successMsg.value = '';
+
+  try {
+    // Traccar expects the full device object on PUT
+    const updatedDevice = {
+      "id": deviceId,
+      "name": name.value.trim(),
+      "uniqueId": device.value.uniqueId,
+      //"status": "string",
+      "disabled": true,
+      //"lastUpdate": "2019-08-24T14:15:22Z",
+      //"positionId": 0,
+      "groupId": device.value.groupId,
+      "phone": device.value.phone,
+      "model": device.value.model,
+      "contact": device.value.contact,
+      "category": category.value,
+      "attributes": device.value.attributes
+    }
+
+    const update = await request.send({
+      url: `https://${userStore.server_url}/api/devices/${deviceId}`,
+      method: 'PUT',
+      data: updatedDevice,
+
+    });
+
+    if(update){
+      deviceStore.devices[deviceId] = update
+      const catObj = categoryMapping.find(category => category.server === update.category)
+
+      const newMarker = {
+          id: deviceId, 
+          latlon: deviceStore.deviceMarkers[deviceId].latlon,
+          bearing: deviceStore.deviceMarkers[deviceId].bearing,
+          color: deviceStore.deviceMarkers[deviceId].color,
+          label: update.name,
+          type: catObj.map
+        };
+
+        //lgoic not working to replace old marker with new marker
+      delete deviceStore.deviceMarkers[deviceId]
+      deviceStore.deviceMarkers[deviceId] = newMarker
+      //deviceStore.updatedDevice = newMarker
+      router.push("/")
+    } else {
+      userStore.error= true
+    }
+
+  } catch (err) {
+    console.error('Update device error:', err);
+    errorMsg.value = err.message || 'Failed to update device settings.';
+  } finally {
+    loading.value = false;
+  }
+};
+</script>
+
+<template>
+  <div class="flex flex-col min-h-full bg-gray-50 relative z-10 pointer-events-auto">
+    
+    <div class="sticky top-0 z-20 bg-white shadow-sm border-b border-gray-200 p-4 flex items-center safe-top">
+      <button 
+        @click="router.back()" 
+        class="w-10 h-10 flex items-center justify-center text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-full transition-colors mr-2 outline-none"
+      >
+        <i class="fa-solid fa-arrow-left text-lg"></i>
+      </button>
+      <h1 class="text-lg font-bold text-gray-800">Edit Device</h1>
+    </div>
+
+    <div class="p-4 space-y-6 max-w-md mx-auto w-full pb-safe-bottom">
+      
+      <div v-if="!device" class="text-center text-gray-500 py-10">
+        <p>Loading device data...</p>
+      </div>
+
+      <div v-else class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+        <form @submit.prevent="saveDevice" class="space-y-5">
+          
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-2">Device Name</label>
+            <div class="relative">
+              <i class="fa-solid fa-tag absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              <input 
+                v-model="name"
+                type="text" 
+                placeholder="e.g. Work Truck, Personal Car" 
+                class="w-full pl-11 pr-4 py-3.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-700 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all outline-none"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-2">Map Icon (Category)</label>
+            <div class="grid grid-cols-4 gap-3">
+              <div 
+                v-for="cat in categoryMapping" 
+                :key="cat.server"
+                @click="category = cat.server"
+                class="flex flex-col items-center justify-center p-3 rounded-xl border cursor-pointer transition-all active:scale-95"
+                :class="category === cat.server ? 'bg-blue-50 border-blue-500 text-blue-600 shadow-sm' : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100'"
+              >
+                <i :class="`fa-solid ${cat.icon} text-xl mb-1.5`"></i>
+                <span class="text-[9px] font-bold uppercase tracking-wider text-center line-clamp-1">{{ cat.map }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="errorMsg" class="bg-red-50 text-red-600 text-sm p-3 rounded-xl border border-red-100 flex items-center gap-2">
+            <i class="fa-solid fa-circle-exclamation"></i>
+            {{ errorMsg }}
+          </div>
+          
+          <div v-if="successMsg" class="bg-green-50 text-green-600 text-sm p-3 rounded-xl border border-green-100 flex items-center gap-2">
+            <i class="fa-solid fa-circle-check"></i>
+            {{ successMsg }}
+          </div>
+
+          <button 
+            type="submit" 
+            :disabled="loading"
+            class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 outline-none mt-4"
+          >
+            <i v-if="loading" class="fa-solid fa-circle-notch fa-spin"></i>
+            {{ loading ? 'Saving...' : 'Save Changes' }}
+          </button>
+        </form>
+      </div>
+
+    </div>
+  </div>
+</template>

@@ -3,6 +3,7 @@ import { ref, computed, reactive } from 'vue';
 import { useUserStore } from '@/stores/user.js';
 import { useRouter } from 'vue-router';
 import { request } from '@/utils/http'; 
+import { baseUrl, categoryMapping } from '@/utils/variables';
 
 export const useDevicesStore = defineStore('devices', () => {
   const userStore = useUserStore();
@@ -19,9 +20,8 @@ export const useDevicesStore = defineStore('devices', () => {
   const deviceMarkers = reactive({});
   const activeRoute = ref({ line: [], markers: {} });
 
-  // --- Socket Data Handler (Exposed for Lifecycle Service) ---
+  // --- Socket Data Handler ---
   function processSocketData(data) {
-    // console.log('incoming Message: ', JSON.stringify(data))
     if ("devices" in data) {
       data.devices.forEach((d) => {
         if (devices[d.id]) {
@@ -62,6 +62,7 @@ export const useDevicesStore = defineStore('devices', () => {
         const isOnline = device.status === "online";
         const isIgnitionOn = pos.attributes?.ignition;
         const markerColor = (isOnline && isIgnitionOn) ? "#57f491" : "#ffcbd1";
+        const catObj = categoryMapping.find(category => category.server === device.category)
 
         const markerData = {
           id: deviceId, 
@@ -69,7 +70,7 @@ export const useDevicesStore = defineStore('devices', () => {
           bearing: pos.course,
           color: markerColor,
           label: device.name,
-          type: device.category
+          type: catObj.map
         };
 
         if (deviceId in deviceMarkers) {
@@ -80,7 +81,10 @@ export const useDevicesStore = defineStore('devices', () => {
         }
       });
     }
-    loading.value = false;
+    console.log('procced socket message', data)
+    setTimeout(()=>{
+      loading.value = false;
+    }, 1000)
   }
 
   // --- Actions ---
@@ -93,21 +97,33 @@ export const useDevicesStore = defineStore('devices', () => {
       const retArr = await request.send({
         url: `https://${userStore.server_url}/api/devices`,
         isTraccar: true,
-        sessionId: userStore.sessionId
       });
 
       if (Array.isArray(retArr)) {
-        // Redirect to teaser if no devices found
         if (retArr.length < 1) {
              console.log('[Devices] No devices found, redirecting to teaser.');
              router.push('/linkdevice/teaser');
         }
         
-        // Populate state
         retArr.forEach(device => {
           devices[device.id] = device;
         });
       }
+      const exps = await request.send({
+        url: `${baseUrl}/user/device-expiration`,
+        token: userStore.idToken
+      });
+      if(exps && exps.status =="success"){
+        exps.message.forEach((el) => {
+          devices[el.server_ref].expiration = el.expiration
+        })
+      } else{
+        return false
+      }
+      
+
+      // add logic to map and add expiration proprty to deviceStore.devices object
+
     } catch (err) {
       console.error('[Devices] Fetch failed:', err);
       throw err;
@@ -121,14 +137,12 @@ export const useDevicesStore = defineStore('devices', () => {
       const retArr = await request.send({
         url: `https://${userStore.server_url}/api/geofences`,
         isTraccar: true,
-        sessionId: userStore.sessionId
       });
 
+      let allgeos = {}
       if (Array.isArray(retArr)) {
         retArr.forEach(g => {
           let parsedPoints = [];
-          
-          // Parse WKT Polygon String
           if (g.area && g.area.startsWith('POLYGON')) {
             const coordsString = g.area.replace('POLYGON', '').replace(/[()]/g, '').trim();
             parsedPoints = coordsString.split(',').map(coord => {
@@ -137,11 +151,14 @@ export const useDevicesStore = defineStore('devices', () => {
             });
           }
           
-          geofences[g.id] = { name: g.name, points: parsedPoints };
+          allgeos[g.id] = { name: g.name, points: parsedPoints };
+
         });
       }
+      Object.assign(geofences, allgeos)
     } catch (err) {
-      console.error('[Devices] Geofences fetch failed:', err);
+      console.error('[Geofences] Geofences fetch failed:', err);
+      throw err;
     }
   }
 
@@ -149,14 +166,12 @@ export const useDevicesStore = defineStore('devices', () => {
     loading.value = true;
     error.value = null;
     try {
-      // Parallel fetch for speed
       await Promise.all([fetchDevices(), fetchGeofences()]);
-      
-      // Note: Socket connection is now handled by Lifecycle Service
+      return true; // Successfully fetched
     } catch (err) {
       console.error('[Devices] fetchAll failed:', err);
       error.value = err.message || 'Failed to fetch tracking data.';
-    } finally {
+      return false; // Fetch failed
     }
   }
   

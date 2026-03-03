@@ -29,7 +29,7 @@ const goToDetails = (id) => {
 };
 
 const goToSettings = (id) => {
-  router.push(`/devices/${id}`);
+  router.push(`/device/settings/${id}`);
 };
 
 // --- Helpers ---
@@ -141,7 +141,14 @@ const formatDate = (dateString) => {
     
     <div class="sticky top-0 z-20 bg-white shadow-sm border-b border-gray-200">
       <div class="p-4">
-        <h1 class="text-xl font-bold text-gray-800 mb-3">Overview</h1>
+        <div class="flex justify-between">
+          <h1 class="text-xl font-bold text-gray-800 mb-3">Overview</h1>
+          <RouterLink to="/linkdevice/start" class="w-10 h-10 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center shrink-0" >
+            <i class="fa-solid fa-plus"></i>
+          </RouterLink>
+          
+        </div>
+        
         
         <div class="flex space-x-6 overflow-x-auto no-scrollbar mb-4">
           <button class="pb-3 text-sm font-semibold whitespace-nowrap transition-colors border-b-2 flex items-center gap-2 outline-none cursor-pointer border-blue-600 text-blue-600">
@@ -190,120 +197,133 @@ const formatDate = (dateString) => {
         <p class="text-sm">No trackers found.</p>
       </div>
 
-      <div 
-        v-for="device in processedDevices" 
-        :key="device.id"
-        @click="toggleSelection(device.id)"
-        class="bg-white rounded-xl shadow-sm border p-4 relative overflow-hidden transition-all duration-200 cursor-pointer"
-        :class="[
-          getWarnings(device).length > 0 ? 'border-red-200' : 'border-gray-200',
-          deviceStore.deviceSelected === device.id ? 'ring-2 ring-blue-500 shadow-md' : 'hover:shadow-md'
-        ]"
-      >
-        <div class="flex items-start mb-3">
-          <div class="p-2 rounded-full bg-blue-50 text-blue-500 mr-3">
-            <i class="fa-solid fa-truck text-lg"></i>
-          </div>
-
-          <div class="flex-1 min-w-0">
-            <h2 class="text-lg font-bold text-gray-800 leading-tight truncate">{{ device.name || 'Unnamed Tracker' }}</h2>
-            <p class="text-[11px] text-gray-400 font-mono mt-0.5 truncate">IMEI: {{ device.uniqueId }}</p>
-          </div>
-
-          <div class="flex items-center space-x-1.5 px-2 py-1 rounded-md border shrink-0 ml-2"
-               :class="isOffline(device) ? 'bg-red-50 border-red-100 text-red-600' : 'bg-green-50 border-green-100 text-green-600'">
-            <span class="relative flex h-2.5 w-2.5">
-              <span v-if="!isOffline(device)" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-              <span class="relative inline-flex rounded-full h-2.5 w-2.5" :class="isOffline(device) ? 'bg-red-500' : 'bg-green-500'"></span>
-            </span>
-            <span class="text-[10px] font-bold uppercase tracking-wider">
-              {{ isOffline(device) ? 'OFFLINE' : 'ONLINE' }}
-            </span>
-          </div>
-        </div>
-
-        <div v-if="getWarnings(device).length > 0" class="mb-4 bg-red-50 border border-red-100 rounded-lg p-2.5 flex items-start gap-2">
-          <i class="fa-solid fa-triangle-exclamation text-red-500 mt-0.5 text-xs"></i>
-          <div class="flex flex-col">
-            <span v-for="(warn, idx) in getWarnings(device)" :key="idx" class="text-xs font-semibold text-red-700 leading-tight">
-              {{ warn }}
-            </span>
-          </div>
-        </div>
-
-        <div :class="{ 'opacity-60 saturate-50': isOffline(device) }">
-          
-          <div class="grid grid-cols-2 gap-2 mb-4">
-            <div class="flex items-center text-sm text-gray-600 bg-gray-50 p-2 rounded-lg">
-              <div class="w-6 text-blue-500 text-center"><i class="fa-solid fa-gauge-high"></i></div>
-              <span class="font-medium ml-1">{{ device.speed ? Math.round(device.speed * 1.852) : 0 }} km/h</span>
+      <div v-else>
+        <div 
+          v-for="device in processedDevices" 
+          :key="device.id"
+          @click="toggleSelection(device.id)"
+          class="bg-white rounded-xl shadow-sm border p-4 my-2 relative overflow-hidden transition-all duration-200 cursor-pointer"
+          :class="[
+            getWarnings(device).length > 0 ? 'border-red-200' : 'border-gray-200',
+            deviceStore.deviceSelected === device.id ? 'ring-2 ring-blue-500 shadow-md' : 'hover:shadow-md'
+          ]"
+        >
+          <div class="flex items-start mb-3">
+            <div class="p-2 rounded-full bg-blue-50 text-blue-500 mr-3">
+              <i class="fa-solid fa-truck text-lg"></i>
             </div>
+
+            <div class="flex-1 min-w-0">
+              <h2 class="text-lg font-bold text-gray-800 leading-tight truncate">{{ device.name || 'Unnamed Tracker' }}</h2>
+              <p class="text-[11px] text-gray-400 font-mono mt-0.5 truncate">IMEI: {{ device.uniqueId }}</p>
+            </div>
+
+            <div class="flex items-center space-x-1.5 px-2 py-1 rounded-md border shrink-0 ml-2"
+                :class="isOffline(device) ? 'bg-red-50 border-red-100 text-red-600' : 'bg-green-50 border-green-100 text-green-600'">
+              <span class="relative flex h-2.5 w-2.5">
+                <span v-if="!isOffline(device)" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                <span class="relative inline-flex rounded-full h-2.5 w-2.5" :class="isOffline(device) ? 'bg-red-500' : 'bg-green-500'"></span>
+              </span>
+              <span class="text-[10px] font-bold uppercase tracking-wider">
+                {{ isOffline(device) ? 'OFFLINE' : 'ONLINE' }}
+              </span>
+            </div>
+          </div>
+
+          <div v-if="getWarnings(device).length > 0" class="mb-4 bg-red-50 border border-red-100 rounded-lg p-2.5 flex items-start gap-2">
+            <i class="fa-solid fa-triangle-exclamation text-red-500 mt-0.5 text-xs"></i>
+            <div class="flex flex-col">
+              <span v-for="(warn, idx) in getWarnings(device)" :key="idx" class="text-xs font-semibold text-red-700 leading-tight">
+                {{ warn }}
+              </span>
+            </div>
+          </div>
+
+          <div :class="{ 'opacity-60 saturate-50': isOffline(device) }">
             
-            <div class="flex items-center text-sm text-gray-600 bg-gray-50 p-2 rounded-lg">
-              <div class="w-6 text-center" :class="device.ignition ? 'text-green-500' : 'text-gray-400'">
-                <i class="fa-solid fa-key"></i>
+            <div class="grid grid-cols-2 gap-2 mb-4">
+              <div class="flex items-center text-sm text-gray-600 bg-gray-50 p-2 rounded-lg">
+                <div class="w-6 text-blue-500 text-center"><i class="fa-solid fa-gauge-high"></i></div>
+                <span class="font-medium ml-1">{{ device.speed ? Math.round(device.speed * 1.852) : 0 }} km/h</span>
               </div>
-              <span class="font-medium ml-1">{{ device.ignition ? 'On' : 'Off' }}</span>
+              
+              <div class="flex items-center text-sm text-gray-600 bg-gray-50 p-2 rounded-lg">
+                <div class="w-6 text-center" :class="device.ignition ? 'text-green-500' : 'text-gray-400'">
+                  <i class="fa-solid fa-key"></i>
+                </div>
+                <span class="font-medium ml-1">{{ device.ignition ? 'On' : 'Off' }}</span>
+              </div>
+
+              <div class="flex items-center text-sm text-gray-600 bg-gray-50 p-2 rounded-lg">
+                <div class="w-6 text-yellow-500 text-center"><i class="fa-solid fa-bolt"></i></div>
+                <span class="font-medium ml-1">{{ device.power !== undefined ? `${Number(device.power).toFixed(2)}V` : 'N/A' }}</span>
+              </div>
+
+              <div class="flex items-center text-sm text-gray-600 bg-gray-50 p-2 rounded-lg">
+                <div class="w-6 text-green-500 text-center"><i class="fa-solid fa-battery-full"></i></div>
+                <span class="font-medium ml-1">{{ getBatteryPercentage(device.battery) }}</span>
+              </div>
+              
+              <div class="flex items-center text-sm text-gray-600 bg-gray-50 p-2 rounded-lg">
+                <div class="w-6 text-purple-500 text-center"><i class="fa-solid fa-signal"></i></div>
+                <span class="font-medium ml-1 uppercase text-xs">{{ getSignalLevel(device.signalLevel) }}</span>
+              </div>
+
+              <div class="flex items-center text-sm text-gray-600 bg-gray-50 p-2 rounded-lg">
+                <div class="w-6 text-center" :class="getGpsQuality(device).color">
+                  <i class="fa-solid" :class="getGpsQuality(device).icon"></i>
+                </div>
+                <span class="font-medium ml-1 text-xs">{{ getGpsQuality(device).label }}</span>
+                <span v-if="device.sat" class="ml-auto text-[10px] text-gray-400 font-mono">{{ device.sat }} sats</span>
+              </div>
             </div>
 
-            <div class="flex items-center text-sm text-gray-600 bg-gray-50 p-2 rounded-lg">
-              <div class="w-6 text-yellow-500 text-center"><i class="fa-solid fa-bolt"></i></div>
-              <span class="font-medium ml-1">{{ device.power !== undefined ? `${Number(device.power).toFixed(2)}V` : 'N/A' }}</span>
+            <div class="pt-3 border-t border-gray-100">
+              <div class="flex items-start text-xs text-gray-600 mb-2">
+                <div class="w-5 mt-0.5 text-gray-400 text-center"><i class="fa-solid fa-location-dot"></i></div>
+                <span class="line-clamp-1 leading-tight">{{ device.address || 'Address calculating...' }}</span>
+              </div>
+              <div class="flex items-center text-[10px] text-gray-400 pl-1">
+                <i class="fa-regular fa-clock mr-1.5"></i>
+                Updated: {{ formatDate(device.lastUpdate) }}
+              </div>
             </div>
 
-            <div class="flex items-center text-sm text-gray-600 bg-gray-50 p-2 rounded-lg">
-              <div class="w-6 text-green-500 text-center"><i class="fa-solid fa-battery-full"></i></div>
-              <span class="font-medium ml-1">{{ getBatteryPercentage(device.battery) }}</span>
-            </div>
+          </div> 
+
+          <div v-if="deviceStore.deviceSelected === device.id" class="mt-4 pt-3 border-t border-gray-100 flex justify-between items-center animate-fade-in gap-2">
             
-            <div class="flex items-center text-sm text-gray-600 bg-gray-50 p-2 rounded-lg">
-              <div class="w-6 text-purple-500 text-center"><i class="fa-solid fa-signal"></i></div>
-              <span class="font-medium ml-1 uppercase text-xs">{{ getSignalLevel(device.signalLevel) }}</span>
-            </div>
+            <button @click.stop="goToSettings(device.id)" class="flex-1 flex flex-col items-center justify-center bg-gray-50 hover:bg-gray-100 py-2 rounded-lg transition-colors group">
+              <i class="fa-solid fa-gear text-lg text-gray-500 group-hover:text-blue-600 mb-1"></i>
+              <span class="text-[10px] font-bold text-gray-600 group-hover:text-blue-600">Settings</span>
+            </button>
 
-            <div class="flex items-center text-sm text-gray-600 bg-gray-50 p-2 rounded-lg">
-              <div class="w-6 text-center" :class="getGpsQuality(device).color">
-                <i class="fa-solid" :class="getGpsQuality(device).icon"></i>
-              </div>
-              <span class="font-medium ml-1 text-xs">{{ getGpsQuality(device).label }}</span>
-              <span v-if="device.sat" class="ml-auto text-[10px] text-gray-400 font-mono">{{ device.sat }} sats</span>
-            </div>
+            <button @click.stop="goToHistory(device.uniqueId)" class="flex-1 flex flex-col items-center justify-center bg-gray-50 hover:bg-gray-100 py-2 rounded-lg transition-colors group">
+              <i class="fa-solid fa-clock-rotate-left text-lg text-gray-500 group-hover:text-blue-600 mb-1"></i>
+              <span class="text-[10px] font-bold text-gray-600 group-hover:text-blue-600">History</span>
+            </button>
+
+            <button @click.stop="goToDetails(device.id)" class="flex-1 flex flex-col items-center justify-center bg-gray-50 hover:bg-gray-100 py-2 rounded-lg transition-colors group">
+              <i class="fa-solid fa-circle-info text-lg text-gray-500 group-hover:text-blue-600 mb-1"></i>
+              <span class="text-[10px] font-bold text-gray-600 group-hover:text-blue-600">Details</span>
+            </button>
+
           </div>
-
-          <div class="pt-3 border-t border-gray-100">
-            <div class="flex items-start text-xs text-gray-600 mb-2">
-              <div class="w-5 mt-0.5 text-gray-400 text-center"><i class="fa-solid fa-location-dot"></i></div>
-              <span class="line-clamp-1 leading-tight">{{ device.address || 'Address calculating...' }}</span>
-            </div>
-            <div class="flex items-center text-[10px] text-gray-400 pl-1">
-              <i class="fa-regular fa-clock mr-1.5"></i>
-              Updated: {{ formatDate(device.lastUpdate) }}
-            </div>
-          </div>
-
-        </div> 
-
-        <div v-if="deviceStore.deviceSelected === device.id" class="mt-4 pt-3 border-t border-gray-100 flex justify-between items-center animate-fade-in gap-2">
-          
-          <button @click.stop="goToSettings(device.id)" class="flex-1 flex flex-col items-center justify-center bg-gray-50 hover:bg-gray-100 py-2 rounded-lg transition-colors group">
-            <i class="fa-solid fa-gear text-lg text-gray-500 group-hover:text-blue-600 mb-1"></i>
-            <span class="text-[10px] font-bold text-gray-600 group-hover:text-blue-600">Settings</span>
-          </button>
-
-          <button @click.stop="goToHistory(device.uniqueId)" class="flex-1 flex flex-col items-center justify-center bg-gray-50 hover:bg-gray-100 py-2 rounded-lg transition-colors group">
-            <i class="fa-solid fa-clock-rotate-left text-lg text-gray-500 group-hover:text-blue-600 mb-1"></i>
-            <span class="text-[10px] font-bold text-gray-600 group-hover:text-blue-600">History</span>
-          </button>
-
-          <button @click.stop="goToDetails(device.id)" class="flex-1 flex flex-col items-center justify-center bg-gray-50 hover:bg-gray-100 py-2 rounded-lg transition-colors group">
-            <i class="fa-solid fa-circle-info text-lg text-gray-500 group-hover:text-blue-600 mb-1"></i>
-            <span class="text-[10px] font-bold text-gray-600 group-hover:text-blue-600">Details</span>
-          </button>
 
         </div>
+        
+        <RouterLink to="/addgeo" class="bg- my-2 rounded-xl shadow-sm border border-gray-200 p-4 flex justify-center items-center transition-all hover:shadow-md">
+          <div class="flex items-center gap-4">
 
+            <div class="w-10 h-10 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center shrink-0">
+              <i class="fa-solid fa-plus"></i>
+            </div>
+            <div>
+              <h3 class="font-bold text-gray-800 leading-tight">NEW DEVICE</h3>
+            </div>
+          </div>
+        </RouterLink>
       </div>
-      
     </div>
   </div>
 </template>

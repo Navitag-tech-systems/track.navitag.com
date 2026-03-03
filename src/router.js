@@ -3,6 +3,7 @@ import { useUserStore } from '@/stores/user'
 
 import trackView from '@/views/map/index.vue'
 import geoView from '@/views/map/geofence.vue'
+import geoEdit from '@/views/map/geofenceEdit.vue'
 
 import LoginView from '@/views/login/index.vue'
 import SignupView from '@/views/signup/index.vue'
@@ -16,6 +17,8 @@ import LinkDeviceLink from '@/views/linkDevice/link.vue'
 import LinkDeviceEnable from '@/views/linkDevice/enable.vue'
 import LinkDeviceSuccess from '@/views/linkDevice/success.vue'
 import LinkDeviceTeaser from '@/views/linkDevice/addOrBuy.vue'
+
+import DeviceSettings from './views/lists/deviceSettings.vue'
 
 import ListDevices from '@/views/lists/devices.vue'
 import ListGeofences from '@/views/lists/geofences.vue'
@@ -43,6 +46,12 @@ const router = createRouter({
       name: 'geoView',
       component: geoView,
       meta: { requiresAuth: true, mapRoute: 'geo-new', activeTab: 'map'}
+    },
+    {
+      path: '/editgeo/:mode/:id',
+      //name: 'geoEdit',
+      component: geoEdit,
+      meta: { requiresAuth: true, mapRoute: true, activeTab: 'map'}
     },
     {
       path: '/linkdevice/select',
@@ -111,12 +120,17 @@ const router = createRouter({
       meta: { requiresAuth: true, activeTab: 'history' } 
     },
     {
-      path: '/history/:imei/:date',
+      path: '/history/:imei/:date/:mode',
       name: 'history-report',
       component: historyRoute,
-      meta: { requiresAuth: true, activeTab: 'history', mapRoute: 'route' } 
+      meta: { requiresAuth: true, activeTab: 'history', mapRoute: true } 
     },
-
+    {
+      path: '/device/settings/:id',
+      name: 'device-settings',
+      component: DeviceSettings,
+      meta: {requiresAuth: true, activeTab: 'list'}
+    },
     {
       path: '/linkdevice/teaser',
       name: 'linkdevice-success',
@@ -147,9 +161,10 @@ const router = createRouter({
 
 router.beforeEach((to, from, next) => {
   const userStore = useUserStore()
-  const isAuthenticated = userStore.isLoggedIn
+  const isAuthenticated = userStore.isLoggedIn 
 
-  if (to.meta.requiresAuth && !isAuthenticated && !userStore.loading) {
+  if (to.meta.requiresAuth && userStore.user === false) {
+    console.log('router login redirect')
     next('/login')
   } else if (['login', 'signup', 'forgot-password'].includes(to.name) && isAuthenticated) {
     next('/')
