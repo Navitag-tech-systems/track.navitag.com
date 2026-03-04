@@ -312,7 +312,7 @@ const formatDate = (dateString) => {
 
         </div>
         
-        <RouterLink to="/addgeo" class="bg- my-2 rounded-xl shadow-sm border border-gray-200 p-4 flex justify-center items-center transition-all hover:shadow-md">
+        <RouterLink to="/linkdevice/start" class="bg- my-2 rounded-xl shadow-sm border border-gray-200 p-4 flex justify-center items-center transition-all hover:shadow-md">
           <div class="flex items-center gap-4">
 
             <div class="w-10 h-10 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center shrink-0">

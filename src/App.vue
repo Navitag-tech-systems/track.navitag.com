@@ -68,7 +68,7 @@ function trackMapMode(mode){
 
     <main 
       class="flex-1 w-full relative"
-      :class="showNav ? 'pb-[calc(4rem+env(safe-area-inset-bottom))]' : ''"
+      :class="showNav ? 'pb-[calc(48px+env(safe-area-inset-bottom))]' : ''"
     >
       <div 
         class="absolute inset-0 z-0 transition-opacity duration-300"

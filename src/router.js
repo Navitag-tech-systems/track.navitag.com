@@ -29,6 +29,9 @@ import historyRoute from '@/views/history/dailyRoute.vue'
 
 import account from '@/views/account/index.vue'
 
+import dataPlans from '@/views/shop/dataPlans.vue'
+import catalog from '@/views/shop/catalog.vue'
+
 
 
 const router = createRouter({
@@ -130,6 +133,18 @@ const router = createRouter({
       name: 'device-settings',
       component: DeviceSettings,
       meta: {requiresAuth: true, activeTab: 'list'}
+    },
+    {
+      path: '/data-plans',
+      name: 'data-plans',
+      component: dataPlans,
+      meta: {requiresAuth: true, activeTab: 'shop'}
+    },
+    {
+      path: '/app-shop',
+      name: 'app-shop',
+      component: catalog,
+      meta: {requiresAuth: true, activeTab: 'shop'}
     },
     {
       path: '/linkdevice/teaser',
