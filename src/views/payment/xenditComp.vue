@@ -2,9 +2,12 @@
 import { ref, onMounted, onBeforeUnmount } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { XenditComponents } from 'xendit-components-web';
+import { useCartStore } from '@/stores/cart';
+
 
 const route = useRoute();
 const router = useRouter();
+const cartStore = useCartStore()
 
 // Retrieve the session ID from the route parameter
 const sessionId = route.params.session;
@@ -46,7 +49,9 @@ onMounted(() => {
   } catch (err) {
     console.error('Xendit Initialization Error:', err);
     errorMessage.value = "Failed to load the secure payment form.";
-  }
+  } finally(
+    cartStore.loading = false;
+  )
 });
 
 const submitPayment = () => {

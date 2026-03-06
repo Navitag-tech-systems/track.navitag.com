@@ -32,7 +32,7 @@ import account from '@/views/account/index.vue'
 import dataPlans from '@/views/shop/dataPlans.vue'
 import catalog from '@/views/shop/catalog.vue'
 import shipping from '@/views/shop/shipping.vue'
-
+import xenditComp from '@/views/payment/xenditComp.vue'
 
 const router = createRouter({
   // createWebHistory works for Capacitor apps (http://localhost or capacitor://)
@@ -148,6 +148,12 @@ const router = createRouter({
     },
     {
       path: '/shipping/:type',
+      name: 'shipping',
+      component: shipping,
+      meta: {requiresAuth:true, activeTab: 'shop'}
+    },
+    {
+      path: '/payment/:session',
       name: 'shipping',
       component: shipping,
       meta: {requiresAuth:true, activeTab: 'shop'}

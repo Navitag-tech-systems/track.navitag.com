@@ -106,13 +106,17 @@ export const useCartStore = defineStore('cart', () => {
   const generatePayment = async (payload) => {
     const userStore = useUserStore()
     console.log('start payment session component', payload)
-    xenditSession = await request.send({
+    const xenditSession = await request.send({
       url: `${baseUrl}/transaction/create`,
       method: 'POST',
       token: userStore.idToken,
       data: payload
     })
-    console.log('xendit response:', xenditSession)
+    if(xenditSession.status == 'success'){
+      router.push(`/payment/${xenditSession.data.components_sdk_key}`)
+    } else {
+      console.log('xendit error', xenditSession)
+    }
   }
 
   return {
