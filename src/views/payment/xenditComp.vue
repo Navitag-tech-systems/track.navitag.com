@@ -1,11 +1,11 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { useCartStore } from '@/stores/cart';
+import { useCartStore } from '@/stores/cart.js';
 
 const route = useRoute();
 const router = useRouter();
-const cartStore = useCartStore()
+const cartStore = useCartStore();
 
 // Retrieve the session ID from the route parameter
 const sessionId = route.params.session;
@@ -15,49 +15,63 @@ const xenditInstance = ref(null);
 const isProcessing = ref(false);
 const errorMessage = ref('');
 
+const initializeXendit = () => {
+  try {
+    // 1. Initialize the SDK with the key provided via the route
+    // (If you need local development with mock data, change this to new window.XenditComponentsTest({}))
+    xenditInstance.value = new window.XenditComponents({ 
+      componentsSdkKey: sessionId 
+    });
+
+    // 2. Create the channel picker component automatically based on session config
+    const htmlElement = xenditInstance.value.createChannelPickerComponent();
+    
+    // Mount it to the DOM
+    if (paymentContainer.value) {
+      paymentContainer.value.replaceChildren(htmlElement);
+    }
+
+    // 3. Listen to transaction events
+    xenditInstance.value.addEventListener('session-complete', () => {
+      isProcessing.value = false;
+      // Redirect to a success page or back to home (update as needed)
+      router.replace({ path: '/', query: { payment: 'success' } }); 
+    });
+
+    xenditInstance.value.addEventListener('session-expired-or-canceled', () => {
+      isProcessing.value = false;
+      errorMessage.value = "This payment session has expired or was canceled.";
+    });
+
+  } catch (err) {
+    console.error('Xendit Initialization Error:', err);
+    errorMessage.value = "Failed to load the secure payment form.";
+  } finally {
+    cartStore.loading = false;
+  }
+};
+
 onMounted(() => {
-  // Dynamically load the Xendit SDK script from their official CDN
-  const script = document.createElement('script');
-  script.src = 'https://assets.xendit.co/components/1/index.umd.js';
+  const scriptId = 'xendit-sdk-script';
+  let script = document.getElementById(scriptId);
+
+  // If the script tag is already in the <head> (e.g., Hot Module Reloading)
+  if (script) {
+    if (window.XenditComponents) {
+      initializeXendit();
+    } else {
+      script.addEventListener('load', initializeXendit);
+    }
+    return;
+  }
+
+  // If not in the <head>, create and append the EXACT version from the docs
+  script = document.createElement('script');
+  script.id = scriptId;
+  script.src = 'https://assets.xendit.co/components/v0.0.13/index.umd.js'; // Updated CDN URL
   script.async = true;
 
-  script.onload = () => {
-    try {
-      // 1. Initialize the SDK with the key provided via the route
-      // Replaced XenditComponents with window.XenditComponents since it's loaded via CDN
-      xenditInstance.value = new window.XenditComponents({ 
-        componentsSdkKey: sessionId 
-      });
-
-      // 2. Fetch active channels and mount the UI (CARDS channel)
-      const channel = xenditInstance.value.getActiveChannels().find(c => c.channelCode === 'CARDS');
-      
-      if (channel) {
-        const htmlElement = xenditInstance.value.createChannelPickerComponent(channel);
-        paymentContainer.value.replaceChildren(htmlElement);
-      } else {
-        errorMessage.value = "Card payment channel is not available for this session.";
-      }
-
-      // 3. Listen to transaction events
-      xenditInstance.value.addEventListener('session-complete', () => {
-        isProcessing.value = false;
-        // Redirect to a success page or back to home (update as needed)
-        router.replace({ path: '/', query: { payment: 'success' } }); 
-      });
-
-      xenditInstance.value.addEventListener('session-expired-or-canceled', () => {
-        isProcessing.value = false;
-        errorMessage.value = "This payment session has expired or was canceled.";
-      });
-
-    } catch (err) {
-      console.error('Xendit Initialization Error:', err);
-      errorMessage.value = "Failed to load the secure payment form.";
-    } finally {
-      cartStore.loading = false;
-    }
-  };
+  script.onload = initializeXendit;
 
   script.onerror = () => {
     console.error('Failed to load Xendit script.');
@@ -72,7 +86,7 @@ const submitPayment = () => {
   if (!xenditInstance.value) return;
   isProcessing.value = true;
   errorMessage.value = '';
-  xenditInstance.value.submit(); // Triggers the internal SDK validation and submission
+  xenditInstance.value.submit(); 
 };
 
 onBeforeUnmount(() => {
@@ -84,7 +98,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="flex flex-col h-full bg-gray-50">
+  <div class="flex flex-col h-full bg-gray-50 z-20 relative">
     
     <div class="bg-white p-4 shadow-sm flex items-center safe-top">
       <button @click="router.back()" class="text-gray-600 mr-4 cursor-pointer hover:text-gray-900 outline-none">
@@ -96,7 +110,7 @@ onBeforeUnmount(() => {
     <div class="flex-1 p-4 overflow-y-auto">
       <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 max-w-md mx-auto mt-2">
         <h2 class="text-lg font-bold text-gray-800 mb-1">Payment Details</h2>
-        <p class="text-sm text-gray-500 mb-5">Enter your card details to complete the purchase.</p>
+        <p class="text-sm text-gray-500 mb-5">Enter your payment details to complete the purchase.</p>
         
         <div v-if="errorMessage" class="mb-5 text-sm p-3 rounded-xl text-red-600 bg-red-50 border border-red-200 flex items-center gap-2">
           <i class="fa-solid fa-triangle-exclamation text-lg"></i>
@@ -112,7 +126,7 @@ onBeforeUnmount(() => {
 
         <button 
           @click="submitPayment"
-          :disabled="isProcessing || errorMessage !== ''"
+          :disabled="isProcessing || errorMessage !== '' || !xenditInstance"
           class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition-colors shadow-sm disabled:opacity-50 flex items-center justify-center gap-2 active:scale-[0.98] outline-none"
         >
           <i v-if="isProcessing" class="fa-solid fa-circle-notch fa-spin"></i>
