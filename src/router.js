@@ -31,7 +31,7 @@ import account from '@/views/account/index.vue'
 
 import dataPlans from '@/views/shop/dataPlans.vue'
 import catalog from '@/views/shop/catalog.vue'
-
+import shipping from '@/views/shop/shipping.vue'
 
 
 const router = createRouter({
@@ -145,6 +145,12 @@ const router = createRouter({
       name: 'app-shop',
       component: catalog,
       meta: {requiresAuth: true, activeTab: 'shop'}
+    },
+    {
+      path: '/shipping/:type',
+      name: 'shipping',
+      component: shipping,
+      meta: {requiresAuth:true, activeTab: 'shop'}
     },
     {
       path: '/linkdevice/teaser',

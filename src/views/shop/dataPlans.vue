@@ -3,19 +3,20 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useDevicesStore } from '@/stores/devices.js';
 import { useUserStore } from '@/stores/user.js';
+import { useCartStore } from '@/stores/cart.js'; // <-- Import Cart Store
 import { request } from '@/utils/http.js';
 import { baseUrl } from '@/utils/variables.js';
 
 const router = useRouter();
 const deviceStore = useDevicesStore();
 const userStore = useUserStore();
+const cartStore = useCartStore(); // <-- Instantiate Cart Store
 
 // --- State ---
-const selectedPlans = ref({}); 
 const searchQuery = ref('');
 const sortBy = ref('name');
 const availablePlans = ref({}); 
-const showInfoModal = ref(false); // State for the info modal
+const showInfoModal = ref(false);
 
 // --- Helpers ---
 const isValidDate = (dateString) => {
@@ -99,12 +100,7 @@ const processedDevices = computed(() => {
   return arr;
 });
 
-const checkoutTotal = computed(() => {
-  // Calculate total using the dynamic price_usd
-  return Object.values(selectedPlans.value).reduce((total, plan) => total + (plan.price_usd || 0), 0);
-});
-
-// Helper to get plans specific to a device's model (now an O(1) lookup)
+// Helper to get plans specific to a device's model
 const getDevicePlans = (model) => {
   if (!model || !availablePlans.value[model]) return [];
   return availablePlans.value[model];
@@ -113,6 +109,7 @@ const getDevicePlans = (model) => {
 // --- Actions ---
 
 const fetchPlans = async () => {
+  cartStore.loading = true
   if (uniqueModels.value.length === 0) return;
   
   try {
@@ -139,25 +136,19 @@ const fetchPlans = async () => {
         groupedPlans[model].sort((a, b) => a.months - b.months);
       }
 
-      console.log(groupedPlans)
       availablePlans.value = groupedPlans;
     }
   } catch (error) {
     console.error('Failed to fetch data plans:', error);
-  }
-};
-
-const selectPlan = (deviceId, plan) => {
-  if (selectedPlans.value[deviceId]?.months === plan.months) {
-    delete selectedPlans.value[deviceId];
-  } else {
-    selectedPlans.value[deviceId] = plan;
+  } finally{
+    cartStore.loading = false
   }
 };
 
 // --- Lifecycle ---
 onMounted(() => {
   fetchPlans();
+
 });
 
 // Watch: in case devices finish loading *after* the view mounts
@@ -218,7 +209,7 @@ watch(uniqueModels, (newVal, oldVal) => {
       </div>
     </div>
 
-    <div class="p-4 space-y-4 pb-24">
+    <div class="p-4 space-y-4 pb-35">
       
       <div v-if="processedDevices.length === 0" class="text-center text-gray-500 py-10 bg-white rounded-xl border border-gray-200 shadow-sm">
         <i class="fa-solid fa-satellite-dish text-3xl mb-3 text-gray-300"></i>
@@ -229,7 +220,7 @@ watch(uniqueModels, (newVal, oldVal) => {
         v-for="device in processedDevices" 
         :key="device.id"
         class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 transition-all"
-        :class="{ 'ring-2 ring-blue-500 border-blue-500': selectedPlans[device.id] }"
+        :class="{ 'ring-2 ring-blue-500 border-blue-500': cartStore.planCart[device.id] }"
       >
         <div class="flex items-start justify-between mb-4">
           <div class="flex items-center gap-3">
@@ -255,14 +246,14 @@ watch(uniqueModels, (newVal, oldVal) => {
           <button 
             v-for="plan in getDevicePlans(device.model)" 
             :key="plan.months"
-            @click="selectPlan(device.id, plan)"
+            @click="cartStore.togglePlan(device.id, plan)"
             class="py-2 px-1 rounded-lg border flex flex-col items-center transition-colors outline-none cursor-pointer active:scale-95"
-            :class="selectedPlans[device.id]?.months === plan.months 
+            :class="cartStore.planCart[device.id]?.months === plan.months 
               ? 'bg-blue-50 border-blue-500 text-blue-700 font-bold shadow-inner' 
               : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'"
           >
             <span class="text-xs mb-1">+{{ plan.months }} Months</span>
-            <span class="text-[11px]" :class="selectedPlans[device.id]?.months === plan.months ? 'text-blue-600' : 'text-gray-400'">
+            <span class="text-[11px]" :class="cartStore.planCart[device.id]?.months === plan.months ? 'text-blue-600' : 'text-gray-400'">
               ${{ plan.price_usd }}
             </span>
           </button>
@@ -275,19 +266,19 @@ watch(uniqueModels, (newVal, oldVal) => {
     </div>
 
     <div 
-      v-if="Object.keys(selectedPlans).length > 0"
+      v-if="cartStore.planCount > 0"
       class="fixed bottom-[calc(48px+env(safe-area-inset-bottom))] left-0 right-0 p-4 bg-white border-t border-gray-200 shadow-[0_-4px_10px_-2px_rgba(0,0,0,0.1)] z-30 transform transition-transform"
     >
       <div class="flex justify-between items-center mb-3 px-1">
         <span class="text-sm text-gray-600 font-semibold">
-          Renewing {{ Object.keys(selectedPlans).length }}
+          Renewing {{ cartStore.planCount }}
         </span>
         <span class="text-lg font-bold text-gray-800">
-          TOTAL: ${{ checkoutTotal }}
+          TOTAL: ${{ cartStore.planTotal }}
         </span>
       </div>
-      <button class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 active:scale-[0.98]">
-        Proceed to Checkout
+      <button @click="cartStore.checkout('plan')" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 active:scale-[0.98]">
+        Checkout
         <i class="fa-solid fa-cart-shopping"></i>
       </button>
     </div>
@@ -308,7 +299,7 @@ watch(uniqueModels, (newVal, oldVal) => {
             <div class="text-sm text-gray-600 space-y-3 leading-relaxed">
               <p>
                 <strong>What is a Data Plan?</strong><br/>
-                Your devices relies on wireless networks to transmit thier location to Navitag servers. A data plan allows your device to connect with various global network service providers for continuous telemery reporting.
+                Your devices relies on wireless networks to transmit their location to Navitag servers. A data plan allows your device to connect with various global network service providers for continuous telemetry reporting.
               </p>
               <p>
                 <strong>What does this purchase include?</strong><br/>
@@ -319,6 +310,13 @@ watch(uniqueModels, (newVal, oldVal) => {
                 These data plans are one-time purchases and <em>do not automatically renew</em>. You will receive a notification before your device expires so you can choose whether or not to extend it again.
               </p>
             </div>
+            
+            <button 
+              @click="showInfoModal = false"
+              class="mt-6 w-full py-3 px-4 bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold rounded-xl text-sm transition-colors outline-none"
+            >
+              Understood
+            </button>
           </div>
         </div>
       </div>

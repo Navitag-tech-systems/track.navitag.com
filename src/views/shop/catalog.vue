@@ -2,15 +2,16 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '@/stores/user.js';
+import { useCartStore } from '@/stores/cart.js'; // <-- Import Cart Store
 import { request } from '@/utils/http.js';
 import { baseUrl } from '@/utils/variables.js';
 
 const router = useRouter();
 const userStore = useUserStore();
+const cartStore = useCartStore(); // <-- Instantiate Cart Store
 
 // --- State ---
 const products = ref([]);
-const loading = ref(true);
 const error = ref('');
 
 const searchQuery = ref('');
@@ -25,12 +26,9 @@ const selectedGalleryProduct = ref(null);
 const galleryScrollContainer = ref(null);
 const currentGalleryIndex = ref(0);
 
-// Cart State: { productId: quantity }
-const cart = ref({});
-
 // --- Fetch Data ---
 const fetchProducts = async () => {
-  loading.value = true;
+  cartStore.loading = true;
   error.value = '';
   
   try {
@@ -50,7 +48,7 @@ const fetchProducts = async () => {
     console.error('Failed to fetch products:', err);
     error.value = 'Failed to load products. Please try again.';
   } finally {
-    loading.value = false;
+    cartStore.loading = false;
   }
 };
 
@@ -88,26 +86,10 @@ const processedProducts = computed(() => {
   return arr;
 });
 
-// Cart Computeds
-const cartTotal = computed(() => {
-  let total = 0;
-  for (const [id, quantity] of Object.entries(cart.value)) {
-    const product = products.value.find(p => p.id === id);
-    if (product) {
-      total += (product.price_usd || 0) * quantity;
-    }
-  }
-  return total;
-});
-
-const cartCount = computed(() => {
-  return Object.values(cart.value).reduce((sum, qty) => sum + qty, 0);
-});
-
 // --- Actions ---
 const getImagesArray = (imagesString) => {
   if (!imagesString) return [];
-  return imagesString.split(',').map(uuid => `${baseUrl}/images/${uuid.trim()}`);
+  return imagesString.split(',').map(uuid => `https://api.navitag.net/dump/${uuid.trim()}`);
 };
 
 const getFirstImageUrl = (imagesString) => {
@@ -146,29 +128,6 @@ const scrollGallery = (direction) => {
   if (!galleryScrollContainer.value) return;
   const width = galleryScrollContainer.value.clientWidth;
   galleryScrollContainer.value.scrollBy({ left: direction * width, behavior: 'smooth' });
-};
-
-// Cart
-const addToCart = (product) => {
-  if (cart.value[product.id]) {
-    cart.value[product.id]++;
-  } else {
-    cart.value[product.id] = 1;
-  }
-};
-
-const removeFromCart = (product) => {
-  if (cart.value[product.id]) {
-    if (cart.value[product.id] > 1) {
-      cart.value[product.id]--;
-    } else {
-      delete cart.value[product.id];
-    }
-  }
-};
-
-const getProductQuantity = (productId) => {
-  return cart.value[productId] || 0;
 };
 
 // --- Lifecycle ---
@@ -231,13 +190,9 @@ onMounted(() => {
       </div>
     </div>
 
-    <div class="p-4 space-y-4 pb-24">
-      
-      <div v-if="loading" class="flex justify-center items-center py-10">
-        <i class="fa-solid fa-circle-notch fa-spin text-3xl text-blue-600"></i>
-      </div>
+    <div class="p-4 space-y-4 pb-35">
 
-      <div v-else-if="error" class="text-center text-red-500 py-10 bg-red-50 rounded-xl border border-red-200 shadow-sm">
+      <div v-if="error" class="text-center text-red-500 py-10 bg-red-50 rounded-xl border border-red-200 shadow-sm">
         <i class="fa-solid fa-triangle-exclamation text-3xl mb-3 text-red-400"></i>
         <p class="text-sm px-4">{{ error }}</p>
         <button @click="fetchProducts" class="mt-4 text-sm font-bold text-red-600 hover:underline">Try Again</button>
@@ -248,13 +203,13 @@ onMounted(() => {
         <p class="text-sm px-4">No products found matching your criteria.</p>
       </div>
 
-      <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div v-else class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
         <div 
           v-for="product in processedProducts" 
           :key="product.id"
           class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col"
         >
-          <div class="w-full h-48 bg-gray-100 relative group" @click="openGalleryModal(product)">
+          <div class="w-full aspect-square bg-gray-100 relative group" @click="openGalleryModal(product)">
             <div 
               v-if="getImagesArray(product.images).length > 0" 
               class="flex overflow-x-auto snap-x snap-mandatory no-scrollbar h-full w-full"
@@ -264,7 +219,7 @@ onMounted(() => {
                 :key="img" 
                 class="snap-center shrink-0 w-full h-full relative cursor-pointer"
               >
-                <img :src="'https://api.navitag.net/dump/'+img" :alt="product.name" class="w-full h-full object-cover" @error="(e) => e.target.style.display='none'" />
+                <img :src="img" :alt="product.name" class="w-full h-full object-cover" @error="(e) => e.target.style.display='none'" />
               </div>
             </div>
             
@@ -296,8 +251,8 @@ onMounted(() => {
               </button>
 
               <button 
-                v-if="getProductQuantity(product.id) === 0"
-                @click.stop="addToCart(product)"
+                v-if="cartStore.getProductQuantity(product.id) === 0"
+                @click.stop="cartStore.addProduct(product)"
                 class="flex-1 bg-gray-800 hover:bg-gray-900 text-white font-bold py-2.5 rounded-lg transition-colors text-sm flex justify-center items-center gap-2 active:scale-95 outline-none"
               >
                 <i class="fa-solid fa-cart-plus"></i> Add to Cart
@@ -305,16 +260,16 @@ onMounted(() => {
 
               <div v-else class="flex-1 flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg p-1 h-10">
                 <button 
-                  @click.stop="removeFromCart(product)"
+                  @click.stop="cartStore.removeProduct(product)"
                   class="w-8 h-full flex items-center justify-center bg-white rounded-md text-blue-600 font-bold shadow-sm active:scale-95 outline-none"
                 >
-                  <i class="fa-solid" :class="getProductQuantity(product.id) === 1 ? 'fa-trash-can' : 'fa-minus'"></i>
+                  <i class="fa-solid" :class="cartStore.getProductQuantity(product.id) === 1 ? 'fa-trash-can' : 'fa-minus'"></i>
                 </button>
                 <span class="font-bold text-blue-800 text-sm w-8 text-center">
-                  {{ getProductQuantity(product.id) }}
+                  {{ cartStore.getProductQuantity(product.id) }}
                 </span>
                 <button 
-                  @click.stop="addToCart(product)"
+                  @click.stop="cartStore.addProduct(product)"
                   class="w-8 h-full flex items-center justify-center bg-blue-600 rounded-md text-white font-bold shadow-sm active:scale-95 outline-none"
                 >
                   <i class="fa-solid fa-plus"></i>
@@ -327,19 +282,19 @@ onMounted(() => {
     </div>
 
     <div 
-      v-if="cartCount > 0"
+      v-if="cartStore.productCount > 0"
       class="fixed bottom-[calc(48px+env(safe-area-inset-bottom))] left-0 right-0 p-4 bg-white border-t border-gray-200 shadow-[0_-4px_10px_-2px_rgba(0,0,0,0.1)] z-30 transform transition-transform"
     >
       <div class="flex justify-between items-center mb-3 px-1">
         <span class="text-sm text-gray-600 font-semibold">
-          Cart Total ({{ cartCount }} items)
+          Cart Total ({{ cartStore.productCount }} items)
         </span>
         <span class="text-lg font-bold text-gray-800">
-          ${{ cartTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+          ${{ cartStore.productTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
         </span>
       </div>
-      <button class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 active:scale-[0.98] outline-none">
-        Proceed to Checkout
+      <button @click="cartStore.checkout('product')" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 active:scale-[0.98] outline-none">
+        Checkout
         <i class="fa-solid fa-cart-shopping"></i>
       </button>
     </div>
@@ -368,8 +323,8 @@ onMounted(() => {
               
               <div class="w-32">
                 <button 
-                  v-if="getProductQuantity(selectedProduct.id) === 0"
-                  @click="addToCart(selectedProduct)"
+                  v-if="cartStore.getProductQuantity(selectedProduct.id) === 0"
+                  @click="cartStore.addProduct(selectedProduct)"
                   class="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-3 rounded-xl transition-colors text-sm flex justify-center items-center gap-2 active:scale-95 outline-none shadow-md"
                 >
                   <i class="fa-solid fa-cart-plus"></i> Add
@@ -377,16 +332,16 @@ onMounted(() => {
 
                 <div v-else class="w-full flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl p-1 h-[44px]">
                   <button 
-                    @click="removeFromCart(selectedProduct)"
+                    @click="cartStore.removeProduct(selectedProduct)"
                     class="w-10 h-full flex items-center justify-center bg-white rounded-lg text-blue-600 font-bold shadow-sm active:scale-95 outline-none"
                   >
-                    <i class="fa-solid" :class="getProductQuantity(selectedProduct.id) === 1 ? 'fa-trash-can' : 'fa-minus'"></i>
+                    <i class="fa-solid" :class="cartStore.getProductQuantity(selectedProduct.id) === 1 ? 'fa-trash-can' : 'fa-minus'"></i>
                   </button>
                   <span class="font-bold text-blue-800 text-base w-8 text-center">
-                    {{ getProductQuantity(selectedProduct.id) }}
+                    {{ cartStore.getProductQuantity(selectedProduct.id) }}
                   </span>
                   <button 
-                    @click="addToCart(selectedProduct)"
+                    @click="cartStore.addProduct(selectedProduct)"
                     class="w-10 h-full flex items-center justify-center bg-blue-600 rounded-lg text-white font-bold shadow-sm active:scale-95 outline-none"
                   >
                     <i class="fa-solid fa-plus"></i>

@@ -2,7 +2,8 @@
 import { computed } from 'vue';
 import { useRoute, RouterView } from 'vue-router';
 import { useUserStore } from '@/stores/user.js';
-import { useDevicesStore } from './stores/devices.js';
+import { useDevicesStore } from '@/stores/devices.js';
+import { useCartStore } from '@/stores/cart.js';
 import BottomNav from './components/bottomNav.vue';
 import Loading from '@/components/loading.vue';
 import Error from '@/components/error.vue';
@@ -11,8 +12,10 @@ import { getPlatformInfo, liqKey } from './utils/variables';
 import { leafletMap } from '@burkaloo/leaflet-vue3'
 
 const userStore = useUserStore();
-const route = useRoute();
 const deviceStore = useDevicesStore();
+const route = useRoute();
+const cartStore = useCartStore()
+
 
 // Check if we are on the main map screen
 const isMapRoute = computed(() => {
@@ -33,7 +36,7 @@ const isMapRoute = computed(() => {
 });
 
 const masterLoading = computed(() => {
-  if(deviceStore.loading || userStore.loading){
+  if(deviceStore.loading || userStore.loading || cartStore.loading){
     return true
   } else {
     return false
