@@ -154,8 +154,8 @@ const router = createRouter({
     },
     {
       path: '/payment/:session',
-      name: 'shipping',
-      component: shipping,
+      name: 'payment',
+      component: xenditComp,
       meta: {requiresAuth:true, activeTab: 'shop'}
     },
     {
