@@ -112,7 +112,7 @@ export const useCartStore = defineStore('cart', () => {
       token: userStore.idToken,
       data: payload
     })
-    if(xenditSession.status == 'success'){
+    if(xenditSession.success === true){
       router.push(`/payment/${xenditSession.data.components_sdk_key}`)
     } else {
       console.log('xendit error', xenditSession)
