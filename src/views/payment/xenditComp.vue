@@ -1,9 +1,7 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { XenditComponents } from 'xendit-components-web';
 import { useCartStore } from '@/stores/cart';
-
 
 const route = useRoute();
 const router = useRouter();
@@ -18,40 +16,56 @@ const isProcessing = ref(false);
 const errorMessage = ref('');
 
 onMounted(() => {
-  try {
-    // 1. Initialize the SDK with the key provided via the route
-    xenditInstance.value = new XenditComponents({ 
-      componentsSdkKey: sessionId 
-    });
+  // Dynamically load the Xendit SDK script from their official CDN
+  const script = document.createElement('script');
+  script.src = 'https://assets.xendit.co/components/1/index.umd.js';
+  script.async = true;
 
-    // 2. Fetch active channels and mount the UI (CARDS channel)
-    const channel = xenditInstance.value.getActiveChannels().find(c => c.channelCode === 'CARDS');
-    
-    if (channel) {
-      const htmlElement = xenditInstance.value.createChannelPickerComponent(channel);
-      paymentContainer.value.replaceChildren(htmlElement);
-    } else {
-      errorMessage.value = "Card payment channel is not available for this session.";
+  script.onload = () => {
+    try {
+      // 1. Initialize the SDK with the key provided via the route
+      // Replaced XenditComponents with window.XenditComponents since it's loaded via CDN
+      xenditInstance.value = new window.XenditComponents({ 
+        componentsSdkKey: sessionId 
+      });
+
+      // 2. Fetch active channels and mount the UI (CARDS channel)
+      const channel = xenditInstance.value.getActiveChannels().find(c => c.channelCode === 'CARDS');
+      
+      if (channel) {
+        const htmlElement = xenditInstance.value.createChannelPickerComponent(channel);
+        paymentContainer.value.replaceChildren(htmlElement);
+      } else {
+        errorMessage.value = "Card payment channel is not available for this session.";
+      }
+
+      // 3. Listen to transaction events
+      xenditInstance.value.addEventListener('session-complete', () => {
+        isProcessing.value = false;
+        // Redirect to a success page or back to home (update as needed)
+        router.replace({ path: '/', query: { payment: 'success' } }); 
+      });
+
+      xenditInstance.value.addEventListener('session-expired-or-canceled', () => {
+        isProcessing.value = false;
+        errorMessage.value = "This payment session has expired or was canceled.";
+      });
+
+    } catch (err) {
+      console.error('Xendit Initialization Error:', err);
+      errorMessage.value = "Failed to load the secure payment form.";
+    } finally {
+      cartStore.loading = false;
     }
+  };
 
-    // 3. Listen to transaction events
-    xenditInstance.value.addEventListener('session-complete', () => {
-      isProcessing.value = false;
-      // Redirect to a success page or back to home (update as needed)
-      router.replace({ path: '/', query: { payment: 'success' } }); 
-    });
-
-    xenditInstance.value.addEventListener('session-expired-or-canceled', () => {
-      isProcessing.value = false;
-      errorMessage.value = "This payment session has expired or was canceled.";
-    });
-
-  } catch (err) {
-    console.error('Xendit Initialization Error:', err);
-    errorMessage.value = "Failed to load the secure payment form.";
-  } finally{
+  script.onerror = () => {
+    console.error('Failed to load Xendit script.');
+    errorMessage.value = "Failed to load the secure payment form. Please check your network.";
     cartStore.loading = false;
-  }
+  };
+
+  document.head.appendChild(script);
 });
 
 const submitPayment = () => {
