@@ -49,9 +49,9 @@ onMounted(() => {
   } catch (err) {
     console.error('Xendit Initialization Error:', err);
     errorMessage.value = "Failed to load the secure payment form.";
-  } finally(
+  } finally{
     cartStore.loading = false;
-  )
+  }
 });
 
 const submitPayment = () => {
