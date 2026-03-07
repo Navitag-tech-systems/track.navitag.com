@@ -20,10 +20,11 @@ const checkoutContainer = ref(null);
 let components = null;
 
 onMounted(() => {
-  const sessionId = route.params.session;
+  const sdkKey = route.params.session;
+  console.log(sdkKey)
 
   components = new XenditComponents({
-    sessionId: sessionId
+    componentsSdkKey : decodeURIComponent(sdkKey)
   });
 
   // 👇 THIS IS THE MAGIC LINE: Call createCardComponent instead of createChannelPickerComponent
