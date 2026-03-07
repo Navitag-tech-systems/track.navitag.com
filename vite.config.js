@@ -14,7 +14,8 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url))
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+      'xendit-components-web': fileURLToPath(new URL('./node_modules/xendit-components-web/sdk/dist/index.umd.js', import.meta.url))
     },
   },
   build: {

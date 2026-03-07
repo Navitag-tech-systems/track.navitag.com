@@ -104,6 +104,7 @@ export const useCartStore = defineStore('cart', () => {
   }
 
   const generatePayment = async (payload) => {
+    loading.value = true
     const userStore = useUserStore()
     console.log('start payment session component', payload)
     const xenditSession = await request.send({
