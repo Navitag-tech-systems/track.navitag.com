@@ -17,3 +17,11 @@ html, body, #app {
   overscroll-behavior-y: none;
   -webkit-tap-highlight-color: transparent;
 }
+
+
+
+/* Add to your global CSS (App.vue or main.css) */
+iframe[src*="xendit"] {
+  z-index: 9999 !important;
+  position: fixed !important;
+}
