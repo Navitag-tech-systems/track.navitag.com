@@ -50,7 +50,7 @@ const route = useRoute();
 const router = useRouter();
 
 // Retrieve custom error message from the URL query params if provided, otherwise show default
-const errorMessage = route.query.message || 'There was an issue processing your payment. Your card has not been charged. Please check your payment details and try again.';
+const errorMessage = route.query.message || 'There was an issue processing your payment. Your card has not been charged.';
 </script>
 
 <style scoped>
