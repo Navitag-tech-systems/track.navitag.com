@@ -205,7 +205,7 @@
 import { ref, onMounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useCartStore } from '@/stores/cart';
-import { XenditComponentsTest } from 'xendit-components-web';
+import { XenditComponents } from 'xendit-components-web';
 
 const cartStore = useCartStore();
 const route = useRoute(); 
@@ -260,7 +260,7 @@ onMounted(() => {
   const sdkKey = route.params.session;
   cartStore.loading = true;
 
-  components = new XenditComponentsTest({
+  components = new XenditComponents({
     componentsSdkKey : decodeURIComponent(sdkKey)
   });
 
