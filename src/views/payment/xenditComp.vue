@@ -12,6 +12,7 @@
 import { ref, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { useCartStore } from '@/stores/cart';
+// Using your preferred import method
 import { XenditComponents } from 'xendit-components-web';
 
 const cartStore = useCartStore();
@@ -27,50 +28,50 @@ onMounted(() => {
     componentsSdkKey : decodeURIComponent(sdkKey)
   });
 
-  const channels = components.getActiveChannels();
-  const cardChannel = channels.find((c) => c.channelCode === "CARDS");
-
-  if (cardChannel) {
-    const cardComponent = components.createChannelComponent(cardChannel);
+  // 👇 NEW: Wait for Xendit to finish loading the session data from the server
+  components.addEventListener("init", () => {
     
-    if (checkoutContainer.value) {
-      checkoutContainer.value.replaceChildren(cardComponent);
+    const channels = components.getActiveChannels();
+    const cardChannel = channels.find((c) => c.channelCode === "CARDS");
+
+    if (cardChannel) {
+      const cardComponent = components.createChannelComponent(cardChannel);
+      
+      if (checkoutContainer.value) {
+        checkoutContainer.value.replaceChildren(cardComponent);
+      }
+    } else {
+      console.error("The CARDS channel is not available for this session!");
     }
-  } else {
-    console.error("The CARDS channel is not available for this session!");
-  }
+    
+    // You can also turn off your own loading state here once the form renders!
+    cartStore.loading = false;
+  });
 
   // ==========================================
-  // XENDIT EVENT LISTENERS
+  // OTHER LISTENERS (Safe to attach immediately)
   // ==========================================
 
-  // 1. Fired when the form is fully valid and ready to be submitted
-  // (e.g., all 16 card digits, expiry, and CVV are entered correctly)
   components.addEventListener("submission-ready", () => {
-    // TODO: Enable your "Complete Payment" button here
+    // Form is valid
   });
 
-  // 2. Fired when the form becomes invalid or is incomplete
   components.addEventListener("submission-not-ready", () => {
-    // TODO: Disable your "Complete Payment" button here
+    // Form is invalid
   });
 
-  // 3. Fired when an extra authentication step starts (like 3D Secure / OTP)
   components.addEventListener("action-begin", () => {
-    // TODO: Optionally show a loading spinner overlay
+    // 3D Secure / OTP started
   });
 
-  // 4. Fired when the payment is 100% successful
   components.addEventListener("session-complete", () => {
-    // TODO: Clear cart, show success message, or redirect to a thank you page
+    alert("Payment Success");
   });
 
-  // 5. Fired if the user cancels, the bank declines it, or the session time runs out
   components.addEventListener("session-expired-or-canceled", () => {
-    // TODO: Show an error message and let the user try again
+    alert("Payment cancelled or expired");
   });
 
-  cartStore.loading = false;
 });
 
 const submitPayment = () => {
