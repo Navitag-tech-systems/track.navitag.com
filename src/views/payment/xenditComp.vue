@@ -69,24 +69,27 @@
           class="min-h-[100px] mb-4"
         ></div>
 
-        <div class="flex justify-between items-center pt-4 border-t border-gray-100 mb-2">
-          <span class="text-gray-600 font-bold">Total Cost</span>
-          <span class="text-2xl font-black text-gray-900">${{ displayTotal.toFixed(2) }}</span>
+        <div class="text-[11px] text-center leading-relaxed mt-5">
+          <p class="text-gray-500">
+            Orders are routed through their respective regional headquarters. Depending on your card, issuing bank, and location, you may see charges in the currency of the country where your order is processed.
+          </p>
+          <p class="font-semibold text-gray-600 mt-1 block">
+            AMERICAS: USA (USD) • APAC: Philippines (PHP)
+          </p>
         </div>
-
-        <p class="text-[10px] text-gray-400 mt-5 leading-relaxed text-center">
-          * All orders are routed and handled by their designated regional headquarters. Depending on your card and issuing bank, you might see charges in their respective currencies:<br/>
-          <span class="font-semibold text-gray-500 mt-1 block">AMERICAS: USA (USD) • APAC: Philippines (PHP)</span>
-        </p>
       </div>
       
     </div>
 
-    <div class="fixed bottom-[calc(48px+env(safe-area-inset-bottom))] sm:bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 shadow-[0_-4px_10px_-2px_rgba(0,0,0,0.1)] z-40 transform transition-transform">
+    <div class="fixed bottom-[calc(48px+env(safe-area-inset-bottom))] left-0 right-0 p-4 bg-white border-t border-gray-200 shadow-[0_-4px_10px_-2px_rgba(0,0,0,0.1)] z-40 transform transition-transform">
+      <div class="flex justify-between items-center px-2 mb-2">
+        <span class="text-gray-600 font-bold">Total Cost</span>
+        <span class="font-black text-gray-900">${{ displayTotal.toFixed(2) }}</span>
+      </div>
       <button 
         @click="submitPayment"
         :disabled="!isFormValid || isProcessing || cartStore.loading"
-        class="w-full max-w-md mx-auto bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed outline-none"
+        class="w-full mx-auto bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed outline-none"
       >
         <i v-if="isProcessing" class="fa-solid fa-circle-notch fa-spin"></i>
         <i v-else class="fa-solid fa-lock"></i>
@@ -109,7 +112,8 @@
               <li v-for="(item, index) in cartItemsList" :key="index" class="py-3 flex justify-between items-center">
                 <div class="flex-1 pr-4">
                   <p class="text-sm font-bold text-gray-800">{{ item.name }}</p>
-                  <p class="text-xs text-gray-500">Qty: {{ item.quantity }}</p>
+                  <p v-if="isProduct" class="text-xs text-gray-500">Qty: {{ item.quantity }}</p>
+                  <p v-else class="text-xs text-gray-500">{{item.deviceName}}({{ item.imei }})</p>
                 </div>
                 <div class="text-sm font-bold text-gray-800">
                   ${{ item.total.toFixed(2) }}
@@ -162,16 +166,18 @@
                 <p class="text-xs text-gray-400 font-bold uppercase mb-0.5">Name</p>
                 <p class="font-semibold text-gray-800">{{ cartStore.shippingAdd.name || 'Not provided' }}</p>
               </div>
+              <div v-if="cartStore.shippingAdd.phone">
+                <p class="text-xs text-gray-400 font-bold uppercase mb-0.5">Phone</p>
+                <p>{{ cartStore.shippingAdd.phone }}</p>
+              </div>
+
               <div>
                 <p class="text-xs text-gray-400 font-bold uppercase mb-0.5">Address</p>
                 <p>{{ cartStore.shippingAdd.addressLine1 }}</p>
                 <p v-if="cartStore.shippingAdd.addressLine2">{{ cartStore.shippingAdd.addressLine2 }}</p>
-                <p>{{ cartStore.shippingAdd.city }}, {{ cartStore.shippingAdd.state }} {{ cartStore.shippingAdd.zip }}</p>
+                <p>{{ cartStore.shippingAdd.city }}, {{ cartStore.shippingAdd.state }} </p>
+                <p>Zip/Postal Code: {{ cartStore.shippingAdd.zip }}</p>
                 <p>{{ cartStore.shippingAdd.country }}</p>
-              </div>
-              <div v-if="cartStore.shippingAdd.phone">
-                <p class="text-xs text-gray-400 font-bold uppercase mb-0.5">Phone</p>
-                <p>{{ cartStore.shippingAdd.phone }}</p>
               </div>
             </div>
             
@@ -199,7 +205,7 @@
 import { ref, onMounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useCartStore } from '@/stores/cart';
-import { XenditComponents } from 'xendit-components-web';
+import { XenditComponentsTest } from 'xendit-components-web';
 
 const cartStore = useCartStore();
 const route = useRoute(); 
@@ -242,7 +248,10 @@ const cartItemsList = computed(() => {
       name: `${plan.months} Month Data Plan`,
       quantity: 1,
       price: plan.price_usd || 0,
-      total: plan.price_usd || 0
+      total: plan.price_usd || 0,
+      imei: plan.imei,
+      server_ref: deviceId,
+      deviceName: plan.deviceName
     }));
   }
 });
@@ -251,7 +260,7 @@ onMounted(() => {
   const sdkKey = route.params.session;
   cartStore.loading = true;
 
-  components = new XenditComponents({
+  components = new XenditComponentsTest({
     componentsSdkKey : decodeURIComponent(sdkKey)
   });
 

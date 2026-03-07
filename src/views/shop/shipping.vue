@@ -428,6 +428,10 @@ onMounted(() => {
     </teleport>
 
     <div class="fixed bottom-[calc(48px+env(safe-area-inset-bottom))] left-0 right-0 p-4 bg-white border-t border-gray-200 shadow-[0_-4px_10px_-2px_rgba(0,0,0,0.1)] z-40 transform transition-transform">
+      <div v-if="isProduct" class="flex justify-between mb-3 px-2">
+        <span>Shipping Flat Rate</span>
+        <span class="font-medium text-gray-800">${{ cartStore.shippingRate.toFixed(2) }}</span>
+      </div>
       <button 
         @click="processPayment"
         :disabled="cartStore.loading"

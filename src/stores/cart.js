@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router';
 import { request } from '@/utils/http';
 import { baseUrl } from '@/utils/variables';
 import { useUserStore } from '@/stores/user.js';
+import { useDevicesStore } from './devices';
 
 export const useCartStore = defineStore('cart', () => {
   const router = useRouter()
@@ -49,6 +50,11 @@ export const useCartStore = defineStore('cart', () => {
   // --- Actions: Data Plans ---
 
   const togglePlan = (deviceId, plan) => {
+    const deviceStore = useDevicesStore()
+    plan.server_ref = deviceId
+    plan.imei = deviceStore.devices[deviceId].uniqueId
+    plan.deviceName = deviceStore.devices[deviceId].name
+    
     if (planCart.value[deviceId]?.months === plan.months) {
       // If the exact same plan is clicked again, remove it
       delete planCart.value[deviceId];
@@ -109,6 +115,8 @@ export const useCartStore = defineStore('cart', () => {
 
   const generatePayment = async (payload) => {
     loading.value = true
+    router.push(`/payment/1111`)
+    return
     const userStore = useUserStore()
     console.log('start payment session component', payload)
     const xenditSession = await request.send({
@@ -117,6 +125,7 @@ export const useCartStore = defineStore('cart', () => {
       token: userStore.idToken,
       data: payload
     })
+    
     if(xenditSession.success === true){
       let urlSafe = encodeURIComponent(xenditSession.data.components_sdk_key)
       router.push(`/payment/${urlSafe}`)
