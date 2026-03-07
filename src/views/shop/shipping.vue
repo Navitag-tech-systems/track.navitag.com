@@ -427,7 +427,7 @@ onMounted(() => {
       </div>
     </teleport>
 
-    <div class="fixed bottom-[calc(48px+env(safe-area-inset-bottom))] sm:bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 shadow-[0_-4px_10px_-2px_rgba(0,0,0,0.1)] z-40 transform transition-transform">
+    <div class="fixed bottom-[calc(48px+env(safe-area-inset-bottom))] left-0 right-0 p-4 bg-white border-t border-gray-200 shadow-[0_-4px_10px_-2px_rgba(0,0,0,0.1)] z-40 transform transition-transform">
       <button 
         @click="processPayment"
         :disabled="cartStore.loading"
