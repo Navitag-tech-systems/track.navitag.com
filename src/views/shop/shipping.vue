@@ -73,6 +73,10 @@ const state = ref('');
 const zipCode = ref(''); // Added Zip Code
 const country = ref('United States'); // Default
 
+// --- Validation Modal State ---
+const showValidationModal = ref(false);
+const validationMessage = ref('');
+
 // Map ISO codes to the full string representations in your array
 const isoToCountryMap = {
   'US': 'United States', 'CA': 'Canada', 'GB': 'United Kingdom', 'AU': 'Australia',
@@ -166,17 +170,19 @@ const selectCountry = (c) => {
 
 // --- Payment Handler ---
 const processPayment = () => {
-  // Validate Product Checkout (Added zipCode to validation)
+  // Validate Product Checkout
   if (isProduct.value) {
     if (!givenName.value || !lastName.value || !addressLine1.value || !city.value || !state.value || !zipCode.value || !phoneNumber.value || !country.value) {
-      alert("Please fill in all required shipping and contact fields.");
+      validationMessage.value = "Please fill in all required shipping and contact fields.";
+      showValidationModal.value = true;
       return;
     }
   } 
   // Validate Plan Checkout
   else if (isPlan.value) {
     if (needsName.value && (!givenName.value || !lastName.value)) {
-      alert("Please provide your first and last name.");
+      validationMessage.value = "Please provide your first and last name.";
+      showValidationModal.value = true;
       return;
     }
   }
@@ -200,7 +206,7 @@ const processPayment = () => {
       addressLine2: addressLine2.value,
       city: city.value,
       state: state.value,
-      zip: zipCode.value, // Passed zip code
+      zip: zipCode.value,
       country: country.value
     } : null,
     items: isProduct.value ? cartStore.productCart : cartStore.planCart
@@ -244,8 +250,7 @@ onMounted(() => {
           <i class="fa-solid fa-arrow-left text-lg"></i>
         </button>
         <div>
-          <h1 class="text-xl font-bold text-gray-800 leading-tight">Checkout</h1>
-          <p class="text-xs text-gray-500 font-medium capitalize">{{ checkoutType }} Order</p>
+          <h1 class="text-xl font-bold text-gray-800 leading-tight">Shop</h1>
         </div>
       </div>
     </div>
@@ -391,7 +396,33 @@ onMounted(() => {
 
     </div>
 
-    <div class="fixed bottom-[calc(0px+env(safe-area-inset-bottom))] sm:bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 shadow-[0_-4px_10px_-2px_rgba(0,0,0,0.1)] z-40 transform transition-transform">
+    <teleport to="body">
+      <div v-if="showValidationModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm transition-opacity">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-xs overflow-hidden animate-scale-up">
+          <div class="p-6 text-center">
+            
+            <div class="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <i class="fa-solid fa-triangle-exclamation text-red-600 text-xl"></i>
+            </div>
+            
+            <h3 class="text-lg font-bold text-gray-800 mb-2">Missing Information</h3>
+            <p class="text-sm text-gray-500 mb-6 leading-relaxed">
+              {{ validationMessage }}
+            </p>
+            
+            <button 
+              @click="showValidationModal = false"
+              class="w-full py-3 px-4 bg-gray-800 hover:bg-gray-900 text-white font-bold rounded-xl text-sm transition-colors outline-none"
+            >
+              Okay
+            </button>
+
+          </div>
+        </div>
+      </div>
+    </teleport>
+
+    <div class="fixed bottom-[calc(48px+env(safe-area-inset-bottom))] sm:bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 shadow-[0_-4px_10px_-2px_rgba(0,0,0,0.1)] z-40 transform transition-transform">
       <button 
         @click="processPayment"
         :disabled="cartStore.loading"
@@ -411,5 +442,14 @@ onMounted(() => {
 <style scoped>
 .overscroll-contain {
   overscroll-behavior: contain;
+}
+
+.animate-scale-up {
+  animation: scaleUp 0.2s ease-out forwards;
+}
+
+@keyframes scaleUp {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
 }
 </style>

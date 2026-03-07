@@ -11,7 +11,7 @@
       <h1 class="text-lg font-bold text-gray-800">Checkout</h1>
     </div>
 
-    <div class="p-4 space-y-4 mt-2 max-w-md mx-auto w-full pb-safe-bottom">
+    <div class="p-4 space-y-4 mt-2 max-w-md mx-auto w-full pb-32">
       
       <div class="grid grid-cols-2 gap-3">
         <button 
@@ -65,20 +65,10 @@
           class="min-h-[100px] mb-4"
         ></div>
 
-        <div class="flex justify-between items-center py-4 border-t border-gray-100 mb-2">
+        <div class="flex justify-between items-center pt-4 border-t border-gray-100 mb-2">
           <span class="text-gray-600 font-bold">Total Cost</span>
           <span class="text-2xl font-black text-gray-900">${{ cartStore.cartTotal?.toFixed(2) || '0.00' }}</span>
         </div>
-
-        <button 
-          @click="submitPayment"
-          :disabled="!isFormValid || isProcessing || cartStore.loading"
-          class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed outline-none"
-        >
-          <i v-if="isProcessing" class="fa-solid fa-circle-notch fa-spin"></i>
-          <i v-else class="fa-solid fa-lock"></i>
-          {{ isProcessing ? 'Processing Payment...' : `Pay $${cartStore.cartTotal?.toFixed(2) || '0.00'}` }}
-        </button>
 
         <p class="text-[10px] text-gray-400 mt-5 leading-relaxed text-center">
           * All orders are routed and handled by their designated regional headquarters. Depending on your card and issuing bank, you might see charges in their respective currencies:<br/>
@@ -86,6 +76,18 @@
         </p>
       </div>
       
+    </div>
+
+    <div class="fixed bottom-[calc(0px+env(safe-area-inset-bottom))] sm:bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 shadow-[0_-4px_10px_-2px_rgba(0,0,0,0.1)] z-40 transform transition-transform">
+      <button 
+        @click="submitPayment"
+        :disabled="!isFormValid || isProcessing || cartStore.loading"
+        class="w-full max-w-md mx-auto bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed outline-none"
+      >
+        <i v-if="isProcessing" class="fa-solid fa-circle-notch fa-spin"></i>
+        <i v-else class="fa-solid fa-lock"></i>
+        {{ isProcessing ? 'Processing Payment...' : `Pay $${cartStore.cartTotal?.toFixed(2) || '0.00'}` }}
+      </button>
     </div>
 
     <teleport to="body">
@@ -238,13 +240,11 @@ onMounted(() => {
     isProcessing.value = true;
   });
 
-  // ✅ REDIRECT ON SUCCESS
   components.addEventListener("session-complete", () => {
     isProcessing.value = false;
     router.replace('/payment/success');
   });
 
-  // ✅ REDIRECT ON FAILURE / CANCELLATION
   components.addEventListener("session-expired-or-canceled", () => {
     isProcessing.value = false;
     router.replace('/payment/fail');
