@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useUserStore } from '@/stores/user.js';
 import { useCartStore } from '@/stores/cart.js';
@@ -14,15 +14,63 @@ const checkoutType = computed(() => route.params.type);
 const isProduct = computed(() => checkoutType.value === 'product');
 const isPlan = computed(() => checkoutType.value === 'plan');
 
+// Comprehensive country dial codes mapped with ISO codes
+const countryCodes = [
+  { isos: ['US', 'CA', 'PR'], code: '+1', label: 'US/CA/PR (+1)' },
+  { isos: ['RU', 'KZ'], code: '+7', label: 'RU/KZ (+7)' },
+  { isos: ['EG'], code: '+20', label: 'EG (+20)' },
+  { isos: ['ZA'], code: '+27', label: 'ZA (+27)' },
+  { isos: ['GR'], code: '+30', label: 'GR (+30)' },
+  { isos: ['NL'], code: '+31', label: 'NL (+31)' },
+  { isos: ['BE'], code: '+32', label: 'BE (+32)' },
+  { isos: ['FR'], code: '+33', label: 'FR (+33)' },
+  { isos: ['ES'], code: '+34', label: 'ES (+34)' },
+  { isos: ['HU'], code: '+36', label: 'HU (+36)' },
+  { isos: ['IT'], code: '+39', label: 'IT (+39)' },
+  { isos: ['RO'], code: '+40', label: 'RO (+40)' },
+  { isos: ['CH'], code: '+41', label: 'CH (+41)' },
+  { isos: ['AT'], code: '+43', label: 'AT (+43)' },
+  { isos: ['GB'], code: '+44', label: 'UK (+44)' },
+  { isos: ['DK'], code: '+45', label: 'DK (+45)' },
+  { isos: ['SE'], code: '+46', label: 'SE (+46)' },
+  { isos: ['NO'], code: '+47', label: 'NO (+47)' },
+  { isos: ['PL'], code: '+48', label: 'PL (+48)' },
+  { isos: ['DE'], code: '+49', label: 'DE (+49)' },
+  { isos: ['PE'], code: '+51', label: 'PE (+51)' },
+  { isos: ['MX'], code: '+52', label: 'MX (+52)' },
+  { isos: ['AR'], code: '+54', label: 'AR (+54)' },
+  { isos: ['BR'], code: '+55', label: 'BR (+55)' },
+  { isos: ['CL'], code: '+56', label: 'CL (+56)' },
+  { isos: ['CO'], code: '+57', label: 'CO (+57)' },
+  { isos: ['MY'], code: '+60', label: 'MY (+60)' },
+  { isos: ['AU'], code: '+61', label: 'AU (+61)' },
+  { isos: ['ID'], code: '+62', label: 'ID (+62)' },
+  { isos: ['PH'], code: '+63', label: 'PH (+63)' },
+  { isos: ['NZ'], code: '+64', label: 'NZ (+64)' },
+  { isos: ['SG'], code: '+65', label: 'SG (+65)' },
+  { isos: ['TH'], code: '+66', label: 'TH (+66)' },
+  { isos: ['JP'], code: '+81', label: 'JP (+81)' },
+  { isos: ['KR'], code: '+82', label: 'KR (+82)' },
+  { isos: ['VN'], code: '+84', label: 'VN (+84)' },
+  { isos: ['CN'], code: '+86', label: 'CN (+86)' },
+  { isos: ['TR'], code: '+90', label: 'TR (+90)' },
+  { isos: ['IN'], code: '+91', label: 'IN (+91)' },
+  { isos: ['PK'], code: '+92', label: 'PK (+92)' },
+].sort((a, b) => parseInt(a.code.replace('+', '')) - parseInt(b.code.replace('+', '')));
+
 // --- Form State ---
 const givenName = ref('');
 const lastName = ref('');
-const phone = ref(userStore.phone || '');
+
+// Phone State
+const phoneCountryCode = ref('+1');
+const phoneNumber = ref('');
 
 const addressLine1 = ref('');
 const addressLine2 = ref('');
 const city = ref('');
 const state = ref('');
+const zipCode = ref(''); // Added Zip Code
 const country = ref('United States'); // Default
 
 // Map ISO codes to the full string representations in your array
@@ -33,6 +81,45 @@ const isoToCountryMap = {
   'FR': 'France', 'IT': 'Italy', 'ES': 'Spain', 'JP': 'Japan', 'KR': 'South Korea',
   'IN': 'India', 'VN': 'Vietnam', 'MY': 'Malaysia', 'TH': 'Thailand', 'ID': 'Indonesia'
 };
+
+// --- Watchers for Phone & Country pre-filling ---
+watch(
+  () => [userStore.phone, userStore.countryCode],
+  ([newPhone, newIso]) => {
+    
+    // 1. If user HAS a phone number, extract the dial code from it
+    if (newPhone) {
+      const match = countryCodes.find(c => newPhone.startsWith(c.code));
+      if (match) {
+        phoneCountryCode.value = match.code;
+        // Strip out the dial code (and hyphen if it exists) to show only the number
+        if (newPhone.charAt(match.code.length) === '-') {
+          phoneNumber.value = newPhone.slice(match.code.length + 1);
+        } else {
+          phoneNumber.value = newPhone.slice(match.code.length);
+        }
+      } else {
+        phoneNumber.value = newPhone;
+      }
+    } 
+    // 2. If user phone is BLANK, pre-fill dial code based on IP (userStore.countryCode)
+    else if (newIso) {
+      const defaultCountryDial = countryCodes.find(c => c.isos.includes(newIso));
+      if (defaultCountryDial) {
+        phoneCountryCode.value = defaultCountryDial.code;
+      }
+    }
+
+    // 3. Pre-fill Shipping Address Country based on IP (if product checkout)
+    if (isProduct.value && newIso) {
+      const matchedCountryName = isoToCountryMap[newIso.toUpperCase()];
+      if (matchedCountryName) {
+        country.value = matchedCountryName;
+      }
+    }
+  },
+  { immediate: true }
+);
 
 // --- Conditionals ---
 const needsName = computed(() => {
@@ -79,9 +166,9 @@ const selectCountry = (c) => {
 
 // --- Payment Handler ---
 const processPayment = () => {
-  // Validate Product Checkout
+  // Validate Product Checkout (Added zipCode to validation)
   if (isProduct.value) {
-    if (!givenName.value || !lastName.value || !addressLine1.value || !city.value || !state.value || !phone.value || !country.value) {
+    if (!givenName.value || !lastName.value || !addressLine1.value || !city.value || !state.value || !zipCode.value || !phoneNumber.value || !country.value) {
       alert("Please fill in all required shipping and contact fields.");
       return;
     }
@@ -94,6 +181,8 @@ const processPayment = () => {
     }
   }
 
+  const combinedPhone = `${phoneCountryCode.value}${phoneNumber.value.trim()}`.replace(/-/g, '');
+
   // Construct Payload
   const payload = {
     type: checkoutType.value,
@@ -103,7 +192,7 @@ const processPayment = () => {
     customer: {
       firstName: needsName.value ? givenName.value : userStore.name.split(' ')[0],
       lastName: needsName.value ? lastName.value : userStore.name.split(' ').slice(1).join(' '),
-      phone: phone.value.replaceAll('-', ''),
+      phone: combinedPhone,
       email: userStore.user.email ?? null
     },
     shipping: isProduct.value ? {
@@ -111,6 +200,7 @@ const processPayment = () => {
       addressLine2: addressLine2.value,
       city: city.value,
       state: state.value,
+      zip: zipCode.value, // Passed zip code
       country: country.value
     } : null,
     items: isProduct.value ? cartStore.productCart : cartStore.planCart
@@ -138,14 +228,7 @@ onMounted(() => {
     lastName.value = parts.slice(1).join(' ') || '';
   }
 
-  // 3. Pre-fill country based on IP-derived country code if this is a product checkout
-  if (isProduct.value && userStore.countryCode) {
-    const matchedCountry = isoToCountryMap[userStore.countryCode.toUpperCase()];
-    if (matchedCountry) {
-      country.value = matchedCountry;
-    }
-  }
-  cartStore.loading = false
+  cartStore.loading = false;
 });
 </script>
 
@@ -187,7 +270,23 @@ onMounted(() => {
           
           <div v-if="isProduct">
             <label class="block text-xs font-bold text-gray-600 mb-1">Phone Number</label>
-            <input v-model="phone" type="tel" placeholder="+1 (555) 000-0000" class="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
+            <div class="flex space-x-2">
+              <div class="relative bg-gray-50 border border-gray-200 p-3 rounded-xl text-sm focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-500 flex items-center justify-center w-[85px] overflow-hidden transition-all">
+                <span class="text-gray-800 font-medium">{{ phoneCountryCode }}</span>
+                <i class="fa-solid fa-chevron-down text-[10px] text-gray-400 ml-1"></i>
+                <select v-model="phoneCountryCode" class="absolute inset-0 w-full flex-1 opacity-0 cursor-pointer">
+                  <option v-for="c in countryCodes" :key="c.code" :value="c.code">
+                    {{ c.label }}
+                  </option>
+                </select>
+              </div>
+              <input 
+                v-model="phoneNumber" 
+                type="tel" 
+                placeholder="(555) 000-0000" 
+                class="flex-1 bg-gray-50 border border-gray-200 p-3 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -253,15 +352,20 @@ onMounted(() => {
             <label class="block text-xs font-bold text-gray-600 mb-1">Address Line 2 <span class="font-normal text-gray-400">(Optional)</span></label>
             <input v-model="addressLine2" type="text" placeholder="Apt, suite, unit, building, floor, etc." class="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
           </div>
+          
+          <div>
+            <label class="block text-xs font-bold text-gray-600 mb-1">City</label>
+            <input v-model="city" type="text" placeholder="City" class="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
+          </div>
 
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="block text-xs font-bold text-gray-600 mb-1">City</label>
-              <input v-model="city" type="text" placeholder="City" class="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
-            </div>
-            <div>
               <label class="block text-xs font-bold text-gray-600 mb-1">State / Province</label>
               <input v-model="state" type="text" placeholder="State" class="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-gray-600 mb-1">ZIP / Postal Code</label>
+              <input v-model="zipCode" type="text" placeholder="ZIP code" class="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
             </div>
           </div>
         </div>
@@ -287,7 +391,7 @@ onMounted(() => {
 
     </div>
 
-    <div class="fixed bottom-[calc(48px+env(safe-area-inset-bottom))] left-0 right-0 p-4 bg-white border-t border-gray-200 shadow-[0_-4px_10px_-2px_rgba(0,0,0,0.1)] z-40 transform transition-transform">
+    <div class="fixed bottom-[calc(0px+env(safe-area-inset-bottom))] sm:bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 shadow-[0_-4px_10px_-2px_rgba(0,0,0,0.1)] z-40 transform transition-transform">
       <button 
         @click="processPayment"
         :disabled="cartStore.loading"

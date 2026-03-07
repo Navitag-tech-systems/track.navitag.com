@@ -173,7 +173,7 @@ const router = createRouter({
       meta : {requiresAuth: true, activeTab: 'shop'}
     },
     {
-      path: 'payment/fail',
+      path: '/payment/fail',
       name: 'payment-fail',
       component: payFail,
       meta: {requiresAuth: true, activeTab: 'shop'}
