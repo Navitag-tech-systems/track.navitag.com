@@ -113,7 +113,8 @@ export const useCartStore = defineStore('cart', () => {
       data: payload
     })
     if(xenditSession.success === true){
-      router.push(`/payment/${xenditSession.data.components_sdk_key}`)
+      let urlSafe = encodeURIComponent(xenditSession.data.components_sdk_key)
+      router.push(`/payment/${urlSafe}`)
     } else {
       console.log('xendit error', xenditSession)
     }
