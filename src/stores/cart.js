@@ -18,6 +18,9 @@ export const useCartStore = defineStore('cart', () => {
   // Example: { "prod_abc": { product: {...}, quantity: 2 } }
   const productCart = ref({});
 
+  const checkoutType = ref('plan')
+  const shippingAdd = ref(null)
+  const shippingRate = ref(5.00);
   // --- Computeds (Totals & Counts) ---
 
   const planTotal = computed(() => {
@@ -41,6 +44,7 @@ export const useCartStore = defineStore('cart', () => {
   const grandTotal = computed(() => {
     return planTotal.value + productTotal.value;
   });
+  
 
   // --- Actions: Data Plans ---
 
@@ -126,6 +130,9 @@ export const useCartStore = defineStore('cart', () => {
     // State
     planCart,
     productCart,
+    checkoutType,
+    shippingAdd,
+    shippingRate,
     
     // Computeds
     planTotal,

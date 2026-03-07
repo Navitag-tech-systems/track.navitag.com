@@ -10,9 +10,10 @@ const userStore = useUserStore();
 const cartStore = useCartStore();
 
 // "product" or "plan"
-const checkoutType = computed(() => route.params.type);
-const isProduct = computed(() => checkoutType.value === 'product');
-const isPlan = computed(() => checkoutType.value === 'plan');
+cartStore.checkoutType = route.params.type
+//const checkoutType = computed(() => route.params.type);
+const isProduct = computed(() => cartStore.checkoutType === 'product');
+const isPlan = computed(() => cartStore.checkoutType === 'plan');
 
 // Comprehensive country dial codes mapped with ISO codes
 const countryCodes = [
@@ -139,14 +140,12 @@ const needsName = computed(() => {
 });
 
 // --- Totals & Rates ---
-const shippingRate = ref(5.00);
-
 const subtotal = computed(() => {
   return isProduct.value ? cartStore.productTotal : cartStore.planTotal;
 });
 
 const grandTotal = computed(() => {
-  return isProduct.value ? subtotal.value + shippingRate.value : subtotal.value;
+  return isProduct.value ? subtotal.value + cartStore.shippingRate : subtotal.value;
 });
 
 // --- Searchable Dropdown Logic ---
@@ -189,30 +188,36 @@ const processPayment = () => {
 
   const combinedPhone = `${phoneCountryCode.value}${phoneNumber.value.trim()}`.replace(/-/g, '');
 
-  // Construct Payload
-  const payload = {
-    type: checkoutType.value,
-    total: grandTotal.value,
-    currency: "USD",
-    country: userStore.countryCode,
-    customer: {
-      firstName: needsName.value ? givenName.value : userStore.name.split(' ')[0],
-      lastName: needsName.value ? lastName.value : userStore.name.split(' ').slice(1).join(' '),
+  const shippingObj = isProduct.value ? {
+      name: userStore.name,
       phone: combinedPhone,
-      email: userStore.user.email ?? null
-    },
-    shipping: isProduct.value ? {
       addressLine1: addressLine1.value,
       addressLine2: addressLine2.value,
       city: city.value,
       state: state.value,
       zip: zipCode.value,
       country: country.value
-    } : null,
-    items: isProduct.value ? cartStore.productCart : cartStore.planCart
+    } : null
+
+  // Construct Payload
+  const payload = {
+    type: cartStore.checkoutType,
+    total: grandTotal.value,
+    currency: "PHP",
+    country: "PH",
+    customer: {
+      firstName: needsName.value ? givenName.value : userStore.name.split(' ')[0],
+      lastName: needsName.value ? lastName.value : userStore.name.split(' ').slice(1).join(' '),
+      phone: combinedPhone,
+      email: userStore.user.email ?? null
+    },
+    shipping: shippingObj,
+    items: isProduct.value ? cartStore.productCart : cartStore.planCart,
+    fees: isProduct.value ? {shipping: cartStore.shippingRate} : null
   };
 
   // Call store action
+  cartStore.shippingAdd = shippingObj
   cartStore.generatePayment(payload);
 };
 
@@ -385,7 +390,7 @@ onMounted(() => {
           </div>
           <div v-if="isProduct" class="flex justify-between">
             <span>Shipping</span>
-            <span class="font-medium text-gray-800">${{ shippingRate.toFixed(2) }}</span>
+            <span class="font-medium text-gray-800">${{ cartStore.shippingRate.toFixed(2) }}</span>
           </div>
           <div class="border-t border-gray-100 pt-2 mt-2 flex justify-between items-center">
             <span class="font-bold text-gray-800">Total</span>

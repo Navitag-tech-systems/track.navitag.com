@@ -8,12 +8,15 @@
       >
         <i class="fa-solid fa-arrow-left text-lg"></i>
       </button>
-      <h1 class="text-lg font-bold text-gray-800">Checkout</h1>
+      <div>
+        <h1 class="text-lg font-bold text-gray-800 leading-tight">Shipping</h1>
+      </div>
     </div>
 
     <div class="p-4 space-y-4 mt-2 max-w-md mx-auto w-full pb-32">
       
-      <div class="grid grid-cols-2 gap-3">
+      <div class="grid gap-3" :class="isProduct ? 'grid-cols-2' : 'grid-cols-1'">
+        
         <button 
           @click="showOrderModal = true" 
           class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-start hover:shadow-md hover:border-blue-100 transition-all text-left group outline-none"
@@ -23,7 +26,7 @@
             <span class="text-xs text-gray-500 font-bold uppercase tracking-wider">Order</span>
           </div>
           <span class="text-sm font-bold text-gray-800 leading-tight">
-            {{ cartStore.totalItems || 0 }} Items
+            {{ totalItems }} Items
           </span>
           <span class="text-[10px] text-gray-400 group-hover:text-blue-600 mt-2 font-semibold transition-colors">
             View Details <i class="fa-solid fa-chevron-right ml-0.5"></i>
@@ -31,6 +34,7 @@
         </button>
         
         <button 
+          v-if="isProduct"
           @click="showShippingModal = true" 
           class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-start hover:shadow-md hover:border-blue-100 transition-all text-left group outline-none"
         >
@@ -39,7 +43,7 @@
             <span class="text-xs text-gray-500 font-bold uppercase tracking-wider">Shipping</span>
           </div>
           <span class="text-sm font-bold text-gray-800 leading-tight truncate w-full">
-            {{ cartStore.shipping?.state || 'State' }}, {{ cartStore.shipping?.country || 'Country' }}
+            {{ cartStore.shippingAdd?.state || 'State' }}, {{ cartStore.shippingAdd?.country || 'Country' }}
           </span>
           <span class="text-[10px] text-gray-400 group-hover:text-blue-600 mt-2 font-semibold transition-colors">
             View Details <i class="fa-solid fa-chevron-right ml-0.5"></i>
@@ -67,7 +71,7 @@
 
         <div class="flex justify-between items-center pt-4 border-t border-gray-100 mb-2">
           <span class="text-gray-600 font-bold">Total Cost</span>
-          <span class="text-2xl font-black text-gray-900">${{ cartStore.cartTotal?.toFixed(2) || '0.00' }}</span>
+          <span class="text-2xl font-black text-gray-900">${{ displayTotal.toFixed(2) }}</span>
         </div>
 
         <p class="text-[10px] text-gray-400 mt-5 leading-relaxed text-center">
@@ -78,7 +82,7 @@
       
     </div>
 
-    <div class="fixed bottom-[calc(0px+env(safe-area-inset-bottom))] sm:bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 shadow-[0_-4px_10px_-2px_rgba(0,0,0,0.1)] z-40 transform transition-transform">
+    <div class="fixed bottom-[calc(48px+env(safe-area-inset-bottom))] sm:bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 shadow-[0_-4px_10px_-2px_rgba(0,0,0,0.1)] z-40 transform transition-transform">
       <button 
         @click="submitPayment"
         :disabled="!isFormValid || isProcessing || cartStore.loading"
@@ -86,7 +90,7 @@
       >
         <i v-if="isProcessing" class="fa-solid fa-circle-notch fa-spin"></i>
         <i v-else class="fa-solid fa-lock"></i>
-        {{ isProcessing ? 'Processing Payment...' : `Pay $${cartStore.cartTotal?.toFixed(2) || '0.00'}` }}
+        {{ isProcessing ? 'Processing Payment...' : `Pay $${displayTotal.toFixed(2)}` }}
       </button>
     </div>
 
@@ -102,27 +106,38 @@
           
           <div class="p-5 overflow-y-auto flex-1">
             <ul class="divide-y divide-gray-100">
-              <li v-for="(item, index) in cartStore.items" :key="index" class="py-3 flex justify-between items-center">
+              <li v-for="(item, index) in cartItemsList" :key="index" class="py-3 flex justify-between items-center">
                 <div class="flex-1 pr-4">
                   <p class="text-sm font-bold text-gray-800">{{ item.name }}</p>
                   <p class="text-xs text-gray-500">Qty: {{ item.quantity }}</p>
                 </div>
                 <div class="text-sm font-bold text-gray-800">
-                  ${{ (item.price * item.quantity).toFixed(2) }}
+                  ${{ item.total.toFixed(2) }}
                 </div>
               </li>
             </ul>
             
-            <div v-if="!cartStore.items?.length" class="text-center py-6 text-gray-500 text-sm">
+            <div v-if="!cartItemsList.length" class="text-center py-6 text-gray-500 text-sm">
               Your cart is empty.
             </div>
           </div>
 
-          <div class="p-5 border-t border-gray-100 bg-gray-50">
-            <div class="flex justify-between items-center mb-4">
-              <span class="text-gray-600 font-semibold">Total</span>
-              <span class="text-lg font-bold text-gray-900">${{ cartStore.cartTotal?.toFixed(2) || '0.00' }}</span>
+          <div class="p-5 border-t border-gray-100 bg-gray-50 space-y-2">
+            <div class="flex justify-between items-center text-sm">
+              <span class="text-gray-500 font-medium">Subtotal</span>
+              <span class="text-gray-800 font-semibold">${{ isProduct ? cartStore.productTotal.toFixed(2) : cartStore.planTotal.toFixed(2) }}</span>
             </div>
+            
+            <div v-if="isProduct" class="flex justify-between items-center text-sm">
+              <span class="text-gray-500 font-medium">Shipping</span>
+              <span class="text-gray-800 font-semibold">${{ cartStore.shippingRate.toFixed(2) }}</span>
+            </div>
+
+            <div class="flex justify-between items-center pt-2 mt-2 border-t border-gray-200 mb-4">
+              <span class="text-gray-600 font-bold">Total</span>
+              <span class="text-lg font-black text-gray-900">${{ displayTotal.toFixed(2) }}</span>
+            </div>
+            
             <button @click="showOrderModal = false" class="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-3 rounded-xl transition text-sm">
               Close
             </button>
@@ -132,7 +147,7 @@
     </teleport>
 
     <teleport to="body">
-      <div v-if="showShippingModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm transition-opacity">
+      <div v-if="isProduct && showShippingModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm transition-opacity">
         <div class="bg-white rounded-3xl sm:rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-slide-up sm:animate-scale-up">
           <div class="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
             <h3 class="font-bold text-gray-800"><i class="fa-solid fa-truck-fast text-green-500 mr-2"></i> Shipping Details</h3>
@@ -142,20 +157,21 @@
           </div>
           
           <div class="p-6">
-            <div v-if="cartStore.shipping" class="space-y-3 text-sm text-gray-700">
+            <div v-if="cartStore.shippingAdd" class="space-y-3 text-sm text-gray-700">
               <div>
                 <p class="text-xs text-gray-400 font-bold uppercase mb-0.5">Name</p>
-                <p class="font-semibold text-gray-800">{{ cartStore.shipping.name || 'Not provided' }}</p>
+                <p class="font-semibold text-gray-800">{{ cartStore.shippingAdd.name || 'Not provided' }}</p>
               </div>
               <div>
                 <p class="text-xs text-gray-400 font-bold uppercase mb-0.5">Address</p>
-                <p>{{ cartStore.shipping.address }}</p>
-                <p>{{ cartStore.shipping.city }}, {{ cartStore.shipping.state }} {{ cartStore.shipping.zip }}</p>
-                <p>{{ cartStore.shipping.country }}</p>
+                <p>{{ cartStore.shippingAdd.addressLine1 }}</p>
+                <p v-if="cartStore.shippingAdd.addressLine2">{{ cartStore.shippingAdd.addressLine2 }}</p>
+                <p>{{ cartStore.shippingAdd.city }}, {{ cartStore.shippingAdd.state }} {{ cartStore.shippingAdd.zip }}</p>
+                <p>{{ cartStore.shippingAdd.country }}</p>
               </div>
-              <div v-if="cartStore.shipping.phone">
+              <div v-if="cartStore.shippingAdd.phone">
                 <p class="text-xs text-gray-400 font-bold uppercase mb-0.5">Phone</p>
-                <p>{{ cartStore.shipping.phone }}</p>
+                <p>{{ cartStore.shippingAdd.phone }}</p>
               </div>
             </div>
             
@@ -180,7 +196,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useCartStore } from '@/stores/cart';
 import { XenditComponents } from 'xendit-components-web';
@@ -198,6 +214,38 @@ const showShippingModal = ref(false);
 // UI State
 const isFormValid = ref(false);
 const isProcessing = ref(false);
+
+// Dynamic Computed Properties for Display Logic
+const isProduct = computed(() => cartStore.checkoutType === 'product');
+
+const totalItems = computed(() => {
+  return isProduct.value ? cartStore.productCount : cartStore.planCount;
+});
+
+const displayTotal = computed(() => {
+  if (isProduct.value) {
+    return cartStore.productTotal + cartStore.shippingRate;
+  }
+  return cartStore.planTotal;
+});
+
+const cartItemsList = computed(() => {
+  if (isProduct.value) {
+    return Object.values(cartStore.productCart).map(item => ({
+      name: item.product.name || 'GPS Tracker',
+      quantity: item.quantity,
+      price: item.product.price_usd || 0,
+      total: (item.product.price_usd || 0) * item.quantity
+    }));
+  } else {
+    return Object.entries(cartStore.planCart).map(([deviceId, plan]) => ({
+      name: `${plan.months} Month Data Plan`,
+      quantity: 1,
+      price: plan.price_usd || 0,
+      total: plan.price_usd || 0
+    }));
+  }
+});
 
 onMounted(() => {
   const sdkKey = route.params.session;
@@ -261,7 +309,7 @@ const submitPayment = () => {
 
 const editShipping = () => {
   showShippingModal.value = false;
-  router.push('/shipping');
+  router.push('/shipping/' + cartStore.checkoutType);
 };
 </script>
 
