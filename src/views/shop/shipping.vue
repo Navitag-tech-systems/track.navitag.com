@@ -103,7 +103,7 @@ const processPayment = () => {
     customer: {
       firstName: needsName.value ? givenName.value : userStore.name.split(' ')[0],
       lastName: needsName.value ? lastName.value : userStore.name.split(' ').slice(1).join(' '),
-      phone: phone.value,
+      phone: phone.value.replaceAll('-', ''),
       email: userStore.user.email ?? null
     },
     shipping: isProduct.value ? {

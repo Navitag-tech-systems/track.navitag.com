@@ -104,6 +104,7 @@ export const useCartStore = defineStore('cart', () => {
   }
 
   const generatePayment = async (payload) => {
+    loading.value = true
     const userStore = useUserStore()
     console.log('start payment session component', payload)
     const xenditSession = await request.send({
@@ -116,6 +117,7 @@ export const useCartStore = defineStore('cart', () => {
       let urlSafe = encodeURIComponent(xenditSession.data.components_sdk_key)
       router.push(`/payment/${urlSafe}`)
     } else {
+      loading.value = false
       console.log('xendit error', xenditSession)
     }
   }

@@ -33,6 +33,8 @@ import dataPlans from '@/views/shop/dataPlans.vue'
 import catalog from '@/views/shop/catalog.vue'
 import shipping from '@/views/shop/shipping.vue'
 import xenditComp from '@/views/payment/xenditComp.vue'
+import paySuccess from '@/views/payment/paySuccess.vue'
+import payFail from './views/payment/payFail.vue'
 
 const router = createRouter({
   // createWebHistory works for Capacitor apps (http://localhost or capacitor://)
@@ -45,7 +47,7 @@ const router = createRouter({
       meta: { requiresAuth: true, mapRoute: 'track', activeTab: 'map'}
     },
     {
-      path: '/addgeo',
+      path: '/listgeo',
       name: 'geoView',
       component: geoView,
       meta: { requiresAuth: true, mapRoute: 'geo-new', activeTab: 'map'}
@@ -60,37 +62,37 @@ const router = createRouter({
       path: '/linkdevice/select',
       name: 'linkdevice-select',
       component: LinkDeviceSelect,
-      meta: { requiresAuth: true, activeTab: 'add' } // Requires login to link a device
+      meta: { requiresAuth: true, activeTab: 'list' } // Requires login to link a device
     },
     {
       path: '/linkdevice/start',
       name: 'linkdevice-start',
       component: LinkDeviceStart,
-      meta: { requiresAuth: true, activeTab: 'add' } // Requires login to link a device
+      meta: { requiresAuth: true, activeTab: 'list' } // Requires login to link a device
     },
     {
       path: '/linkdevice/error',
       name: 'linkdevice-error',
       component: LinkDeviceError,
-      meta: { requiresAuth: true, activeTab: 'add' }
+      meta: { requiresAuth: true, activeTab: 'list' }
     },
     {
       path: '/linkdevice/link/:imei',
       name: 'linkdevice-link',
       component: LinkDeviceLink,
-      meta: { requiresAuth: true, activeTab: 'add' }
+      meta: { requiresAuth: true, activeTab: 'list' }
     },
     {
       path: '/linkdevice/enable/:imei',
       name: 'linkdevice-enable',
       component: LinkDeviceEnable,
-      meta: { requiresAuth: true, activeTab: 'add' }
+      meta: { requiresAuth: true, activeTab: 'list' }
     },
     {
       path: '/linkdevice/success',
       name: 'linkdevice-success',
       component: LinkDeviceSuccess,
-      meta: { requiresAuth: true, activeTab: 'add' }
+      meta: { requiresAuth: true, activeTab: 'list' }
     },
     {
       path: '/account',
@@ -135,6 +137,12 @@ const router = createRouter({
       meta: {requiresAuth: true, activeTab: 'list'}
     },
     {
+      path: '/linkdevice/teaser',
+      name: 'linkdevice-success',
+      component: LinkDeviceTeaser,
+      meta: {requiresAuth:true, activeTab: 'lists'}
+    },
+    {
       path: '/data-plans',
       name: 'data-plans',
       component: dataPlans,
@@ -159,10 +167,17 @@ const router = createRouter({
       meta: {requiresAuth:true, activeTab: 'shop'}
     },
     {
-      path: '/linkdevice/teaser',
-      name: 'linkdevice-success',
-      component: LinkDeviceTeaser,
+      path: '/payment/success',
+      name: 'payment-success',
+      component: paySuccess,
+      meta : {requiresAuth: true, activeTab: 'shop'}
     },
+    {
+      path: 'payment/fail',
+      name: 'payment-fail',
+      component: payFail,
+      meta: {requiresAuth: true, activeTab: 'shop'}
+    },  
     {
       path: '/login',
       name: 'login',
