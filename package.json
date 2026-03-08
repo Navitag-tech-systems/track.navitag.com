@@ -13,7 +13,7 @@
     "test:unit": "vitest"
   },
   "dependencies": {
-    "@burkaloo/leaflet-vue3": "^2.2.13",
+    "@burkaloo/leaflet-vue3": "^2.2.14",
     "@capacitor-firebase/analytics": "^8.0.1",
     "@capacitor-firebase/authentication": "^8.0.1",
     "@capacitor-firebase/messaging": "^8.0.1",
