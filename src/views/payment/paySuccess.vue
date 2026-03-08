@@ -26,15 +26,6 @@
       </div>
 
     </div>
-
-    <div class="p-6 bg-white shadow-[0_-4px_10px_-2px_rgba(0,0,0,0.05)] pb-safe-bottom">
-      <button 
-        @click="router.push('/')" 
-        class="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-4 px-4 rounded-xl flex items-center justify-center transition cursor-pointer text-lg shadow-md active:scale-[0.98] outline-none"
-      >
-        Return to Dashboard
-      </button>
-    </div>
     
   </div>
 </template>
