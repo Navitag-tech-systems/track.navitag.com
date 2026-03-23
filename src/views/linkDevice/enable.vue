@@ -3,7 +3,8 @@ import { ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useUserStore } from '@/stores/user.js';
 import { baseUrl } from '@/utils/variables';
-import { CapacitorHttp } from '@capacitor/core';
+import { request } from '@/utils/http';
+
 
 const route = useRoute();
 const router = useRouter();
@@ -16,18 +17,26 @@ const enableDevice = async () => {
   loading.value = true;
 
   try {
-    const options = {
+    const data = await request.send({
       url: `${baseUrl}/device/enable`,
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${userStore.idToken}`
-      },
-      data: { imei: imei }
-    };
-
-    const response = await CapacitorHttp.post(options);
-    const data = response.data;
+      method: 'POST',    
+      data: { imei: imei },
+      token: userStore.idToken
+    });
+    // add error handling for data error
+    //change data in traccar server from disable to enabled
+    const serverDeviceArr = await request.send({
+      url: `https://${userStore.server_url}/api/devices?id=${data.server_ref}`,
+      isTraccar: true,
+    });
+    let serverDevice = serverDeviceArr[0]
+    serverDevice.disabled = false
+    console.log(serverDevice)
+    const serverUpdate = await request.send({
+      url: `https://${userStore.server_url}/api/devices/${serverDevice.id}`,
+      method: 'PUT',
+      data: serverDevice,
+    });
 
     // Route to success page on success
     router.push('/linkdevice/success?activated=true');
@@ -77,7 +86,7 @@ const enableDevice = async () => {
       <button 
         @click="router.push('/linkdevice/success?activated=false')"
         :disabled="loading"
-        class="w-full mt-4 text-sm text-gray-500 font-semibold hover:text-gray-800 cursor-pointer disabled:opacity-50 transition-colors"
+        class="w-full my-4 text-sm text-gray-500 font-semibold hover:text-gray-800 cursor-pointer disabled:opacity-50 transition-colors"
       >
         Skip for now
       </button>

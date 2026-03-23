@@ -16,7 +16,6 @@ const deviceStore = useDevicesStore();
 const route = useRoute();
 const cartStore = useCartStore()
 
-
 // Check if we are on the main map screen
 const isMapRoute = computed(() => {
   // If the meta flag is strictly the boolean true (using your idea)
@@ -45,7 +44,7 @@ const masterLoading = computed(() => {
 
 const showNav = computed(() => {
   let plat = getPlatformInfo(); // Evaluates platform logic
-  return masterLoading.value === false && userStore.isLoggedIn && route.meta.requiresAuth === true ;
+  return masterLoading.value === false && userStore.isLoggedIn && route.meta.requiresAuth === true && route.meta.activeTab !== false;
 });
 
 const activeGeofences = computed(() => {
@@ -78,7 +77,7 @@ function trackMapMode(mode){
         :class="isMapRoute ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'"
       >
         <leafletMap 
-          v-if="userStore.isLoggedIn && masterLoading === false && userStore.socket"
+          v-if="userStore.isLoggedIn && masterLoading === false"
           :mode="isMapRoute ? isMapRoute : 'track'" 
           :devices="deviceStore.deviceMarkers" 
           :geos="activeGeofences"

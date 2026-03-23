@@ -1,4 +1,3 @@
-import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
 import { Network } from '@capacitor/network';
 import { auth } from '@/firebase';
@@ -8,8 +7,7 @@ import { useDevicesStore } from '@/stores/devices';
 let isInitialized = false;
 
 export const LifecycleService = {
-  reconnectTimer: null,
-  isReconnecting: false, // Lock to prevent concurrent overlapping sequences
+  reconnectTimer: null, // Track the timer to prevent duplicates
 
   init() {
     if (isInitialized) return;
@@ -25,7 +23,7 @@ export const LifecycleService = {
 
     this.countryCodePromise = userStore.fetchCountryCode().then(code => {
       if (!code) {
-        console.error('❌ Failed to fetch country code');
+        console.log('error')
         userStore.error = true;
       }
       return code;
@@ -37,19 +35,18 @@ export const LifecycleService = {
       if (firebaseUser) {
         console.log('✅ Auth State: Logged In');
         await userStore.setUser(firebaseUser);
-        await this.startSession();
-      } else {
+        await this.startSession(firebaseUser);
+        } else {
         console.log('🛑 Auth State: Logged Out');
         this.stopSession();
-        userStore.gotoLogin()
       }
     });
 
     App.addListener('appStateChange', async ({ isActive }) => {
       console.log(`📱 App State Changed: ${isActive ? 'Active' : 'Background'}`);
       
-      // Prevent running background socket logic on Web
-      if (!Capacitor.isNativePlatform()) return;
+      if(Capacitor.isNativePlatform() === false) return // only stop if native not web
+
 
       if (isActive) {
         if (userStore.isLoggedIn) {
@@ -58,6 +55,7 @@ export const LifecycleService = {
       } else {
         if (userStore.socket) {
           console.log('⏸️ Pausing: Closing WebSocket');
+          // Use the safe disconnect so it doesn't trigger a reconnect while in background
           userStore.disconnectSocket(); 
         }
       }
@@ -73,7 +71,7 @@ export const LifecycleService = {
     });
   },
 
-  async startSession() {
+  async startSession(firebaseUser) {
     const userStore = useUserStore();
     const deviceStore = useDevicesStore();
 
@@ -83,27 +81,28 @@ export const LifecycleService = {
 
     const synced = await userStore.backendSync(); 
     if (!synced) {
-      console.error('❌ Backend Sync Failed');
+      console.log('error')
       userStore.error = true;
       return; 
     }
 
     const connected = await userStore.serverConnect();
     if (!connected) {
-      console.error('❌ Server Connect Failed');
-      userStore.error = true;
+      console.log('error')
+      //userStore.error = true;
       return;
+    } else {
+      //Ge
     }
 
-    // Fetch both stores in parallel to cut loading time in half
-    const fetched = await deviceStore.fetchAll()
-
+    const fetched = await deviceStore.fetchAll();
     if (!fetched) {
-      console.error('❌ Failed to fetch devices or geofences');
+      console.log('error')
       userStore.error = true;
       return;
     }
 
+    // Connect with the disconnect watcher attached
     userStore.connectSocket(
       deviceStore.processSocketData,
       () => this.handleSocketDisconnect()
@@ -114,109 +113,52 @@ export const LifecycleService = {
     const userStore = useUserStore();
     const deviceStore = useDevicesStore();
     
-    
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     
-    userStore.disconnectSocket(); 
     userStore.clearUser();
     deviceStore.clearData();
-    this.isReconnecting = false; 
-    console.log('logout')
   },
 
   async checkConnectionAndReconnect() {
-    if (this.isReconnecting) return;
-    this.isReconnecting = true;
-
     const userStore = useUserStore();
     const deviceStore = useDevicesStore();
-
 
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
 
-    try {
-      const sessionValid = await userStore.serverConnect(); 
-      
-      if (sessionValid) {
-        const fetched = await deviceStore.fetchAll()
-
-        if (!fetched) {
-          console.error('❌ Failed to fetch devices or geofences');
-          userStore.error = true;
-          return;
-        }
-        
-        userStore.connectSocket(
-          deviceStore.processSocketData,
-          () => this.handleSocketDisconnect()
-        );
-      } else {
-        userStore.error = true;
-      }
-    } finally {
-      this.isReconnecting = false;
-    }
-  },
-
-  async reloadAndReconnect() {
-    if (this.isReconnecting) {
-      console.warn('⚠️ Reconnect already in progress. Ignoring manual reload.');
-      return;
-    }
-    this.isReconnecting = true;
-
-    const userStore = useUserStore();
-    const deviceStore = useDevicesStore();
+    const sessionValid = await userStore.serverConnect(); 
     
-
-    console.log('🔄 Initiating manual data reload and socket cycle...');
-
-    try {
-      if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
-
-      if (userStore.socket) {
-        console.log('🔌 Disconnecting current socket...');
-        userStore.disconnectSocket();
-      }
-
-      console.log('📥 Fetching latest devices and geofences...');
-      // Fetch both stores in parallel to cut loading time in half
-      const fetched = await deviceStore.fetchAll()
-
+    if (sessionValid) {
+      const fetched = await deviceStore.fetchAll();
       if (!fetched) {
-        console.error('❌ Failed to fetch devices or geofences');
         userStore.error = true;
         return;
       }
-
-      console.log('🔌 Reconnecting socket...');
+      
+      // Connect with the disconnect watcher attached
       userStore.connectSocket(
         deviceStore.processSocketData,
         () => this.handleSocketDisconnect()
       );
-
-      console.log('✅ Data reloaded and socket reconnected successfully!');
-
-    } catch (error) {
-      console.error('❌ Error during reload and reconnect sequence:', error);
+    } else {
       userStore.error = true;
-    } finally {
-      this.isReconnecting = false;
     }
   },
 
+  // --- NEW: Socket Error Watcher ---
   handleSocketDisconnect() {
     const userStore = useUserStore();
     
+    // Do not attempt to reconnect if the user is logged out or the internet is completely offline
     if (!userStore.isLoggedIn || !userStore.internet) return;
 
     console.log('🔄 Socket dropped. Attempting to reconnect in 5 seconds...');
     
+    // Clear any existing timer to prevent multiple reconnect attempts stacking up
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
 
     this.reconnectTimer = setTimeout(async () => {
       console.log('🔄 Firing auto-reconnect sequence...');
       await this.checkConnectionAndReconnect();
-    }, 5000); 
+    }, 5000); // 5 second backoff
   }
 };

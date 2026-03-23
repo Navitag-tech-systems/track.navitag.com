@@ -62,7 +62,7 @@ const router = createRouter({
       path: '/linkdevice/select',
       name: 'linkdevice-select',
       component: LinkDeviceSelect,
-      meta: { requiresAuth: true, activeTab: 'list' } // Requires login to link a device
+      meta: { requiresAuth: true, activeTab: false } // set active tab to false to hide bottom nav
     },
     {
       path: '/linkdevice/start',
@@ -92,7 +92,7 @@ const router = createRouter({
       path: '/linkdevice/success',
       name: 'linkdevice-success',
       component: LinkDeviceSuccess,
-      meta: { requiresAuth: true, activeTab: 'list' }
+      meta: { requiresAuth: true}
     },
     {
       path: '/account',
@@ -138,7 +138,7 @@ const router = createRouter({
     },
     {
       path: '/linkdevice/teaser',
-      name: 'linkdevice-success',
+      name: 'linkdevice-teaser',
       component: LinkDeviceTeaser,
       meta: {requiresAuth:true, activeTab: 'lists'}
     },

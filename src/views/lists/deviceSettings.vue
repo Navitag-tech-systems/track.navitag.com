@@ -1,10 +1,10 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch} from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useDevicesStore } from '@/stores/devices.js';
 import { useUserStore } from '@/stores/user.js';
 import { request } from '@/utils/http.js';
-import { categoryMapping } from '@/utils/variables';
+import { categoryMapping, baseUrl } from '@/utils/variables';
 
 const route = useRoute();
 const router = useRouter();
@@ -22,17 +22,31 @@ const loading = ref(false);
 const errorMsg = ref('');
 const successMsg = ref('');
 
+const isActive = ref(null);
+
 // Categories supported by your Leaflet component
 
 
 onMounted(() => {
   if (device.value) {
     name.value = device.value.name || '';
-    category.value = device.value.category || 'car';
+    category.value = device.value.category;
+    isActive.value = !device.value.disabled
   } else {
     errorMsg.value = "Device not found.";
   }
 });
+
+
+async function toggleDevice (mode = true){
+  const ispState = await request.send({
+    url: mode ? `${baseUrl}/device/enable` : `${baseUrl}/device/disable`,
+    method: 'POST',
+    data: { imei: device.value.uniqueId },
+    token: userStore.idToken
+  });
+  return ispState
+}
 
 const saveDevice = async () => {
   if (!name.value.trim()) {
@@ -51,7 +65,7 @@ const saveDevice = async () => {
       "name": name.value.trim(),
       "uniqueId": device.value.uniqueId,
       //"status": "string",
-      "disabled": true,
+      "disabled": !isActive.value,
       //"lastUpdate": "2019-08-24T14:15:22Z",
       //"positionId": 0,
       "groupId": device.value.groupId,
@@ -98,6 +112,23 @@ const saveDevice = async () => {
     loading.value = false;
   }
 };
+
+watch(isActive, async (nv, ov) => {
+  if(ov === null) {
+    //skip
+  } else {
+    loading.value = true;
+    toggleDevice(nv).then( (res) =>{
+      //save to tracar
+      saveDevice()
+    }).catch((e) => {
+      //do not save to traccar
+      loading.value = false
+    })
+    
+
+  }
+})
 </script>
 
 <template>
@@ -121,7 +152,22 @@ const saveDevice = async () => {
 
       <div v-else class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
         <form @submit.prevent="saveDevice" class="space-y-5">
-          
+
+          <div class="p-4 border rounded-lg"> <label class="relative flex items-center justify-between cursor-pointer w-full"> 
+              <input 
+                type="checkbox" 
+                v-model="isActive" 
+                class="sr-only peer"
+                :disabled="loading"
+              >
+              
+              <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              <span class="text-md font-medium text-gray-900">
+                {{ isActive ? 'Active' : 'Disabled' }}
+              </span>
+            </label>
+          </div>
+
           <div>
             <label class="block text-sm font-bold text-gray-700 mb-2">Device Name</label>
             <div class="relative">

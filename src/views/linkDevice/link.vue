@@ -3,7 +3,7 @@ import { ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useUserStore } from '@/stores/user.js';
 import { baseUrl } from '@/utils/variables';
-import { CapacitorHttp } from '@capacitor/core';
+import { request } from '@/utils/http';
 
 const route = useRoute();
 const router = useRouter();
@@ -14,7 +14,7 @@ const deviceName = ref('');
 const loading = ref(false);
 const errorMsg = ref('');
 
-const linkDeviceToAccount = async (skipActivation = false) => {
+const linkDeviceToAccount = async () => {
   if (!deviceName.value || deviceName.value.trim() === '') {
     errorMsg.value = 'Please enter a name for your tracker.';
     return;
@@ -24,29 +24,19 @@ const linkDeviceToAccount = async (skipActivation = false) => {
   errorMsg.value = '';
 
   try {
-    const options = {
+    const data = await request.send({
       url: `${baseUrl}/user/link-device`,
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${userStore.idToken}`
-      },
+      method: 'POST',    
       data: {
-        imei: imei,
-        name: deviceName.value.trim()
-      }
-    };
-
-    const response = await CapacitorHttp.post(options);
-    const data = response.data; // This is the equivalent of .json()
+          imei: imei,
+          name: deviceName.value.trim()
+        },
+      token: userStore.idToken
+    });
 
     if (data.status === 'success') {
       // Route based on whether the user chose to skip activation
-      if (skipActivation) {
-        router.push(`/linkdevice/success?activated=false`);
-      } else {
         router.push(`/linkdevice/enable/${imei}`);
-      }
     } else {
       throw new Error(data.message || 'Unknown error occurred.');
     }
@@ -102,15 +92,7 @@ const linkDeviceToAccount = async (skipActivation = false) => {
         class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-4 rounded-xl flex items-center justify-center transition cursor-pointer text-lg shadow-md active:scale-[0.98] disabled:opacity-50"
       >
         <i v-if="loading" class="fa-solid fa-circle-notch fa-spin mr-2"></i>
-        {{ loading ? 'Linking...' : 'Link & Activate SIM' }}
-      </button>
-
-      <button 
-        @click="linkDeviceToAccount(true)"
-        :disabled="loading"
-        class="w-full mt-4 text-sm text-gray-500 font-semibold hover:text-gray-800 cursor-pointer disabled:opacity-50 transition-colors"
-      >
-        Skip Activation
+        {{ loading ? 'Linking...' : 'Link Device' }}
       </button>
     </div>
   </div>

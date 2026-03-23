@@ -190,11 +190,6 @@ const viewHistory = () => {
         </div>
       </div>
 
-      <details class="bg-gray-100 rounded-xl p-3 text-xs text-gray-500">
-        <summary class="cursor-pointer font-bold mb-2">Debug Data (Raw JSON)</summary>
-        <pre class="overflow-x-auto">{{ device }}</pre>
-      </details>
-
     </div>
   </div>
 </template>

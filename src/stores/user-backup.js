@@ -1,6 +1,5 @@
 import { defineStore } from 'pinia';
-// 1. Swapped markRaw for shallowRef
-import { ref, computed, shallowRef } from 'vue'; 
+import { ref, computed, markRaw } from 'vue';
 import { FirebaseMessaging } from '@capacitor-firebase/messaging';
 import { Capacitor } from '@capacitor/core'; 
 import { setUserId } from '@/utils/analytics';
@@ -20,12 +19,10 @@ export const useUserStore = defineStore('user', () => {
   const server_url = ref(null); 
   const server_token = ref(null);
   const server_connect = ref(false);
-  
-  // 2. THIS IS THE CRITICAL FIX: Declare as a shallowRef
-  const socket = shallowRef(null);
-  
+  var socket = null
   const router = useRouter()
 
+  
   const error = ref(false); // assume theres no error
   const internet = ref(true); // assume theres internet
   
@@ -127,6 +124,16 @@ export const useUserStore = defineStore('user', () => {
       return true; 
     } 
     return false;
+  }
+
+  function clearUser() {
+    if (socket) socket.close();
+    user.value = false;
+    idToken.value = null;
+    server_token.value = null;
+    server_connect.value = false;
+    socket = markRaw(null);
+    error.value = false;
   }
 
   async function backendSync(token = null) {
@@ -259,78 +266,53 @@ export const useUserStore = defineStore('user', () => {
   }
 
   // --- ACTION: Safe Disconnect ---
-  async function disconnectSocket() {
-    if (socket.value) {
+  function disconnectSocket() {
+    if (socket) {
       console.log('Closing existing socket intentionally...');
-      
-      // If the socket is currently a pending Promise, wait for it to become a real WebSocket
-      let activeSocket = socket.value;
-      if (activeSocket instanceof Promise) {
-        activeSocket = await activeSocket;
-      }
-
-      // Now we know for a fact we are dealing with the real object
-      if (activeSocket) {
-        activeSocket.onclose = null;
-        activeSocket.onerror = null;
-        
-        if (typeof activeSocket.close === 'function') {
-          activeSocket.close();
-        }
-      }
-      
-      socket.value = null;
+      // Remove listeners so it doesn't trigger the auto-reconnect watcher
+      socket.onclose = null;
+      socket.onerror = null;
+      socket.close();
+      socket = null;
     }
+
+     router.push('/login')
   }
 
   // --- ACTION: Connect Socket ---
-  async function connectSocket(onMessageCallback, onDisconnectCallback) {
+  function connectSocket(onMessageCallback, onDisconnectCallback) {
     if (!server_url.value) return;
     
-    // Safely close any existing sockets first
-    await disconnectSocket();
+    disconnectSocket(); // Ensure any existing socket is cleanly removed first
 
-    try {
-      // Add 'await' so we get the actual WebSocket, not a Promise
-      const socketInstance = await request.connectSocket(
-        server_url.value,
-        onMessageCallback,
-        onDisconnectCallback 
-      );
+    const socketInstance = request.connectSocket(
+      server_url.value,
+      onMessageCallback,
+      onDisconnectCallback // Pass the watcher down to the HTTP utility
+    );
 
-      if (socketInstance) {
-        socket.value = socketInstance;
-        // You had routing here before, keep it if this is exactly how you want your flow!
-        router.push('/'); 
-      } else {
-        console.error('final socket connection failed');
-        error.value = true;
-      }
-    } catch (err) {
-      console.error('Socket connection threw an error:', err);
-      error.value = true;
+    if (socketInstance) {
+      router.push('/')
+      socket = markRaw(socketInstance);
+    } else {
+      console.log('final socket connection failed')
+      error.value = true
     }
   }
 
+  // --- ACTION: Clear User (Update this to use disconnectSocket) ---
   function clearUser() {
-    disconnectSocket(); 
+    disconnectSocket(); // Use the safe disconnect here
     user.value = false;
     idToken.value = null;
     server_token.value = null;
     server_connect.value = false;
     error.value = false; 
-    
-    // Redirect to "/" when the user is cleared/logged out
-    router.push('/'); 
-  }
-
-  function gotoLogin(){
-    router.push("/login")
   }
 
   return { 
     user, idToken, countryCode, loading, isLoggedIn, internet, error,
-    setUser, clearUser, serverConnect, connectSocket, fetchCountryCode, backendSync, disconnectSocket, gotoLogin,
+    setUser, clearUser, serverConnect, connectSocket, fetchCountryCode, backendSync, disconnectSocket,
     server_url, server_token, server_connect, socket, name, phone
   };
 });
