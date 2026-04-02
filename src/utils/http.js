@@ -75,7 +75,11 @@ export const request = {
       try {
         const response = await CapacitorHttp.request(httpOptions);
 
-        return response.data;
+        if (response.status >= 200 && response.status < 300) {
+          if (response.data === '' || response.data == null) return true;
+          return response.data;
+        }
+        throw new Error(`HTTP ${response.status}`);
       } catch (error) {
         console.error(`Native ${method} Error [${url}]:`, error);
         throw error;
@@ -94,7 +98,13 @@ export const request = {
       if (hasBody) kyOptions.json = data;
 
       try {
-        return await ky(url, kyOptions).json();
+        const res = await ky(url, kyOptions);
+        if (res.status >= 200 && res.status < 300) {
+          const text = await res.text();
+          if (!text) return true;
+          try { return JSON.parse(text); } catch { return true; }
+        }
+        throw new Error(`HTTP ${res.status}`);
       } catch (error) {
         console.error(`Web/Simple ${method} Error [${url}]:`, error);
         throw error;

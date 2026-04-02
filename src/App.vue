@@ -10,6 +10,7 @@ import Error from '@/components/error.vue';
 import NoNet from './components/noNet.vue';
 import { getPlatformInfo, liqKey } from './utils/variables';
 import { leafletMap } from '@burkaloo/leaflet-vue3'
+import { LifecycleService } from '@/utils/lifecycle'
 
 const userStore = useUserStore();
 const deviceStore = useDevicesStore();
@@ -55,6 +56,11 @@ function trackMapMode(mode){
   console.log('mode', mode[0])
 }
 
+async function retryConnection() {
+  userStore.error = false;
+  await LifecycleService.checkConnectionAndReconnect();
+}
+
 </script>
 
 <template>
@@ -65,7 +71,16 @@ function trackMapMode(mode){
     :class="{ 'pb-safe-bottom': !showNav }"
   >
     <Loading v-if="masterLoading"/>
-    <Error v-if="userStore.error"/>
+    <Error v-if="userStore.error">
+      <template #action>
+        <button
+          @click="retryConnection"
+          class="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-sm transition-colors outline-none cursor-pointer"
+        >
+          Retry
+        </button>
+      </template>
+    </Error>
     <NoNet v-if="!userStore.internet"/>
 
     <main 

@@ -33,7 +33,7 @@ export const LifecycleService = {
 
     auth.addListener('authStateChange', async (data) => {
       const firebaseUser = data.user;
-      
+
       if (firebaseUser) {
         console.log('✅ Auth State: Logged In');
         await userStore.setUser(firebaseUser);
@@ -42,6 +42,14 @@ export const LifecycleService = {
         console.log('🛑 Auth State: Logged Out');
         this.stopSession();
         userStore.gotoLogin()
+      }
+    });
+
+    auth.addListener('idTokenChange', async (data) => {
+      if (data.user) {
+        const result = await auth.getIdToken();
+        userStore.idToken = result.token;
+        console.log('🔑 ID Token refreshed');
       }
     });
 

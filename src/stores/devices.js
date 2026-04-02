@@ -63,9 +63,10 @@ export const useDevicesStore = defineStore('devices', () => {
         const isIgnitionOn = pos.attributes?.ignition;
         const markerColor = (isOnline && isIgnitionOn) ? "#57f491" : "#ffcbd1";
         const catObj = categoryMapping.find(category => category.server === device.category)
+          ?? categoryMapping.find(category => category.server === null);
 
         const markerData = {
-          id: deviceId, 
+          id: deviceId,
           latlon: [pos.latitude, pos.longitude],
           bearing: pos.course,
           color: markerColor,

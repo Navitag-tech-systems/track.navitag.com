@@ -3,12 +3,13 @@ import { ref } from 'vue';
 import { useUserStore } from '@/stores/user.js';
 import { RouterLink } from 'vue-router'; // <--- Add this import
 
-import { supportedProviders, getErrorMessage, signInWithEmailAndPassword } from '@/utils/auth';
+import { supportedProviders, getErrorMessage, signInWithEmailAndPassword, sendEmailVerification } from '@/utils/auth';
 
 const email = ref('');
 const password = ref('');
 const errorMsg = ref('');
 const loading = ref(false);
+const showPassword = ref(false);
 const userStore = useUserStore()
 //const router = useRouter();
 
@@ -17,9 +18,11 @@ const handleLogin = async () => {
   loading.value = true;
   errorMsg.value = 'log: starting login';
   try {
-    let user = await signInWithEmailAndPassword(email.value, password.value);
+    const user = await signInWithEmailAndPassword(email.value, password.value);
 
-    errorMsg.value = 'log: ' + user.user.uid;
+    if (user && !user.emailVerified) {
+      sendEmailVerification().catch(() => {});
+    }
   } catch (e) {
     errorMsg.value = getErrorMessage(e);
   } finally {
@@ -54,7 +57,16 @@ const handleProviderLogin = async (providerHandler) => {
       <form @submit.prevent="handleLogin" class="mt-4">
         <input v-model="email" type="email" placeholder="Email" required class="w-full border p-1 rounded mb-3 focus:ring-2 focus:ring-blue-500 outline-none" />
         <div class="mb-4">
-          <input v-model="password" type="password" placeholder="Password" required class="w-full border p-1 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
+          <div class="relative">
+            <input v-model="password" :type="showPassword ? 'text' : 'password'" placeholder="Password" required class="w-full border p-1 rounded focus:ring-2 focus:ring-blue-500 outline-none pr-10" />
+            <button
+              type="button"
+              @click="showPassword = !showPassword"
+              class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer hover:text-blue-500 transition-colors"
+            >
+              <i :class="showPassword ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'"></i>
+            </button>
+          </div>
           <div class="text-right mt-1">
             <RouterLink to="/forgot-password" class="text-xs text-blue-600 hover:underline">Forgot password?</RouterLink>
           </div>

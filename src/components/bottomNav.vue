@@ -9,7 +9,7 @@ const navItems = [
   { name: 'Items', icon: 'fa-solid fa-list-ul', routeName: 'list-devices', tab: 'list' }, // Assuming 'list' route exists
   { name: 'History', icon: 'fa-solid fa-clock-rotate-left', routeName: 'history-setup', tab: 'history' },
   { name: 'Map', icon: 'fa-solid fa-map-location-dot', routeName: 'trackView', tab: 'map' },
-  { name: 'Shop', icon: 'fa-solid fa-cart-shopping', routeName: 'app-shop', tab: 'shop'},
+  // { name: 'Shop', icon: 'fa-solid fa-cart-shopping', routeName: 'app-shop', tab: 'shop'},
   { name: 'Account', icon: 'fa-solid fa-user', routeName: 'account', tab: 'account' }
 ];
 

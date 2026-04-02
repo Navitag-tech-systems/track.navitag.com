@@ -104,9 +104,8 @@ const getGpsQuality = (device) => {
 <template>
   <div class="h-full flex flex-col pointer-events-none">
     
-    <div class="p-4 flex justify-end pointer-events-auto">
-      <div class="relative w-48 sm:w-64">
-        <div class="relative">
+    <div class="pointer-events-auto ms-auto relative mt-3 me-2" :style="{width: '250px'}">
+        <div>
           <i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
           <input 
             v-model="searchQuery"
@@ -118,8 +117,8 @@ const getGpsQuality = (device) => {
             @keydown.enter.prevent="onEnter"
             @keydown.esc="showDropdown = false"
             type="text" 
-            placeholder="Find tracker..." 
-            class="w-full pl-9 pr-2 py-2 bg-white/95 backdrop-blur-sm border border-gray-200 rounded-xl text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+            placeholder="Search" 
+            class="w-full px-2 py-2 bg-white/95 backdrop-blur-sm border border-gray-200 rounded-xl text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
           />
         </div>
 
@@ -146,7 +145,6 @@ const getGpsQuality = (device) => {
             </li>
           </ul>
         </div>
-      </div>
     </div>
 
     <div 

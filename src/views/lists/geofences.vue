@@ -28,17 +28,6 @@ const confirmDelete = (id) => {
   showDeleteModal.value = true;
 };
 
-// Helper: The actual delete request
-const sendDeleteRequest = async (id) => {
-  return await 
-  
-  
-  CapacitorHttp.delete({
-    url: `https://${userStore.server_url}/api/geofences/${id}`,
-    withCredentials: true // Crucial: sends the JSESSIONID cookie
-  });
-};
-
 // Step 2: Perform the actual delete via API with 401 Retry Logic
 const performDelete = async () => {
   if (!geofenceToDelete.value) return;
@@ -50,6 +39,7 @@ const performDelete = async () => {
     // Attempt 1
     let response = await request.send({
       url: `https://${userStore.server_url}/api/geofences/${id}`,
+      method: 'DELETE',
       isTraccar: true
     })
 

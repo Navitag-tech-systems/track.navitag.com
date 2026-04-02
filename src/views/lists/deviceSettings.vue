@@ -79,8 +79,8 @@ const saveDevice = async () => {
     const update = await request.send({
       url: `https://${userStore.server_url}/api/devices/${deviceId}`,
       method: 'PUT',
+      isTraccar: true,
       data: updatedDevice,
-
     });
 
     if(update){

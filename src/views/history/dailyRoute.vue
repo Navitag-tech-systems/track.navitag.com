@@ -134,7 +134,7 @@ const selectEvent = (markerId) => {
 watch(() => deviceStore.deviceSelected, async (newdeviceSelected) => {
   if (newdeviceSelected && String(newdeviceSelected).startsWith('marker_')) {
     if (!isTimelineOpen.value) {
-      isTimelineOpen.value = false;
+      isTimelineOpen.value = true;
     }
     
     await nextTick();

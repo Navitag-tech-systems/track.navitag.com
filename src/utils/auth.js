@@ -82,6 +82,20 @@ export const signOut = async () => {
   }
 };
 
+export const sendEmailVerification = async () => {
+  try {
+    await auth.sendEmailVerification({
+      actionCodeSettings: {
+        url: 'https://auth.navitag.com/firebase/email-verified',
+        handleCodeInApp: false,
+      }
+    });
+  } catch (error) {
+    console.error('[Email Verification] Error:', error);
+    throw error;
+  }
+}
+
 export const sendResetPasswordEmail = async (options) => {
   try{
     console.log('[Password Reset] Sending reset email');

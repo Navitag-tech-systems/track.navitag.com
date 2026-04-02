@@ -8,7 +8,6 @@ import geoEdit from '@/views/map/geofenceEdit.vue'
 import LoginView from '@/views/login/index.vue'
 import SignupView from '@/views/signup/index.vue'
 import ForgotPasswordView from '@/views/pwReset/index.vue'
-import authCallback from '@/views/authCallback/index.vue';
 
 import LinkDeviceStart from '@/views/linkDevice/start.vue'
 import LinkDeviceSelect from '@/views/linkDevice/select.vue'
@@ -29,12 +28,12 @@ import historyRoute from '@/views/history/dailyRoute.vue'
 
 import account from '@/views/account/index.vue'
 
-import dataPlans from '@/views/shop/dataPlans.vue'
-import catalog from '@/views/shop/catalog.vue'
-import shipping from '@/views/shop/shipping.vue'
-import xenditComp from '@/views/payment/xenditComp.vue'
-import paySuccess from '@/views/payment/paySuccess.vue'
-import payFail from './views/payment/payFail.vue'
+// import dataPlans from '@/views/shop/dataPlans.vue'
+// import catalog from '@/views/shop/catalog.vue'
+// import shipping from '@/views/shop/shipping.vue'
+// import xenditComp from '@/views/payment/xenditComp.vue'
+// import paySuccess from '@/views/payment/paySuccess.vue'
+// import payFail from './views/payment/payFail.vue'
 
 const router = createRouter({
   // createWebHistory works for Capacitor apps (http://localhost or capacitor://)
@@ -47,7 +46,7 @@ const router = createRouter({
       meta: { requiresAuth: true, mapRoute: 'track', activeTab: 'map'}
     },
     {
-      path: '/listgeo',
+      path: '/addgeo',
       name: 'geoView',
       component: geoView,
       meta: { requiresAuth: true, mapRoute: 'geo-new', activeTab: 'map'}
@@ -142,42 +141,13 @@ const router = createRouter({
       component: LinkDeviceTeaser,
       meta: {requiresAuth:true, activeTab: 'lists'}
     },
-    {
-      path: '/data-plans',
-      name: 'data-plans',
-      component: dataPlans,
-      meta: {requiresAuth: true, activeTab: 'shop'}
-    },
-    {
-      path: '/app-shop',
-      name: 'app-shop',
-      component: catalog,
-      meta: {requiresAuth: true, activeTab: 'shop'}
-    },
-    {
-      path: '/shipping/:type',
-      name: 'shipping',
-      component: shipping,
-      meta: {requiresAuth:true, activeTab: 'shop'}
-    },
-    {
-      path: '/payment/:session',
-      name: 'payment',
-      component: xenditComp,
-      meta: {requiresAuth:true, activeTab: 'shop'}
-    },
-    {
-      path: '/payment/success',
-      name: 'payment-success',
-      component: paySuccess,
-      meta : {requiresAuth: true, activeTab: 'shop'}
-    },
-    {
-      path: '/payment/fail',
-      name: 'payment-fail',
-      component: payFail,
-      meta: {requiresAuth: true, activeTab: 'shop'}
-    },  
+    // SHOP TEMPORARILY DISABLED
+    // { path: '/data-plans', name: 'data-plans', component: dataPlans, meta: {requiresAuth: true, activeTab: 'shop'} },
+    // { path: '/app-shop', name: 'app-shop', component: catalog, meta: {requiresAuth: true, activeTab: 'shop'} },
+    // { path: '/shipping/:type', name: 'shipping', component: shipping, meta: {requiresAuth:true, activeTab: 'shop'} },
+    // { path: '/payment/:session', name: 'payment', component: xenditComp, meta: {requiresAuth:true, activeTab: 'shop'} },
+    // { path: '/payment/success', name: 'payment-success', component: paySuccess, meta: {requiresAuth: true, activeTab: 'shop'} },
+    // { path: '/payment/fail', name: 'payment-fail', component: payFail, meta: {requiresAuth: true, activeTab: 'shop'} },
     {
       path: '/login',
       name: 'login',
@@ -193,11 +163,6 @@ const router = createRouter({
       name: 'forgot-password',
       component: ForgotPasswordView
     },
-    {
-      path: '/auth/action', // <--- The callback route
-      name: 'auth-action',
-      component: authCallback
-    }
   ]
 })
 

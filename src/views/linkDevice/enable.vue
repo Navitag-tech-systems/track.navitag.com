@@ -35,6 +35,7 @@ const enableDevice = async () => {
     const serverUpdate = await request.send({
       url: `https://${userStore.server_url}/api/devices/${serverDevice.id}`,
       method: 'PUT',
+      isTraccar: true,
       data: serverDevice,
     });
 

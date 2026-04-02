@@ -55,19 +55,17 @@ const updateToTraccar = async (latLngs) => {
     
     const areaString = `POLYGON ((${points.join(', ')}))`;
 
-    let response = await request.send({
+    await request.send({
       url: `https://${userStore.server_url}/api/geofences/${geoid}`,
       method: 'PUT',
+      isTraccar: true,
       data: {
         id: Number(geoid),
         name: geofenceName.value.trim(),
-        area: areaString, 
+        area: areaString,
       },
     })
 
-    if (response.status >= 400) {
-      throw new Error(`Failed to update geofence. Status: ${response.status}`);
-    }
     LifecycleService.startSession()
 
     // Success! Update local Pinia store  
