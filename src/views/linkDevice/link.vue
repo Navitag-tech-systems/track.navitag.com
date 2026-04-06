@@ -38,7 +38,7 @@ const linkDeviceToAccount = async () => {
       // Route based on whether the user chose to skip activation
         router.push(`/linkdevice/enable/${imei}`);
     } else {
-      throw new Error(data.message || 'Unknown error occurred.');
+      throw new Error(data.error || data.message || 'Unknown error occurred.');
     }
   } catch (error) {
     console.error('Failed to link device:', error);

@@ -89,11 +89,17 @@ export const LifecycleService = {
       await this.countryCodePromise;
     }
 
-    const synced = await userStore.backendSync(); 
+    const synced = await userStore.backendSync();
     if (!synced) {
-      console.error('❌ Backend Sync Failed');
-      userStore.error = true;
-      return; 
+      // Retry once with a force-refreshed token before giving up
+      console.warn('⚠️ Backend Sync Failed — retrying with fresh token...');
+      const freshToken = await userStore.getFreshToken();
+      const retried = freshToken ? await userStore.backendSync(freshToken) : false;
+      if (!retried) {
+        console.error('❌ Backend Sync Failed after retry');
+        userStore.error = true;
+        return;
+      }
     }
 
     const connected = await userStore.serverConnect();
@@ -115,7 +121,7 @@ export const LifecycleService = {
     userStore.connectSocket(
       deviceStore.processSocketData,
       () => this.handleSocketDisconnect()
-    ); 
+    );
   },
 
   stopSession() {

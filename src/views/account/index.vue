@@ -5,7 +5,7 @@ import { useUserStore } from '@/stores/user.js';
 import { signOut } from '@/utils/auth';
 import { auth } from '@/firebase'; 
 import { baseUrl } from '@/utils/variables';
-import { CapacitorHttp } from '@capacitor/core';
+import { request } from '@/utils/http';
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -135,25 +135,19 @@ const updateProfile = async () => {
   }
 
   try {
-    const options = {
+    const data = await request.send({
       url: `${baseUrl}/user/update`,
-      method: 'POST', // Explicitly set the method
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${userStore.idToken}`
-      },
-      data: payload, // In Capacitor, 'data' is used for the request body
-    };
+      method: 'POST',
+      data: payload,
+      token: userStore.idToken
+    });
 
-    const response = await CapacitorHttp.post(options);
-    const data = response.data;
-
-    if (response.status === 'success') {
+    if (data.status === 'success') {
       profileMessage.value = 'Profile updated successfully.';
       if (payload.name) userStore.name = payload.name;
       if (payload.phone) userStore.phone = payload.phone;
     } else {
-      throw new Error('Failed to update profile.');
+      throw new Error(data.error || 'Failed to update profile.');
     }
   } catch (error) {
     console.error('Update profile error:', error);

@@ -117,27 +117,40 @@ export const useUserStore = defineStore('user', () => {
   }
 
   // Actions
+  async function getFreshToken() {
+    try {
+      const result = await auth.getIdToken({ forceRefresh: true });
+      idToken.value = result.token;
+      return result.token;
+    } catch (err) {
+      console.error('Failed to refresh Firebase ID token:', err);
+      return null;
+    }
+  }
+
   async function setUser(firebaseUser) {
     user.value = firebaseUser;
     if (firebaseUser) {
-      const result = await auth.getIdToken();
-      idToken.value = result.token;
+      await getFreshToken();
       initPushNotifications();
       await setUserId(firebaseUser.uid);
-      return true; 
-    } 
+      return true;
+    }
     return false;
   }
 
   async function backendSync(token = null) {
     try {
+      // Ensure we have a fresh Firebase token before calling the backend
+      if (!token) await getFreshToken();
+
       const data = { 'country_code': countryCode.value };
 
       if (name.value) data.name = name.value;
       if (user.value.displayName) data.name = user.value.displayName;
       if (phone.value) data.phone = phone.value;
       if (user.value.phoneNumber) data.phone = user.value.phoneNumber;
-      
+
       const useToken = token || idToken.value;
       if (!useToken) return false;
 
@@ -199,6 +212,8 @@ export const useUserStore = defineStore('user', () => {
 
     const generateToken = async () => {
       try {
+        // Refresh Firebase token before minting a new Traccar token
+        await getFreshToken();
         if (!idToken.value || !server_url.value) return false;
         const tokenRes = await request.send({
           url: `${baseUrl}/server/token`,
@@ -328,9 +343,9 @@ export const useUserStore = defineStore('user', () => {
     router.push("/login")
   }
 
-  return { 
+  return {
     user, idToken, countryCode, loading, isLoggedIn, internet, error,
-    setUser, clearUser, serverConnect, connectSocket, fetchCountryCode, backendSync, disconnectSocket, gotoLogin,
+    setUser, clearUser, serverConnect, connectSocket, fetchCountryCode, backendSync, disconnectSocket, gotoLogin, getFreshToken,
     server_url, server_token, server_connect, socket, name, phone
   };
 });
