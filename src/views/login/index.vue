@@ -1,30 +1,38 @@
 <script setup>
 import { ref } from 'vue';
 import { useUserStore } from '@/stores/user.js';
-import { RouterLink } from 'vue-router'; // <--- Add this import
+import { RouterLink } from 'vue-router';
 
 import { supportedProviders, getErrorMessage, signInWithEmailAndPassword, sendEmailVerification } from '@/utils/auth';
 
 const email = ref('');
 const password = ref('');
-const errorMsg = ref('');
+const feedbackMsg = ref('');
+const isError = ref(false);
 const loading = ref(false);
 const showPassword = ref(false);
 const userStore = useUserStore()
-//const router = useRouter();
+
+function setFeedback(msg, error = false) {
+  feedbackMsg.value = msg;
+  isError.value = error;
+}
 
 // Email Login
 const handleLogin = async () => {
   loading.value = true;
-  errorMsg.value = 'log: starting login';
+  setFeedback('Signing in...');
   try {
     const user = await signInWithEmailAndPassword(email.value, password.value);
 
     if (user && !user.emailVerified) {
+      setFeedback('Verification email sent. Please check your inbox.');
       sendEmailVerification().catch(() => {});
+    } else {
+      setFeedback('Signed in successfully.');
     }
   } catch (e) {
-    errorMsg.value = getErrorMessage(e);
+    setFeedback(getErrorMessage(e), true);
   } finally {
     loading.value = false;
   }
@@ -33,14 +41,12 @@ const handleLogin = async () => {
 // Provider Login (Google/Facebook/Apple)
 const handleProviderLogin = async (providerHandler) => {
   loading.value = true;
-  errorMsg.value = 'log: starting login';
+  setFeedback('Signing in...');
   try {
-    let creds = await providerHandler();
-    console.log(creds)
-    errorMsg.value = 'log: '+ creds.user.uid;
-    //router.replace('/');
+    await providerHandler();
+    setFeedback('Signed in successfully.');
   } catch (e) {
-    errorMsg.value = "Sign in failed: " + e.message;
+    setFeedback("Sign in failed: " + e.message, true);
   } finally {
     loading.value = false;
   }
@@ -48,54 +54,57 @@ const handleProviderLogin = async (providerHandler) => {
 </script>
 
 <template>
-  <div class="flex flex-col items-center justify-center flex-1 p-4 bg-gray-50">
+  <div class="flex flex-col items-center justify-center flex-1 p-4 bg-surface">
     <div class="w-full max-w-sm bg-white p-6 rounded-lg shadow-md">
       <h1 class="text-2xl font-bold mb-3 text-center text-gray-800">Welcome Back</h1>
 
       <div v-show="userStore.countryCode !== null" class="text-center text-gray-500 mb-3 font-semibold">Country Server: {{ userStore.countryCode }}</div>
 
       <form @submit.prevent="handleLogin" class="mt-4">
-        <input v-model="email" type="email" placeholder="Email" required class="w-full border p-1 rounded mb-3 focus:ring-2 focus:ring-blue-500 outline-none" />
+        <input v-model="email" type="email" placeholder="Email" required class="w-full border p-1 rounded mb-3 focus:ring-2 focus:ring-brand outline-none" />
         <div class="mb-4">
           <div class="relative">
-            <input v-model="password" :type="showPassword ? 'text' : 'password'" placeholder="Password" required class="w-full border p-1 rounded focus:ring-2 focus:ring-blue-500 outline-none pr-10" />
+            <input v-model="password" :type="showPassword ? 'text' : 'password'" placeholder="Password" required class="w-full border p-1 rounded focus:ring-2 focus:ring-brand outline-none pr-10" />
             <button
               type="button"
               @click="showPassword = !showPassword"
-              class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer hover:text-blue-500 transition-colors"
+              class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer hover:text-brand transition-colors"
             >
               <i :class="showPassword ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'"></i>
             </button>
           </div>
           <div class="text-right mt-1">
-            <RouterLink to="/forgot-password" class="text-xs text-blue-600 hover:underline">Forgot password?</RouterLink>
+            <RouterLink v-if="!loading" to="/forgot-password" class="text-xs text-brand hover:underline">Forgot password?</RouterLink>
+            <span v-else class="text-xs text-gray-400">Forgot password?</span>
           </div>
         </div>
         
-        <button type="submit" :disabled="loading" class="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-2 px-4 rounded transition disabled:opacity-50">
-          {{ loading ? 'Loading...' : 'Sign In' }}
+        <button type="submit" :disabled="loading" class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-2 px-4 rounded transition disabled:opacity-50 flex items-center justify-center gap-2">
+          <svg v-if="loading" class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+          {{ loading ? 'Signing in...' : 'Sign In' }}
         </button>
       </form>
 
-      <p v-if="errorMsg" class="text-red-500 mt-4 text-center text-sm">{{ errorMsg }}</p>
+      <p v-if="feedbackMsg" :class="['mt-4 text-center text-sm', isError ? 'text-red-500' : 'text-gray-600']">{{ feedbackMsg }}</p>
 
       <div class="mt-6 text-center text-sm text-gray-600">
-        Don't have an account? 
-        <RouterLink to="/signup" class="text-blue-600 hover:underline">Sign Up</RouterLink>
+        Don't have an account?
+        <RouterLink v-if="!loading" to="/signup" class="text-brand hover:underline">Sign Up</RouterLink>
+        <span v-else class="text-gray-400">Sign Up</span>
       </div>
 
       <div class="relative flex py-5 items-center">
         <div class="flex-grow border-t border-gray-300"></div>
-        <span class="flex-shrink mx-4 text-gray-400 text-sm">Or Login With</span>
+        <span class="flex-shrink mx-4 text-accent text-sm font-medium">Or Login With</span>
         <div class="flex-grow border-t border-gray-300"></div>
       </div>
 
       <div class="flex justify-center space-x-4 mb-6 mt-2">
-        <button 
-          v-for="p in supportedProviders" 
+        <button
+          v-for="p in supportedProviders"
           :key="p.id"
           @click="handleProviderLogin(p.handler)"
-          :class="`${p.color} w-12 h-12 text-white rounded-full flex items-center justify-center transition hover:opacity-90 shadow-sm cursor-pointer`"
+          :class="[loading ? 'bg-gray-300 cursor-not-allowed' : `${p.color} hover:opacity-90 cursor-pointer`, 'w-12 h-12 text-white rounded-full flex items-center justify-center transition shadow-sm']"
           :disabled="loading"
           :title="`Sign in with ${p.name}`"
         >

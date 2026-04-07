@@ -15,9 +15,12 @@ export const useUserStore = defineStore('user', () => {
   const idToken = ref(null);
   const fcmToken = ref(null);
   const countryCode = ref(null);
+  const ipLocation = ref(null);
   const name = ref(null);
   const phone = ref(null);
-  const server_url = ref(null); 
+  const email = ref(null);
+  const needsEmail = ref(false);
+  const server_url = ref(null);
   const server_token = ref(null);
   const server_connect = ref(false);
   
@@ -32,10 +35,11 @@ export const useUserStore = defineStore('user', () => {
   const isLoggedIn = computed(() => user.value !== null && user.value !== false);
 
   const loading = computed(() => {
+    if (needsEmail.value) return false;
     if (user.value === null) {
       return true;
-    } else if (user.value === false) { 
-      return countryCode.value === null; 
+    } else if (user.value === false) {
+      return countryCode.value === null;
     } else {
       return !server_connect.value;
     }
@@ -45,37 +49,43 @@ export const useUserStore = defineStore('user', () => {
   async function fetchCountryCode() {
     const token = 'f1b39e92820d53';
     console.log('🌍 Fetching Country Code...');
-    
-    try {
-      // Step 1: Get IP
-      const ipData = await request.send({
-        url: 'https://api.ipify.org?format=json',
-        simple: true 
-      });
-      
-      if (ipData && ipData.ip) {
-        // Step 2: Get Country Info
-        const countryData = await request.send({
-          url: `https://api.ipinfo.io/lite/${ipData.ip}?token=${token}`,
-          simple: true
-        });
 
-        if (countryData && countryData.country_code) {
-          countryCode.value = countryData.country_code;
-          console.log('✅ Country Code Detected:', countryCode.value);
-          return countryCode.value;
-        }
+    const withTimeout = (promise, ms) => Promise.race([
+      promise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), ms))
+    ]);
+
+    const attempt = async () => {
+      const countryData = await withTimeout(
+        request.send({ url: `https://api.ipinfo.io/lite/me?token=${token}`, simple: true }),
+        8000
+      );
+      if (!countryData?.country_code) return null;
+
+      countryCode.value = countryData.country_code;
+      if (countryData.latitude && countryData.longitude) {
+        ipLocation.value = [countryData.latitude, countryData.longitude];
       }
-    } catch (error) {
-      console.warn('⚠️ Failed to retrieve location data:', error);
+      console.log('✅ Country Code Detected:', countryCode.value);
+      return countryCode.value;
+    };
+
+    // Retry up to 5 times with increasing delay
+    for (let i = 0; i < 5; i++) {
+      try {
+        const result = await attempt();
+        if (result) return result;
+      } catch (error) {
+        console.warn(`⚠️ IP lookup attempt ${i + 1}/5 failed:`, error.message);
+      }
+      if (i < 4) await new Promise(r => setTimeout(r, 2000 * (i + 1)));
     }
-    
-    // FALLBACK: If IP lookup fails, assign an empty string so the `loading` 
-    // computed property evaluates to false and unlocks the Login screen.
+
+    // All retries exhausted
+    console.error('❌ All IP lookup attempts failed');
     if (countryCode.value === null) {
-      countryCode.value = 'Unknown';
+      countryCode.value = null;
     }
-    
     return null;
   }
 
@@ -132,7 +142,11 @@ export const useUserStore = defineStore('user', () => {
     user.value = firebaseUser;
     if (firebaseUser) {
       await getFreshToken();
-      initPushNotifications();
+      // Only request notification permissions if the user has an email.
+      // For SSO users without email, defer until after email collection.
+      if (firebaseUser.email) {
+        initPushNotifications();
+      }
       await setUserId(firebaseUser.uid);
       return true;
     }
@@ -150,6 +164,9 @@ export const useUserStore = defineStore('user', () => {
       if (user.value.displayName) data.name = user.value.displayName;
       if (phone.value) data.phone = phone.value;
       if (user.value.phoneNumber) data.phone = user.value.phoneNumber;
+      // Include email from user object or stored email (for SSO users whose JWT may not have it yet)
+      if (user.value.email) data.email = user.value.email;
+      else if (email.value) data.email = email.value;
 
       const useToken = token || idToken.value;
       if (!useToken) return false;
@@ -328,12 +345,15 @@ export const useUserStore = defineStore('user', () => {
   }
 
   function clearUser() {
-    disconnectSocket(); 
+    disconnectSocket();
     user.value = false;
     idToken.value = null;
+    server_url.value = null;
     server_token.value = null;
     server_connect.value = false;
-    error.value = false; 
+    needsEmail.value = false;
+    email.value = null;
+    error.value = false;
     
     // Redirect to "/" when the user is cleared/logged out
     router.push('/'); 
@@ -344,8 +364,8 @@ export const useUserStore = defineStore('user', () => {
   }
 
   return {
-    user, idToken, countryCode, loading, isLoggedIn, internet, error,
-    setUser, clearUser, serverConnect, connectSocket, fetchCountryCode, backendSync, disconnectSocket, gotoLogin, getFreshToken,
-    server_url, server_token, server_connect, socket, name, phone
+    user, idToken, countryCode, ipLocation, loading, isLoggedIn, internet, error, needsEmail,
+    setUser, clearUser, serverConnect, connectSocket, fetchCountryCode, backendSync, disconnectSocket, gotoLogin, getFreshToken, initPushNotifications,
+    server_url, server_token, server_connect, socket, name, phone, email
   };
 });

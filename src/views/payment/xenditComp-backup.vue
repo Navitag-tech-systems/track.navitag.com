@@ -127,7 +127,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="flex flex-col h-full bg-gray-50 z-20 relative">
+  <div class="flex flex-col h-full bg-surface z-20 relative">
     
     <div class="bg-white p-4 shadow-sm flex items-center safe-top">
       <button @click="router.back()" class="text-gray-600 mr-4 cursor-pointer hover:text-gray-900 outline-none">
@@ -148,7 +148,7 @@ onBeforeUnmount(() => {
 
         <div ref="paymentContainer" class="min-h-[200px] mb-6">
           <div v-if="!errorMessage && !xenditInstance" class="flex flex-col items-center justify-center py-10 text-gray-400">
-            <i class="fa-solid fa-circle-notch fa-spin text-3xl mb-3 text-blue-500"></i>
+            <i class="fa-solid fa-circle-notch fa-spin text-3xl mb-3 text-brand"></i>
             <p class="text-sm font-semibold">Loading secure connection...</p>
           </div>
         </div>
@@ -156,7 +156,7 @@ onBeforeUnmount(() => {
         <button 
           @click="submitPayment"
           :disabled="isProcessing || errorMessage !== '' || !xenditInstance"
-          class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition-colors shadow-sm disabled:opacity-50 flex items-center justify-center gap-2 active:scale-[0.98] outline-none"
+          class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-4 rounded-xl transition-colors shadow-sm disabled:opacity-50 flex items-center justify-center gap-2 active:scale-[0.98] outline-none"
         >
           <i v-if="isProcessing" class="fa-solid fa-circle-notch fa-spin"></i>
           {{ isProcessing ? 'Processing Payment...' : 'Pay Now' }}

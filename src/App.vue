@@ -67,21 +67,12 @@ async function retryConnection() {
   <div class="fixed top-0 left-0 right-0 h-safe-top bg-white z-50"></div>
 
   <div 
-    class="flex flex-col h-dvh w-full pt-safe-top bg-gray-50"
+    class="flex flex-col h-dvh w-full pt-safe-top bg-surface"
     :class="{ 'pb-safe-bottom': !showNav }"
   >
     <Loading v-if="masterLoading"/>
-    <Error v-if="userStore.error">
-      <template #action>
-        <button
-          @click="retryConnection"
-          class="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-sm transition-colors outline-none cursor-pointer"
-        >
-          Retry
-        </button>
-      </template>
-    </Error>
-    <NoNet v-if="!userStore.internet"/>
+    <Error v-if="userStore.error && !userStore.needsEmail"/>
+    <NoNet v-if="!userStore.internet && !userStore.needsEmail"/>
 
     <main 
       class="flex-1 w-full relative"
@@ -91,12 +82,13 @@ async function retryConnection() {
         class="absolute inset-0 z-0 transition-opacity duration-300"
         :class="isMapRoute ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'"
       >
-        <leafletMap 
+        <leafletMap
           v-if="userStore.isLoggedIn && masterLoading === false"
-          :mode="isMapRoute ? isMapRoute : 'track'" 
-          :devices="deviceStore.deviceMarkers" 
+          :mode="isMapRoute ? isMapRoute : 'track'"
+          :center="userStore.ipLocation || undefined"
+          :devices="deviceStore.deviceMarkers"
           :geos="activeGeofences"
-          :liqkey="liqKey" 
+          :liqkey="liqKey"
           :route="deviceStore.activeRoute"
           tileLayer="liq"
           :deviceUpdate="deviceStore.mapUpdate"

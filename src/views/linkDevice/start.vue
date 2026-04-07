@@ -81,7 +81,7 @@ const processDeviceCode = (code) => {
 </script>
 
 <template>
-  <div class="flex flex-col h-100 bg-gray-50 ">
+  <div class="flex flex-col h-100 bg-surface ">
     <div class="bg-white p-4 shadow-sm flex items-center">
       <button @click="router.back()" class="text-gray-600 mr-4 cursor-pointer hover:text-gray-900">
         <i class="fa-solid fa-arrow-left text-xl"></i>
@@ -90,8 +90,8 @@ const processDeviceCode = (code) => {
     </div>
 
     <div class="flex-1 flex flex-col items-center justify-center p-6 text-center">
-      <div class="w-40 h-40 bg-blue-100 rounded-full flex items-center justify-center mb-8 shadow-inner">
-        <i class="fa-solid fa-qrcode text-6xl text-blue-600"></i>
+      <div class="w-40 h-40 bg-brand-light rounded-full flex items-center justify-center mb-8 shadow-inner">
+        <i class="fa-solid fa-qrcode text-6xl text-brand"></i>
       </div>
       <h2 class="text-2xl font-bold text-gray-800 mb-4">
         {{ showCameraOption ? 'Scan QR Code' : 'Enter Device Code' }}
@@ -120,13 +120,13 @@ const processDeviceCode = (code) => {
         <button 
           @click="startScan" 
           :disabled="isScanning"
-          class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-4 rounded-xl flex items-center justify-center transition cursor-pointer text-lg shadow-md active:scale-[0.98] disabled:opacity-50"
+          class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-4 px-4 rounded-xl flex items-center justify-center transition cursor-pointer text-lg shadow-md active:scale-[0.98] disabled:opacity-50"
         >
           <i v-if="isScanning" class="fa-solid fa-circle-notch fa-spin mr-3 text-xl"></i>
           <i v-else class="fa-solid fa-camera mr-3 text-xl"></i> 
           {{ isScanning ? 'Scanner Active...' : 'Start Camera' }}
         </button>
-        <button @click="showCameraOption = false; errorMsg = ''" class="w-full mt-4 text-sm text-blue-600 hover:underline cursor-pointer">
+        <button @click="showCameraOption = false; errorMsg = ''" class="w-full mt-4 text-sm text-accent hover:underline cursor-pointer">
           Enter code manually instead
         </button>
       </template>
@@ -137,15 +137,15 @@ const processDeviceCode = (code) => {
             v-model="manualCode" 
             type="text" 
             placeholder="e.g. 123456789012345" 
-            class="w-full border p-4 text-lg rounded-xl focus:ring-2 focus:ring-blue-500 outline-none mb-3 tracking-widest text-center" 
+            class="w-full border p-4 text-lg rounded-xl focus:ring-2 focus:ring-brand outline-none mb-3 tracking-widest text-center" 
           />
           <button 
             @click="submitManualCode" 
-            class="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-4 px-4 rounded-xl transition cursor-pointer text-lg shadow-md active:scale-[0.98]"
+            class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-4 px-4 rounded-xl transition cursor-pointer text-lg shadow-md active:scale-[0.98]"
           >
             Submit Code
           </button>
-          <button @click="showCameraOption = true; errorMsg = ''" class="w-full mt-4 text-sm text-blue-600 hover:underline cursor-pointer flex justify-center">
+          <button @click="showCameraOption = true; errorMsg = ''" class="w-full mt-4 text-sm text-accent hover:underline cursor-pointer flex justify-center">
             Back to Scanner
           </button>
         </div>

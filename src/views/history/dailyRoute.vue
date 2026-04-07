@@ -175,13 +175,13 @@ onUnmounted(() => {
 
     <div class="flex-1 min-h-[30vh]"></div>
 
-    <div class="pointer-events-auto bg-gray-50 rounded-t-3xl shadow-[0_-10px_20px_rgba(0,0,0,0.05)] border-t border-gray-200 flex flex-col max-h-[60vh]">
+    <div class="pointer-events-auto bg-surface rounded-t-3xl shadow-[0_-10px_20px_rgba(0,0,0,0.05)] border-t border-gray-200 flex flex-col max-h-[60vh]">
       <div class="p-4 overflow-y-auto pb-safe-bottom">
         
         <div class="flex justify-center items-center mb-2">
           <button 
             @click="changeDate(-1)" 
-            class="text-white text-xs font-bold p-2 bg-blue-500 rounded-lg transition-colors flex items-center"
+            class="text-white text-xs font-bold p-2 bg-accent rounded-lg transition-colors flex items-center"
           >
             <i class="fa-solid fa-chevron-left"></i>
           </button>
@@ -192,14 +192,14 @@ onUnmounted(() => {
             @click="changeDate(1)" 
             :disabled="isNextDisabled"
             class="text-xs font-bold p-2 rounded-lg transition-colors flex items-center"
-            :class="isNextDisabled ? 'text-gray-400 bg-gray-100 cursor-not-allowed opacity-60' : 'text-white bg-blue-500 '"
+            :class="isNextDisabled ? 'text-gray-400 bg-gray-100 cursor-not-allowed opacity-60' : 'text-white bg-accent'"
           >
             <i class="fa-solid fa-chevron-right"></i>
           </button>
         </div>
 
         <div v-if="loading" class="flex flex-col items-center justify-center py-10 text-gray-400">
-          <i class="fa-solid fa-circle-notch fa-spin text-3xl mb-3 text-blue-500"></i>
+          <i class="fa-solid fa-circle-notch fa-spin text-3xl mb-3 text-brand"></i>
           <p class="text-sm font-semibold">Generating report...</p>
         </div>
 
@@ -215,7 +215,7 @@ onUnmounted(() => {
         <div v-else class="space-y-4">
 
           <div v-if="positions.length === 0" class="bg-white rounded-xl border border-gray-200 p-8 text-center shadow-sm">
-            <div class="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-3">
+            <div class="w-12 h-12 bg-surface rounded-full flex items-center justify-center mx-auto mb-3">
               <i class="fa-solid fa-route text-xl text-gray-400"></i>
             </div>
             <h3 class="font-bold text-gray-800 mb-1">No Data Available</h3>
@@ -226,10 +226,10 @@ onUnmounted(() => {
             
             <div 
               @click="isTimelineOpen = !isTimelineOpen" 
-              class="p-3 border-b border-gray-100 bg-gray-50 flex justify-between items-center text-gray-700 cursor-pointer select-none transition-colors hover:bg-gray-100"
+              class="p-3 border-b border-gray-100 bg-surface flex justify-between items-center text-gray-700 cursor-pointer select-none transition-colors hover:bg-gray-100"
             >
               <div class="flex items-center">
-                <i class="fa-solid fa-clock-rotate-left mr-2 text-sm text-blue-500"></i>
+                <i class="fa-solid fa-clock-rotate-left mr-2 text-sm text-brand"></i>
                 <h2 class="text-sm font-bold">Event Log</h2>
               </div>
               <i 
@@ -246,18 +246,18 @@ onUnmounted(() => {
                 :id="`event-${item.markerId}`"
                 @click="selectEvent(item.markerId)"
                 class="p-2.5 flex items-start gap-2.5 transition-colors cursor-pointer border-l-2"
-                :class="deviceStore.deviceSelected === item.markerId ? 'bg-blue-50/50 border-blue-500' : 'hover:bg-gray-50 border-transparent'"
+                :class="deviceStore.deviceSelected === item.markerId ? 'bg-brand-light/50 border-brand' : 'hover:bg-surface border-transparent'"
               >
                 
                 <div class="text-[10px] font-bold w-10 pt-0.5 text-right shrink-0 transition-colors"
-                     :class="deviceStore.deviceSelected === item.markerId ? 'text-blue-600' : 'text-gray-400'">
+                     :class="deviceStore.deviceSelected === item.markerId ? 'text-brand' : 'text-gray-400'">
                   {{ formatTime(item.fixTime || item.deviceTime) }}
                 </div>
                 
                 <div class="mt-0.5 relative flex flex-col items-center shrink-0">
                   <div class="w-5 h-5 rounded-full flex items-center justify-center text-white shadow-sm z-10 transition-transform duration-200" 
                        :style="{ backgroundColor: item.markerData.color }"
-                       :class="{'scale-125 ring-2 ring-blue-300 ring-offset-1': deviceStore.deviceSelected === item.markerId}">
+                       :class="{'scale-125 ring-2 ring-brand-light ring-offset-1': deviceStore.deviceSelected === item.markerId}">
                     <i v-if="item.markerData.type === 'Start'" class="fa-solid fa-play text-[8px]"></i>
                     <i v-else-if="item.markerData.type === 'End'" class="fa-solid fa-flag-checkered text-[8px]"></i>
                     <i v-else-if="item.markerData.type === 'Waypoint'" class="fa-solid fa-location-dot text-[8px]"></i>

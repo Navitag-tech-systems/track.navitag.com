@@ -9,8 +9,8 @@ const options = [
     title: 'Link New Tracker',
     description: 'Add and configure a new GPS device to your account.',
     icon: 'fa-solid fa-satellite-dish',
-    color: 'text-blue-500',
-    bg: 'bg-blue-50',
+    color: 'text-brand',
+    bg: 'bg-brand-light',
     route: '/linkdevice/start'
   },
   {
@@ -30,7 +30,7 @@ const navigateTo = (route) => {
 </script>
 
 <template>
-  <div class="flex flex-col min-h-full bg-gray-50">
+  <div class="flex flex-col min-h-full bg-surface">
     
     <div class="sticky top-0 z-20 bg-white shadow-sm border-b border-gray-200 p-4 safe-top">
       <h1 class="text-xl font-bold text-gray-800">Add New</h1>
@@ -43,7 +43,7 @@ const navigateTo = (route) => {
         v-for="option in options" 
         :key="option.id"
         @click="navigateTo(option.route)"
-        class="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-5 flex items-center text-left transition-all hover:shadow-md hover:border-blue-100 active:scale-[0.98] outline-none cursor-pointer group"
+        class="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-5 flex items-center text-left transition-all hover:shadow-md hover:border-brand-light active:scale-[0.98] outline-none cursor-pointer group"
       >
         <div :class="[option.bg, option.color, 'w-14 h-14 rounded-full flex items-center justify-center text-2xl shrink-0 transition-transform group-hover:scale-110']">
           <i :class="option.icon"></i>
@@ -54,7 +54,7 @@ const navigateTo = (route) => {
           <p class="text-sm text-gray-500 leading-snug pr-2">{{ option.description }}</p>
         </div>
 
-        <div class="text-gray-300 group-hover:text-blue-500 transition-colors">
+        <div class="text-gray-300 group-hover:text-brand transition-colors">
           <i class="fa-solid fa-chevron-right"></i>
         </div>
       </button>

@@ -46,12 +46,12 @@ const getLocation = async () => {
     <button 
       v-else
       @click="getLocation" 
-      class="bg-blue-600 text-white px-4 py-2 rounded w-full flex items-center justify-center"
+      class="bg-brand text-white px-4 py-2 rounded w-full flex items-center justify-center"
     >
       <i class="fa-solid fa-location-dot mr-2"></i> Get GPS
     </button>
     
-    <div v-if="coords" class="mt-2 text-sm text-gray-600 bg-blue-50 p-2 rounded">
+    <div v-if="coords" class="mt-2 text-sm text-gray-600 bg-brand-light p-2 rounded">
       <p>Lat: {{ coords.latitude.toFixed(4) }}</p>
       <p>Lng: {{ coords.longitude.toFixed(4) }}</p>
     </div>

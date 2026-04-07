@@ -82,6 +82,26 @@ export const request = {
         }
 
         if (response.status >= 200 && response.status < 300) {
+          // Persist Set-Cookie headers into the native cookie jar.
+          // CapacitorHttp on Android does not always do this automatically.
+          if (isTraccar && response.headers) {
+            const setCookie = response.headers['set-cookie'] || response.headers['Set-Cookie'];
+            if (setCookie) {
+              const cookies = Array.isArray(setCookie) ? setCookie : [setCookie];
+              for (const raw of cookies) {
+                const match = raw.match(/^([^=]+)=([^;]*)/);
+                if (match) {
+                  const cookieUrl = url.startsWith('http') ? url : `https://${url}`;
+                  await CapacitorCookies.setCookie({
+                    url: cookieUrl,
+                    key: match[1].trim(),
+                    value: match[2].trim(),
+                  });
+                }
+              }
+            }
+          }
+
           if (response.data === '' || response.data == null) return true;
           return response.data;
         }

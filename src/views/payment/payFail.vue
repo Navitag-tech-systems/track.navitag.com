@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col min-h-screen bg-gray-50 flex-1">
+  <div class="flex flex-col min-h-screen bg-surface flex-1">
     
     <div class="bg-white p-4 shadow-sm flex items-center safe-top">
       <button @click="router.push('/')" class="text-gray-600 mr-4 cursor-pointer hover:text-gray-900 outline-none">
@@ -27,7 +27,7 @@
     <div class="p-6 bg-white shadow-[0_-4px_10px_-2px_rgba(0,0,0,0.05)] pb-safe-bottom space-y-3">
       <button 
         @click="router.back()"
-        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-4 rounded-xl flex items-center justify-center transition cursor-pointer text-lg shadow-md active:scale-[0.98] outline-none"
+        class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-4 px-4 rounded-xl flex items-center justify-center transition cursor-pointer text-lg shadow-md active:scale-[0.98] outline-none"
       >
         <i class="fa-solid fa-rotate-right mr-2"></i> Try Again
       </button>

@@ -211,7 +211,7 @@ const handleLogout = async () => {
 </script>
 
 <template>
-  <div class="flex flex-col flex-1 bg-gray-50 ">
+  <div class="flex flex-col flex-1 bg-surface ">
     
     <div class="bg-white p-4 shadow-sm flex items-center mb-4">
       <button @click="router.back()" class="text-gray-600 mr-4 cursor-pointer hover:text-gray-900">
@@ -227,18 +227,28 @@ const handleLogout = async () => {
         
         <form @submit.prevent="updateProfile" class="space-y-4">
           <div>
-            <input 
-              v-model="name" 
-              type="text" 
-              placeholder="Full Name" 
-              class="w-full border p-1 rounded focus:ring-2 focus:ring-blue-500 outline-none"
+            <input
+              :value="userStore.user?.email || userStore.email || ''"
+              type="email"
+              placeholder="Email"
+              readonly
+              class="w-full border p-1 rounded bg-gray-100 text-gray-500 outline-none cursor-not-allowed"
+            />
+          </div>
+
+          <div>
+            <input
+              v-model="name"
+              type="text"
+              placeholder="Full Name"
+              class="w-full border p-1 rounded focus:ring-2 focus:ring-brand outline-none"
             />
           </div>
 
           <div>
             <div class="flex space-x-2">
               
-              <div class="relative border p-1 rounded bg-white flex items-center justify-center w-[60px] focus-within:ring-2 focus-within:ring-blue-500 overflow-hidden">
+              <div class="relative border p-1 rounded bg-white flex items-center justify-center w-[60px] focus-within:ring-2 focus-within:ring-brand overflow-hidden">
                 <span class="text-gray-800">{{ phoneCountryCode }}</span>
                 <i class="fa-solid fa-chevron-down text-[10px] text-gray-400 ml-1"></i>
                 
@@ -256,7 +266,7 @@ const handleLogout = async () => {
                 v-model="phoneNumber" 
                 type="tel" 
                 placeholder="Phone Number" 
-                class="flex-1 border p-1 rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                class="flex-1 border p-1 rounded focus:ring-2 focus:ring-brand outline-none"
               />
             </div>
           </div>
@@ -267,7 +277,7 @@ const handleLogout = async () => {
           <button 
             type="submit" 
             :disabled="profileLoading"
-            class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded transition cursor-pointer text-sm shadow active:scale-[0.98] disabled:opacity-50 mt-2"
+            class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-3 px-4 rounded transition cursor-pointer text-sm shadow active:scale-[0.98] disabled:opacity-50 mt-2"
           >
             <i v-if="profileLoading" class="fa-solid fa-circle-notch fa-spin mr-2"></i>
             {{ profileLoading ? 'Saving...' : 'Save Profile' }}
@@ -285,12 +295,12 @@ const handleLogout = async () => {
               :type="showPassword ? 'text' : 'password'" 
               placeholder="New Password" 
               required 
-              class="w-full border p-1 rounded focus:ring-2 focus:ring-blue-500 outline-none pr-10" 
+              class="w-full border p-1 rounded focus:ring-2 focus:ring-brand outline-none pr-10" 
             />
             <button 
               type="button"
               @click="showPassword = !showPassword"
-              class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer hover:text-blue-500"
+              class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer hover:text-brand"
             >
               <i :class="showPassword ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'"></i>
             </button>
@@ -302,7 +312,7 @@ const handleLogout = async () => {
               :type="showPassword ? 'text' : 'password'" 
               placeholder="Confirm New Password" 
               required 
-              class="w-full border p-1 rounded focus:ring-2 focus:ring-blue-500 outline-none pr-10" 
+              class="w-full border p-1 rounded focus:ring-2 focus:ring-brand outline-none pr-10" 
             />
           </div>
 
@@ -316,7 +326,7 @@ const handleLogout = async () => {
           <button 
             type="submit" 
             :disabled="passwordLoading"
-            class="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-3 px-4 rounded transition cursor-pointer text-sm shadow active:scale-[0.98] disabled:opacity-50 mt-2"
+            class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-3 px-4 rounded transition cursor-pointer text-sm shadow active:scale-[0.98] disabled:opacity-50 mt-2"
           >
             <i v-if="passwordLoading" class="fa-solid fa-circle-notch fa-spin mr-2"></i>
             {{ passwordLoading ? 'Updating...' : 'Update Password' }}

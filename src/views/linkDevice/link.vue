@@ -53,7 +53,7 @@ const linkDeviceToAccount = async () => {
 </script>
 
 <template>
-  <div class="flex flex-col flex-1 bg-gray-50">
+  <div class="flex flex-col flex-1 bg-surface">
     <div class="bg-white p-4 shadow-sm flex items-center">
       <button @click="router.back()" class="text-gray-600 mr-4 cursor-pointer hover:text-gray-900">
         <i class="fa-solid fa-arrow-left text-xl"></i>
@@ -62,8 +62,8 @@ const linkDeviceToAccount = async () => {
     </div>
 
     <div class="flex-1 flex flex-col p-6 text-center mt-4">
-      <div class="w-32 h-32 bg-blue-100 rounded-full flex items-center justify-center mb-6 shadow-inner mx-auto">
-        <i class="fa-solid fa-satellite-dish text-5xl text-blue-600"></i>
+      <div class="w-32 h-32 bg-brand-light rounded-full flex items-center justify-center mb-6 shadow-inner mx-auto">
+        <i class="fa-solid fa-satellite-dish text-5xl text-brand"></i>
       </div>
       
       <h2 class="text-2xl font-bold text-gray-800 mb-2">Device Found</h2>
@@ -78,7 +78,7 @@ const linkDeviceToAccount = async () => {
           type="text" 
           placeholder="e.g. My Car, Pet Collar, Backpack" 
           required 
-          class="w-full border p-3 text-sm rounded-xl focus:ring-2 focus:ring-blue-500 outline-none mb-2"
+          class="w-full border p-3 text-sm rounded-xl focus:ring-2 focus:ring-brand outline-none mb-2"
         />
         
         <p v-if="errorMsg" class="text-red-500 mt-2 text-sm">{{ errorMsg }}</p>
@@ -89,7 +89,7 @@ const linkDeviceToAccount = async () => {
       <button 
         @click="linkDeviceToAccount(false)" 
         :disabled="loading"
-        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-4 rounded-xl flex items-center justify-center transition cursor-pointer text-lg shadow-md active:scale-[0.98] disabled:opacity-50"
+        class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-4 px-4 rounded-xl flex items-center justify-center transition cursor-pointer text-lg shadow-md active:scale-[0.98] disabled:opacity-50"
       >
         <i v-if="loading" class="fa-solid fa-circle-notch fa-spin mr-2"></i>
         {{ loading ? 'Linking...' : 'Link Device' }}

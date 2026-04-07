@@ -36,14 +36,14 @@ const internalValue = computed({
     </label>
     
     <div class="relative w-full">
-      <i class="fa-regular fa-calendar absolute left-4 top-1/2 -translate-y-1/2 text-blue-500 pointer-events-none z-10 text-lg"></i>
+      <i class="fa-regular fa-calendar absolute left-4 top-1/2 -translate-y-1/2 text-accent pointer-events-none z-10 text-lg"></i>
       
       <input 
         v-model="internalValue"
         type="date" 
         :min="min"
         :max="max"
-        class="w-full pl-12 pr-4 py-3.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-700 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all outline-none appearance-none block"
+        class="w-full pl-12 pr-4 py-3.5 bg-surface border border-gray-200 rounded-xl text-sm font-bold text-gray-700 focus:bg-white focus:border-brand focus:ring-2 focus:ring-brand-light transition-all outline-none appearance-none block"
       />
     </div>
   </div>

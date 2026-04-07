@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col min-h-full bg-gray-50 relative z-10 pointer-events-auto">
+  <div class="flex flex-col min-h-full bg-surface relative z-10 pointer-events-auto">
     
     <div class="sticky top-0 z-20 bg-white shadow-sm border-b border-gray-200 p-4 flex items-center safe-top">
       <button 
@@ -19,16 +19,16 @@
         
         <button 
           @click="showOrderModal = true" 
-          class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-start hover:shadow-md hover:border-blue-100 transition-all text-left group outline-none"
+          class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-start hover:shadow-md hover:border-brand-light transition-all text-left group outline-none"
         >
           <div class="flex items-center gap-2 mb-2">
-            <i class="fa-solid fa-cart-shopping text-blue-500"></i>
+            <i class="fa-solid fa-cart-shopping text-brand"></i>
             <span class="text-xs text-gray-500 font-bold uppercase tracking-wider">Order</span>
           </div>
           <span class="text-sm font-bold text-gray-800 leading-tight">
             {{ totalItems }} Items
           </span>
-          <span class="text-[10px] text-gray-400 group-hover:text-blue-600 mt-2 font-semibold transition-colors">
+          <span class="text-[10px] text-gray-400 group-hover:text-brand mt-2 font-semibold transition-colors">
             View Details <i class="fa-solid fa-chevron-right ml-0.5"></i>
           </span>
         </button>
@@ -36,7 +36,7 @@
         <button 
           v-if="isProduct"
           @click="showShippingModal = true" 
-          class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-start hover:shadow-md hover:border-blue-100 transition-all text-left group outline-none"
+          class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-start hover:shadow-md hover:border-brand-light transition-all text-left group outline-none"
         >
           <div class="flex items-center gap-2 mb-2">
             <i class="fa-solid fa-truck-fast text-green-500"></i>
@@ -45,21 +45,21 @@
           <span class="text-sm font-bold text-gray-800 leading-tight truncate w-full">
             {{ cartStore.shippingAdd?.state || 'State' }}, {{ cartStore.shippingAdd?.country || 'Country' }}
           </span>
-          <span class="text-[10px] text-gray-400 group-hover:text-blue-600 mt-2 font-semibold transition-colors">
+          <span class="text-[10px] text-gray-400 group-hover:text-brand mt-2 font-semibold transition-colors">
             View Details <i class="fa-solid fa-chevron-right ml-0.5"></i>
           </span>
         </button>
       </div>
 
       <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-        <div class="flex items-center justify-center w-16 h-16 bg-blue-50 text-blue-600 rounded-full mb-6 mx-auto">
+        <div class="flex items-center justify-center w-16 h-16 bg-brand-light text-brand rounded-full mb-6 mx-auto">
           <i class="fa-regular fa-credit-card text-3xl"></i>
         </div>
         <h2 class="text-xl font-bold text-center text-gray-800 mb-2">Payment Details</h2>
         <p class="text-sm text-center text-gray-500 mb-6">Enter your card details securely to complete your purchase.</p>
 
         <div v-if="cartStore.loading" class="flex flex-col items-center justify-center py-10 text-gray-400">
-          <i class="fa-solid fa-circle-notch fa-spin text-3xl mb-3 text-blue-500"></i>
+          <i class="fa-solid fa-circle-notch fa-spin text-3xl mb-3 text-brand"></i>
           <p class="text-sm font-semibold">Loading secure payment...</p>
         </div>
 
@@ -89,7 +89,7 @@
       <button 
         @click="submitPayment"
         :disabled="!isFormValid || isProcessing || cartStore.loading"
-        class="w-full mx-auto bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed outline-none"
+        class="w-full mx-auto bg-brand hover:bg-brand-dark text-white font-bold py-3.5 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed outline-none"
       >
         <i v-if="isProcessing" class="fa-solid fa-circle-notch fa-spin"></i>
         <i v-else class="fa-solid fa-lock"></i>
@@ -100,8 +100,8 @@
     <teleport to="body">
       <div v-if="showOrderModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm transition-opacity">
         <div class="bg-white rounded-3xl sm:rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-slide-up sm:animate-scale-up max-h-[85vh] flex flex-col">
-          <div class="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-            <h3 class="font-bold text-gray-800"><i class="fa-solid fa-cart-shopping text-blue-500 mr-2"></i> Order Summary</h3>
+          <div class="p-4 border-b border-gray-100 flex justify-between items-center bg-surface">
+            <h3 class="font-bold text-gray-800"><i class="fa-solid fa-cart-shopping text-brand mr-2"></i> Order Summary</h3>
             <button @click="showOrderModal = false" class="w-8 h-8 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center hover:bg-gray-300 transition-colors">
               <i class="fa-solid fa-xmark text-sm"></i>
             </button>
@@ -126,7 +126,7 @@
             </div>
           </div>
 
-          <div class="p-5 border-t border-gray-100 bg-gray-50 space-y-2">
+          <div class="p-5 border-t border-gray-100 bg-surface space-y-2">
             <div class="flex justify-between items-center text-sm">
               <span class="text-gray-500 font-medium">Subtotal</span>
               <span class="text-gray-800 font-semibold">${{ isProduct ? cartStore.productTotal.toFixed(2) : cartStore.planTotal.toFixed(2) }}</span>
@@ -142,7 +142,7 @@
               <span class="text-lg font-black text-gray-900">${{ displayTotal.toFixed(2) }}</span>
             </div>
             
-            <button @click="showOrderModal = false" class="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-3 rounded-xl transition text-sm">
+            <button @click="showOrderModal = false" class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-3 rounded-xl transition text-sm">
               Close
             </button>
           </div>
@@ -153,7 +153,7 @@
     <teleport to="body">
       <div v-if="isProduct && showShippingModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm transition-opacity">
         <div class="bg-white rounded-3xl sm:rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-slide-up sm:animate-scale-up">
-          <div class="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+          <div class="p-4 border-b border-gray-100 flex justify-between items-center bg-surface">
             <h3 class="font-bold text-gray-800"><i class="fa-solid fa-truck-fast text-green-500 mr-2"></i> Shipping Details</h3>
             <button @click="showShippingModal = false" class="w-8 h-8 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center hover:bg-gray-300 transition-colors">
               <i class="fa-solid fa-xmark text-sm"></i>
@@ -189,7 +189,7 @@
               <button @click="showShippingModal = false" class="py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl text-sm transition-colors">
                 Close
               </button>
-              <button @click="editShipping" class="py-3 bg-gray-800 hover:bg-gray-900 text-white font-bold rounded-xl text-sm transition-colors flex justify-center items-center gap-2">
+              <button @click="editShipping" class="py-3 bg-brand hover:bg-brand-dark text-white font-bold rounded-xl text-sm transition-colors flex justify-center items-center gap-2">
                 <i class="fa-solid fa-pen-to-square"></i> Edit
               </button>
             </div>

@@ -137,13 +137,13 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex flex-col min-h-full bg-gray-50 relative z-10 pointer-events-auto">
+  <div class="flex flex-col min-h-full bg-surface relative z-10 pointer-events-auto">
     
     <div class="sticky top-0 z-20 bg-white shadow-sm border-b border-gray-200">
       <div class="p-4 pb-2">        
         <div class="flex space-x-6 overflow-x-auto no-scrollbar mb-4">
           <button 
-            class="pb-3 text-sm font-semibold whitespace-nowrap transition-colors border-b-2 flex items-center gap-2 outline-none cursor-pointer border-blue-600 text-blue-600"
+            class="pb-3 text-sm font-semibold whitespace-nowrap transition-colors border-b-2 flex items-center gap-2 outline-none cursor-pointer border-brand text-brand"
           >
             <i class="fa-solid fa-box"></i>
             All Products
@@ -163,7 +163,7 @@ onMounted(() => {
             v-model="searchQuery"
             type="text" 
             placeholder="Search products..." 
-            class="w-full pl-10 pr-4 py-2 bg-gray-100 border-transparent rounded-xl text-sm focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all outline-none"
+            class="w-full pl-10 pr-4 py-2 bg-gray-100 border-transparent rounded-xl text-sm focus:bg-white focus:border-brand focus:ring-2 focus:ring-brand-light transition-all outline-none"
           />
         </div>
 
@@ -238,9 +238,9 @@ onMounted(() => {
 
           <div class="p-4 flex flex-col flex-1">
             <button @click="openModal(product)" class="text-left outline-none cursor-pointer">
-              <h2 class="text-base font-bold text-gray-800 leading-tight mb-1 hover:text-blue-600 transition-colors">{{ product.name }}</h2>
+              <h2 class="text-base font-bold text-gray-800 leading-tight mb-1 hover:text-brand transition-colors">{{ product.name }}</h2>
             </button>
-            <p class="text-lg font-bold text-blue-600 mb-4">${{ product.price_usd }}</p>
+            <p class="text-lg font-bold text-brand mb-4">${{ product.price_usd }}</p>
             
             <div class="mt-auto flex items-center gap-2">
               <button 
@@ -253,24 +253,24 @@ onMounted(() => {
               <button 
                 v-if="cartStore.getProductQuantity(product.id) === 0"
                 @click.stop="cartStore.addProduct(product)"
-                class="flex-1 bg-gray-800 hover:bg-gray-900 text-white font-bold py-2.5 rounded-lg transition-colors text-sm flex justify-center items-center gap-2 active:scale-95 outline-none"
+                class="flex-1 bg-brand hover:bg-brand-dark text-white font-bold py-2.5 rounded-lg transition-colors text-sm flex justify-center items-center gap-2 active:scale-95 outline-none"
               >
                 <i class="fa-solid fa-cart-plus"></i> Add to Cart
               </button>
 
-              <div v-else class="flex-1 flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg p-1 h-10">
+              <div v-else class="flex-1 flex items-center justify-between bg-brand-light border border-brand-light rounded-lg p-1 h-10">
                 <button 
                   @click.stop="cartStore.removeProduct(product)"
-                  class="w-8 h-full flex items-center justify-center bg-white rounded-md text-blue-600 font-bold shadow-sm active:scale-95 outline-none"
+                  class="w-8 h-full flex items-center justify-center bg-white rounded-md text-brand font-bold shadow-sm active:scale-95 outline-none"
                 >
                   <i class="fa-solid" :class="cartStore.getProductQuantity(product.id) === 1 ? 'fa-trash-can' : 'fa-minus'"></i>
                 </button>
-                <span class="font-bold text-blue-800 text-sm w-8 text-center">
+                <span class="font-bold text-brand-dark text-sm w-8 text-center">
                   {{ cartStore.getProductQuantity(product.id) }}
                 </span>
                 <button 
                   @click.stop="cartStore.addProduct(product)"
-                  class="w-8 h-full flex items-center justify-center bg-blue-600 rounded-md text-white font-bold shadow-sm active:scale-95 outline-none"
+                  class="w-8 h-full flex items-center justify-center bg-brand rounded-md text-white font-bold shadow-sm active:scale-95 outline-none"
                 >
                   <i class="fa-solid fa-plus"></i>
                 </button>
@@ -293,7 +293,7 @@ onMounted(() => {
           ${{ cartStore.productTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
         </span>
       </div>
-      <button @click="cartStore.checkout('product')" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 active:scale-[0.98] outline-none">
+      <button @click="cartStore.checkout('product')" class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-3.5 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 active:scale-[0.98] outline-none">
         Checkout
         <i class="fa-solid fa-cart-shopping"></i>
       </button>
@@ -318,31 +318,31 @@ onMounted(() => {
             <div class="flex items-end justify-between mb-6 pb-6 border-b border-gray-100">
               <div>
                 <p class="text-sm text-gray-500 mb-1">Price</p>
-                <div class="text-3xl font-black text-blue-600">${{ selectedProduct.price_usd }}</div>
+                <div class="text-3xl font-black text-brand">${{ selectedProduct.price_usd }}</div>
               </div>
               
               <div class="w-32">
                 <button 
                   v-if="cartStore.getProductQuantity(selectedProduct.id) === 0"
                   @click="cartStore.addProduct(selectedProduct)"
-                  class="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-3 rounded-xl transition-colors text-sm flex justify-center items-center gap-2 active:scale-95 outline-none shadow-md"
+                  class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-3 rounded-xl transition-colors text-sm flex justify-center items-center gap-2 active:scale-95 outline-none shadow-md"
                 >
                   <i class="fa-solid fa-cart-plus"></i> Add
                 </button>
 
-                <div v-else class="w-full flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl p-1 h-[44px]">
+                <div v-else class="w-full flex items-center justify-between bg-brand-light border border-brand-light rounded-xl p-1 h-[44px]">
                   <button 
                     @click="cartStore.removeProduct(selectedProduct)"
-                    class="w-10 h-full flex items-center justify-center bg-white rounded-lg text-blue-600 font-bold shadow-sm active:scale-95 outline-none"
+                    class="w-10 h-full flex items-center justify-center bg-white rounded-lg text-brand font-bold shadow-sm active:scale-95 outline-none"
                   >
                     <i class="fa-solid" :class="cartStore.getProductQuantity(selectedProduct.id) === 1 ? 'fa-trash-can' : 'fa-minus'"></i>
                   </button>
-                  <span class="font-bold text-blue-800 text-base w-8 text-center">
+                  <span class="font-bold text-brand-dark text-base w-8 text-center">
                     {{ cartStore.getProductQuantity(selectedProduct.id) }}
                   </span>
                   <button 
                     @click="cartStore.addProduct(selectedProduct)"
-                    class="w-10 h-full flex items-center justify-center bg-blue-600 rounded-lg text-white font-bold shadow-sm active:scale-95 outline-none"
+                    class="w-10 h-full flex items-center justify-center bg-brand rounded-lg text-white font-bold shadow-sm active:scale-95 outline-none"
                   >
                     <i class="fa-solid fa-plus"></i>
                   </button>

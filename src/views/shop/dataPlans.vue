@@ -160,7 +160,7 @@ watch(uniqueModels, (newVal, oldVal) => {
 </script>
 
 <template>
-  <div class="flex flex-col min-h-full bg-gray-50 relative z-10 pointer-events-auto">
+  <div class="flex flex-col min-h-full bg-surface relative z-10 pointer-events-auto">
     
     <div class="sticky top-0 z-20 bg-white shadow-sm border-b border-gray-200">
       <div class="p-4 pb-2">
@@ -172,7 +172,7 @@ watch(uniqueModels, (newVal, oldVal) => {
             All Products
           </RouterLink>
           <button 
-            class="pb-3 text-sm font-semibold whitespace-nowrap transition-colors border-b-2 flex items-center gap-2 outline-none cursor-pointer border-blue-600 text-blue-600"
+            class="pb-3 text-sm font-semibold whitespace-nowrap transition-colors border-b-2 flex items-center gap-2 outline-none cursor-pointer border-brand text-brand"
           >
             <i class="fa-solid fa-wifi"></i>
             Data Plans
@@ -185,13 +185,13 @@ watch(uniqueModels, (newVal, oldVal) => {
             v-model="searchQuery"
             type="text" 
             placeholder="Search trackers by name..." 
-            class="w-full pl-10 pr-4 py-2 bg-gray-100 border-transparent rounded-xl text-sm focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all outline-none"
+            class="w-full pl-10 pr-4 py-2 bg-gray-100 border-transparent rounded-xl text-sm focus:bg-white focus:border-brand focus:ring-2 focus:ring-brand-light transition-all outline-none"
           />
         </div>
 
         <div class="flex items-center justify-between pb-1">
           <div class="flex items-center">
-            <button class="text-xs text-gray-500 hover:text-blue-600 outline-none cursor-pointer" @click="showInfoModal= true">
+            <button class="text-xs text-gray-500 hover:text-brand outline-none cursor-pointer" @click="showInfoModal= true">
               <span>More Info</span>
               <i class="fa-solid fa-circle-info ms-1"></i>
             </button>
@@ -220,7 +220,7 @@ watch(uniqueModels, (newVal, oldVal) => {
         v-for="device in processedDevices" 
         :key="device.id"
         class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 transition-all"
-        :class="{ 'ring-2 ring-blue-500 border-blue-500': cartStore.planCart[device.id] }"
+        :class="{ 'ring-2 ring-brand border-brand': cartStore.planCart[device.id] }"
       >
         <div class="flex items-start justify-between mb-4">
           <div class="flex items-center gap-3">
@@ -249,11 +249,11 @@ watch(uniqueModels, (newVal, oldVal) => {
             @click="cartStore.togglePlan(device.id, plan)"
             class="py-2 px-1 rounded-lg border flex flex-col items-center transition-colors outline-none cursor-pointer active:scale-95"
             :class="cartStore.planCart[device.id]?.months === plan.months 
-              ? 'bg-blue-50 border-blue-500 text-blue-700 font-bold shadow-inner' 
-              : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'"
+              ? 'bg-brand-light border-brand text-brand-dark font-bold shadow-inner' 
+              : 'bg-white border-gray-200 text-gray-600 hover:bg-surface'"
           >
             <span class="text-xs mb-1">+{{ plan.months }} Months</span>
-            <span class="text-[11px]" :class="cartStore.planCart[device.id]?.months === plan.months ? 'text-blue-600' : 'text-gray-400'">
+            <span class="text-[11px]" :class="cartStore.planCart[device.id]?.months === plan.months ? 'text-brand' : 'text-gray-400'">
               ${{ plan.price_usd }}
             </span>
           </button>
@@ -277,7 +277,7 @@ watch(uniqueModels, (newVal, oldVal) => {
           TOTAL: ${{ cartStore.planTotal }}
         </span>
       </div>
-      <button @click="cartStore.checkout('plan')" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 active:scale-[0.98]">
+      <button @click="cartStore.checkout('plan')" class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-3.5 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 active:scale-[0.98]">
         Checkout
         <i class="fa-solid fa-cart-shopping"></i>
       </button>
@@ -289,7 +289,7 @@ watch(uniqueModels, (newVal, oldVal) => {
           <div class="p-6">
             <div class="flex items-center justify-between mb-4">
               <h3 class="text-lg font-bold text-gray-800 flex items-center gap-2">
-                <i class="fa-solid fa-wifi text-blue-500"></i> Data Plans Explained
+                <i class="fa-solid fa-wifi text-brand"></i> Data Plans Explained
               </h3>
               <button @click="showInfoModal = false" class="text-gray-400 hover:text-gray-600 outline-none">
                 <i class="fa-solid fa-xmark text-xl"></i>

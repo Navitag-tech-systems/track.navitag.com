@@ -32,7 +32,7 @@ const navigate = (item) => {
         :key="item.name"
         @click="navigate(item)"
         class="flex flex-col items-center justify-center w-full h-full transition-colors relative"
-        :class="route.meta?.activeTab === item.tab ? 'text-blue-600' : 'text-gray-400'"
+        :class="route.meta?.activeTab === item.tab ? 'text-accent' : 'text-gray-400'"
       >
         <i :class="[
           item.icon, 

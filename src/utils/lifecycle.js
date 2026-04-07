@@ -4,12 +4,14 @@ import { Network } from '@capacitor/network';
 import { auth } from '@/firebase';
 import { useUserStore } from '@/stores/user';
 import { useDevicesStore } from '@/stores/devices';
+import router from '@/router';
 
 let isInitialized = false;
 
 export const LifecycleService = {
   reconnectTimer: null,
   isReconnecting: false, // Lock to prevent concurrent overlapping sequences
+  isStartingSession: false, // Lock to prevent duplicate startSession calls
 
   init() {
     if (isInitialized) return;
@@ -25,7 +27,7 @@ export const LifecycleService = {
 
     this.countryCodePromise = userStore.fetchCountryCode().then(code => {
       if (!code) {
-        console.error('❌ Failed to fetch country code');
+        console.error('❌ Country code required but unavailable after all retries');
         userStore.error = true;
       }
       return code;
@@ -36,7 +38,23 @@ export const LifecycleService = {
 
       if (firebaseUser) {
         console.log('✅ Auth State: Logged In');
+
+        // Check for missing email BEFORE setUser so needsEmail is true
+        // before user.value becomes truthy — prevents the loading overlay
+        // from flashing over the collect-email view.
+        if (!firebaseUser.email) {
+          console.warn('⚠️ SSO user has no email — prompting for collection');
+          userStore.needsEmail = true;
+        }
+
         await userStore.setUser(firebaseUser);
+
+        if (userStore.needsEmail) {
+          userStore.error = false;
+          router.replace('/collect-email');
+          return;
+        }
+
         await this.startSession();
       } else {
         console.log('🛑 Auth State: Logged Out');
@@ -55,18 +73,18 @@ export const LifecycleService = {
 
     App.addListener('appStateChange', async ({ isActive }) => {
       console.log(`📱 App State Changed: ${isActive ? 'Active' : 'Background'}`);
-      
+
       // Prevent running background socket logic on Web
       if (!Capacitor.isNativePlatform()) return;
 
       if (isActive) {
-        if (userStore.isLoggedIn) {
+        if (userStore.isLoggedIn && !userStore.needsEmail) {
           await this.checkConnectionAndReconnect();
         }
       } else {
         if (userStore.socket) {
           console.log('⏸️ Pausing: Closing WebSocket');
-          userStore.disconnectSocket(); 
+          userStore.disconnectSocket();
         }
       }
     });
@@ -74,54 +92,71 @@ export const LifecycleService = {
     Network.addListener('networkStatusChange', async (status) => {
       console.log(`📡 Network Status: ${status.connected ? 'Online' : 'Offline'}`);
       userStore.internet = status.connected;
-      
-      if (status.connected && userStore.isLoggedIn) {
+
+      if (status.connected && userStore.isLoggedIn && !userStore.needsEmail) {
         await this.checkConnectionAndReconnect();
       }
     });
   },
 
   async startSession() {
+    if (this.isStartingSession) return;
+    this.isStartingSession = true;
+
     const userStore = useUserStore();
     const deviceStore = useDevicesStore();
 
-    if (this.countryCodePromise) {
-      await this.countryCodePromise;
+    if (userStore.needsEmail) {
+      this.isStartingSession = false;
+      return;
     }
 
-    const synced = await userStore.backendSync();
-    if (!synced) {
-      // Retry once with a force-refreshed token before giving up
-      console.warn('⚠️ Backend Sync Failed — retrying with fresh token...');
-      const freshToken = await userStore.getFreshToken();
-      const retried = freshToken ? await userStore.backendSync(freshToken) : false;
-      if (!retried) {
-        console.error('❌ Backend Sync Failed after retry');
+    try {
+      if (this.countryCodePromise) {
+        await this.countryCodePromise;
+      }
+
+      const synced = await userStore.backendSync();
+      if (!synced) {
+        // Retry once with a force-refreshed token before giving up
+        console.warn('⚠️ Backend Sync Failed — retrying with fresh token...');
+        const freshToken = await userStore.getFreshToken();
+        const retried = freshToken ? await userStore.backendSync(freshToken) : false;
+        if (!retried) {
+          console.error('❌ Backend Sync Failed after retry');
+          userStore.error = true;
+          return;
+        }
+      }
+
+      const connected = await userStore.serverConnect();
+      if (!connected) {
+        console.error('❌ Server Connect Failed');
         userStore.error = true;
         return;
       }
+
+      // Fetch both stores in parallel to cut loading time in half
+      const fetched = await deviceStore.fetchAll()
+
+      if (fetched === 'no_devices') {
+        // User has no linked devices — redirect already handled, stop the session chain
+        return;
+      }
+
+      if (!fetched) {
+        console.error('❌ Failed to fetch devices or geofences');
+        userStore.error = true;
+        return;
+      }
+
+      userStore.connectSocket(
+        deviceStore.processSocketData,
+        () => this.handleSocketDisconnect()
+      );
+    } finally {
+      this.isStartingSession = false;
     }
-
-    const connected = await userStore.serverConnect();
-    if (!connected) {
-      console.error('❌ Server Connect Failed');
-      userStore.error = true;
-      return;
-    }
-
-    // Fetch both stores in parallel to cut loading time in half
-    const fetched = await deviceStore.fetchAll()
-
-    if (!fetched) {
-      console.error('❌ Failed to fetch devices or geofences');
-      userStore.error = true;
-      return;
-    }
-
-    userStore.connectSocket(
-      deviceStore.processSocketData,
-      () => this.handleSocketDisconnect()
-    );
   },
 
   stopSession() {
@@ -131,20 +166,22 @@ export const LifecycleService = {
     
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     
-    userStore.disconnectSocket(); 
+    userStore.disconnectSocket();
     userStore.clearUser();
     deviceStore.clearData();
-    this.isReconnecting = false; 
+    this.isReconnecting = false;
+    this.isStartingSession = false;
     console.log('logout')
   },
 
   async checkConnectionAndReconnect() {
     if (this.isReconnecting) return;
-    this.isReconnecting = true;
 
     const userStore = useUserStore();
-    const deviceStore = useDevicesStore();
+    if (userStore.needsEmail || !userStore.server_url) return;
 
+    this.isReconnecting = true;
+    const deviceStore = useDevicesStore();
 
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
 

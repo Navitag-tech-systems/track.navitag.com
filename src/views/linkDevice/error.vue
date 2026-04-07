@@ -9,7 +9,7 @@ const errorMessage = route.query.message || 'There was an unexpected problem lin
 </script>
 
 <template>
-  <div class="flex flex-col flex-1 bg-gray-50 ">
+  <div class="flex flex-col flex-1 bg-surface ">
     <div class="bg-white p-4 shadow-sm flex items-center">
       <button @click="router.push('/')" class="text-gray-600 mr-4 cursor-pointer hover:text-gray-900">
         <i class="fa-solid fa-arrow-left text-xl"></i>
@@ -31,14 +31,14 @@ const errorMessage = route.query.message || 'There was an unexpected problem lin
     <div class="p-6 bg-white shadow-[0_-4px_10px_-2px_rgba(0,0,0,0.05)]">
       <button 
         @click="router.push('/')"
-        class="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-4 px-4 rounded-xl transition cursor-pointer text-lg shadow-md active:scale-[0.98]"
+        class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-4 px-4 rounded-xl transition cursor-pointer text-lg shadow-md active:scale-[0.98]"
       >
         Back to Home
       </button>
 
       <button 
         @click="router.push('/linkdevice/start')"
-        class="w-full mt-4 text-sm text-blue-600 hover:underline cursor-pointer"
+        class="w-full mt-4 text-sm text-accent hover:underline cursor-pointer"
       >
         Try scanning again
       </button>

@@ -1,5 +1,6 @@
 
-import { auth } from '@/firebase'; 
+import { auth } from '@/firebase';
+import { useUserStore } from '@/stores/user.js';
 /* ------------------------------------------------------------------
  * Auth providers
  * ------------------------------------------------------------------ */
@@ -13,7 +14,9 @@ export const supportedProviders = [
     handler: async () => {
       try {
         console.log('[Google SSO] Starting sign-in');
-        const result = await auth.signInWithGoogle();
+        const result = await auth.signInWithGoogle({
+          scopes: ['email', 'profile'],
+        });
         return result.user;
       } catch (error) {
         console.error('[Google SSO] Error:', error);
@@ -29,7 +32,9 @@ export const supportedProviders = [
     handler: async () => {
       try {
         console.log('[Facebook SSO] Starting sign-in');
-        const result = await auth.signInWithFacebook();
+        const result = await auth.signInWithFacebook({
+          scopes: ['email', 'public_profile'],
+        });
         return result.user;
       } catch (error) {
         console.error('[Facebook SSO] Error:', error);
@@ -43,14 +48,26 @@ export const supportedProviders = [
     color: 'bg-black',
     icon: 'fa-brands fa-apple', // FontAwesome brand icon
     handler: async () => {
-      try {        
+      try {
         console.log('[Apple SSO] Starting sign-in');
-        const result = await auth.signInWithApple();
+        const result = await auth.signInWithApple({
+          scopes: ['email', 'name'],
+        });
+
+        // Apple only provides the name on FIRST sign-in — capture it immediately
+        const displayName = result.user?.displayName
+          || result.additionalUserInfo?.profile?.name
+          || null;
+        if (displayName) {
+          const userStore = useUserStore();
+          userStore.name = displayName;
+        }
+
         return result.user;
       } catch (error) {
         console.error('[Apple SSO] Error:', error);
         throw error;
-      } 
+      }
     }
   }
 ];

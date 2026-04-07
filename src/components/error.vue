@@ -6,26 +6,23 @@
 const props = defineProps({
   msg: {
     type: String,
-    default: 'Restart App'
+    default: 'Something went wrong.'
   }
 })
 </script>
 
 <template>
-  <div class="fixed inset-0 z-50 bg-gray-100 flex flex-col items-center justify-center pt-safe-top pb-safe-bottom">
-    <i  class="fa-solid fa-circle-xmark text-4xl text-red-500"></i>
-    
-    <h1 class="text-xl font-bold text-gray-800 my-4">
-      Error
-    </h1>
-    
-    <p class="text-sm text-gray-500 max-w-xs leading-relaxed">
+  <div class="fixed inset-0 z-50 bg-surface flex flex-col items-center justify-center pt-safe-top pb-safe-bottom px-6">
+    <i class="fa-solid fa-circle-xmark text-4xl text-red-500"></i>
+
+    <h1 class="text-xl font-bold text-gray-800 my-4">Error</h1>
+
+    <p class="text-sm text-gray-500 max-w-xs leading-relaxed text-center">
       {{ props.msg }}
     </p>
 
-    <div class="mt-8 w-full max-w-xs">
-      <slot name="action"></slot>
-    </div>
-    
+    <p class="text-xs text-gray-400 max-w-xs leading-relaxed text-center mt-6">
+      Please refresh the page or restart the app to try again.
+    </p>
   </div>
 </template>

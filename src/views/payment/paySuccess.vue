@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col min-h-screen bg-gray-50 flex-1">
+  <div class="flex flex-col min-h-screen bg-surface flex-1">
     
     <div class="bg-white p-4 shadow-sm flex items-center safe-top">
       <h1 class="text-xl font-bold text-gray-800 mx-auto">Payment Status</h1>
@@ -15,12 +15,12 @@
       
       <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100 w-full max-w-sm text-center mb-6 animate-slide-up">
         <div class="mb-3">
-          <i class="fa-regular fa-envelope text-3xl text-blue-500 mb-2"></i>
+          <i class="fa-regular fa-envelope text-3xl text-brand mb-2"></i>
         </div>
         <p class="text-sm text-gray-600 leading-relaxed mb-3">
           Thank you for your purchase! Your order has been securely processed.
         </p>
-        <p class="text-sm font-semibold text-gray-800 leading-relaxed bg-gray-50 p-3 rounded-lg border border-gray-100">
+        <p class="text-sm font-semibold text-gray-800 leading-relaxed bg-surface p-3 rounded-lg border border-gray-100">
           You will be notified by email regarding the status and tracking of your purchase shortly.
         </p>
       </div>

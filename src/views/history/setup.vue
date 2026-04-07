@@ -93,7 +93,7 @@ const generateReport = () => {
 </script>
 
 <template>
-  <div class="flex flex-col min-h-full bg-gray-50 relative z-10 pointer-events-auto">
+  <div class="flex flex-col min-h-full bg-surface relative z-10 pointer-events-auto">
     
     <div class="sticky top-0 z-20 bg-white shadow-sm border-b border-gray-200 p-4 flex items-center safe-top">
       <button 
@@ -108,7 +108,7 @@ const generateReport = () => {
     <div class="p-4 space-y-6 mt-2 max-w-md mx-auto w-full">
       
       <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-        <div class="flex items-center justify-center w-16 h-16 bg-blue-50 text-blue-600 rounded-full mb-6 mx-auto">
+        <div class="flex items-center justify-center w-16 h-16 bg-brand-light text-brand rounded-full mb-6 mx-auto">
           <i class="fa-solid fa-clock-rotate-left text-3xl"></i>
         </div>
         <h2 class="text-xl font-bold text-center text-gray-800 mb-2">Historical Playback</h2>
@@ -119,8 +119,8 @@ const generateReport = () => {
           
           <button 
             @click="toggleDropdown"
-            class="w-full pl-4 pr-10 py-3.5 bg-gray-50 border rounded-xl text-sm font-bold text-left transition-all outline-none flex justify-between items-center"
-            :class="isDropdownOpen ? 'border-blue-500 bg-white ring-2 ring-blue-200' : 'border-gray-200 text-gray-700 hover:bg-gray-100'"
+            class="w-full pl-4 pr-10 py-3.5 bg-surface border rounded-xl text-sm font-bold text-left transition-all outline-none flex justify-between items-center"
+            :class="isDropdownOpen ? 'border-brand bg-white ring-2 ring-brand-light' : 'border-gray-200 text-gray-700 hover:bg-gray-100'"
           >
             <span class="truncate" :class="{ 'text-gray-400 font-normal': !selectedDevice }">
               {{ selectedDevice ? selectedDevice.name : 'Select a tracker...' }}
@@ -132,14 +132,14 @@ const generateReport = () => {
             v-if="isDropdownOpen" 
             class="absolute left-0 right-0 top-full mt-2 bg-white border border-gray-100 shadow-xl rounded-xl z-30 overflow-hidden"
           >
-            <div class="p-2 border-b border-gray-100 bg-gray-50">
+            <div class="p-2 border-b border-gray-100 bg-surface">
               <div class="relative">
                 <i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
                 <input 
                   v-model="searchQuery" 
                   type="text" 
                   placeholder="Search by name or IMEI..." 
-                  class="w-full pl-8 pr-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-blue-500"
+                  class="w-full pl-8 pr-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-brand"
                 />
               </div>
             </div>
@@ -155,14 +155,14 @@ const generateReport = () => {
                 v-for="device in filteredDevices" 
                 :key="device.id"
                 @click="selectDevice(device.id)"
-                class="px-4 py-3 border-b border-gray-50 hover:bg-blue-50 cursor-pointer transition-colors flex justify-between items-center"
-                :class="{ 'bg-blue-50': selectedDeviceId === device.id }"
+                class="px-4 py-3 border-b border-gray-50 hover:bg-brand-light cursor-pointer transition-colors flex justify-between items-center"
+                :class="{ 'bg-brand-light': selectedDeviceId === device.id }"
               >
                 <div>
                   <p class="text-sm font-bold text-gray-800">{{ device.name || 'Unnamed' }}</p>
                   <p class="text-[10px] text-gray-400 font-mono">{{ device.uniqueId }}</p>
                 </div>
-                <i v-if="selectedDeviceId === device.id" class="fa-solid fa-check text-blue-600"></i>
+                <i v-if="selectedDeviceId === device.id" class="fa-solid fa-check text-brand"></i>
               </li>
             </ul>
           </div>
@@ -179,7 +179,7 @@ const generateReport = () => {
 
         <button 
           @click="generateReport"
-          class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 active:scale-[0.98]"
+          class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-3.5 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 active:scale-[0.98]"
         >
           Generate Report
           <i class="fa-solid fa-arrow-right"></i>

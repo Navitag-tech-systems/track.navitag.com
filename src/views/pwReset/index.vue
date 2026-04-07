@@ -34,7 +34,7 @@ const handleReset = async () => {
 </script>
 
 <template>
-  <div class="flex flex-col items-center justify-center flex-1 p-4 bg-gray-50">
+  <div class="flex flex-col items-center justify-center flex-1 p-4 bg-surface">
     <div class="w-full max-w-sm bg-white p-6 rounded-lg shadow-md">
 
       <div v-if="sent" class="text-center">
@@ -43,7 +43,7 @@ const handleReset = async () => {
         <p class="text-sm text-gray-500 leading-relaxed mb-6">
           We've sent a password reset link to <span class="font-semibold text-gray-700">{{ email }}</span>. Follow the link in the email to set your new password.
         </p>
-        <RouterLink to="/login" class="text-blue-600 hover:underline text-sm">Back to Login</RouterLink>
+        <RouterLink to="/login" class="text-brand hover:underline text-sm">Back to Login</RouterLink>
       </div>
 
       <div v-else>
@@ -56,10 +56,10 @@ const handleReset = async () => {
             type="email"
             placeholder="Enter your email"
             required
-            class="w-full border p-1 text-sm rounded mb-4 focus:ring-2 focus:ring-blue-500 outline-none"
+            class="w-full border p-1 text-sm rounded mb-4 focus:ring-2 focus:ring-brand outline-none"
           />
 
-          <button type="submit" :disabled="loading" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 text-sm rounded transition disabled:opacity-50 cursor-pointer">
+          <button type="submit" :disabled="loading" class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-2 text-sm rounded transition disabled:opacity-50 cursor-pointer">
             {{ loading ? 'Sending...' : 'Send Reset Link' }}
           </button>
         </form>
@@ -67,7 +67,7 @@ const handleReset = async () => {
         <p v-if="errorMsg" class="text-red-500 mt-4 text-center text-sm">{{ errorMsg }}</p>
 
         <div class="mt-6 text-center text-sm">
-          <RouterLink to="/login" class="text-blue-600 hover:underline">Back to Login</RouterLink>
+          <RouterLink to="/login" class="text-brand hover:underline">Back to Login</RouterLink>
         </div>
       </div>
 

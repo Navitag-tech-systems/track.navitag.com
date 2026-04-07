@@ -132,7 +132,7 @@ watch(isActive, async (nv, ov) => {
 </script>
 
 <template>
-  <div class="flex flex-col min-h-full bg-gray-50 relative z-10 pointer-events-auto">
+  <div class="flex flex-col min-h-full bg-surface relative z-10 pointer-events-auto">
     
     <div class="sticky top-0 z-20 bg-white shadow-sm border-b border-gray-200 p-4 flex items-center safe-top">
       <button 
@@ -161,7 +161,7 @@ watch(isActive, async (nv, ov) => {
                 :disabled="loading"
               >
               
-              <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-brand-light rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand"></div>
               <span class="text-md font-medium text-gray-900">
                 {{ isActive ? 'Active' : 'Disabled' }}
               </span>
@@ -176,7 +176,7 @@ watch(isActive, async (nv, ov) => {
                 v-model="name"
                 type="text" 
                 placeholder="e.g. Work Truck, Personal Car" 
-                class="w-full pl-11 pr-4 py-3.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-700 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all outline-none"
+                class="w-full pl-11 pr-4 py-3.5 bg-surface border border-gray-200 rounded-xl text-sm font-bold text-gray-700 focus:bg-white focus:border-brand focus:ring-2 focus:ring-brand-light transition-all outline-none"
               />
             </div>
           </div>
@@ -189,7 +189,7 @@ watch(isActive, async (nv, ov) => {
                 :key="cat.server"
                 @click="category = cat.server"
                 class="flex flex-col items-center justify-center p-3 rounded-xl border cursor-pointer transition-all active:scale-95"
-                :class="category === cat.server ? 'bg-blue-50 border-blue-500 text-blue-600 shadow-sm' : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100'"
+                :class="category === cat.server ? 'bg-brand-light border-brand text-brand shadow-sm' : 'bg-surface border-gray-200 text-gray-500 hover:bg-gray-100'"
               >
                 <i :class="`fa-solid ${cat.icon} text-xl mb-1.5`"></i>
                 <span class="text-[9px] font-bold uppercase tracking-wider text-center line-clamp-1">{{ cat.map }}</span>
@@ -210,7 +210,7 @@ watch(isActive, async (nv, ov) => {
           <button 
             type="submit" 
             :disabled="loading"
-            class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 outline-none mt-4"
+            class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-4 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 outline-none mt-4"
           >
             <i v-if="loading" class="fa-solid fa-circle-notch fa-spin"></i>
             {{ loading ? 'Saving...' : 'Save Changes' }}

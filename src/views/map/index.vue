@@ -95,7 +95,7 @@ const getGpsQuality = (device) => {
   // Logic: Low Satellites OR High HDOP (inaccuracy) = Bad Signal
   if (sat < 4 || (hdop > 0 && hdop > 6)) return { label: 'Bad', color: 'text-orange-500' };
   if (sat < 7 || (hdop > 0 && hdop > 2.5)) return { label: 'Fair', color: 'text-yellow-600' };
-  if (sat < 12 || (hdop > 0 && hdop > 1)) return { label: 'Good', color: 'text-blue-500' };
+  if (sat < 12 || (hdop > 0 && hdop > 1)) return { label: 'Good', color: 'text-brand' };
   
   return { label: 'Excellent', color: 'text-green-600' };
 };
@@ -118,7 +118,7 @@ const getGpsQuality = (device) => {
             @keydown.esc="showDropdown = false"
             type="text" 
             placeholder="Search" 
-            class="w-full px-2 py-2 bg-white/95 backdrop-blur-sm border border-gray-200 rounded-xl text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+            class="w-full px-2 py-2 bg-white/95 backdrop-blur-sm border border-gray-200 rounded-xl text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand transition-all"
           />
         </div>
 
@@ -134,10 +134,10 @@ const getGpsQuality = (device) => {
               @mouseenter="focusedIndex = index"
               :class="[
                 'px-4 py-3 cursor-pointer text-sm text-gray-700 border-b border-gray-50 last:border-0 flex items-center',
-                focusedIndex === index ? 'bg-blue-50' : 'hover:bg-blue-50'
+                focusedIndex === index ? 'bg-brand-light' : 'hover:bg-brand-light'
               ]"
             >
-              <i class="fa-solid fa-location-dot text-blue-500 mr-2 opacity-70"></i>
+              <i class="fa-solid fa-location-dot text-brand mr-2 opacity-70"></i>
               {{ device.name }}
             </li>
             <li v-if="filteredResults.length === 0" class="px-4 py-4 text-sm text-gray-500 text-center italic">
@@ -170,7 +170,7 @@ const getGpsQuality = (device) => {
           {{ isOffline(deviceStore.deviceSelectedObject) ? 'Off' : 'On' }}
         </span>
         <p class="text-[10px] text-gray-500 truncate flex-1">
-          <i class="fa-solid fa-location-dot text-blue-400 mr-1"></i>
+          <i class="fa-solid fa-location-dot text-accent mr-1"></i>
           {{ deviceStore.deviceSelectedObject.address || 'Locating...' }}
         </p>
       </div>
@@ -179,7 +179,7 @@ const getGpsQuality = (device) => {
         
         <div class="flex gap-3">
           <div class="flex items-center gap-1 text-[10px] text-gray-700">
-            <i class="fa-solid fa-gauge-high text-blue-500"></i>
+            <i class="fa-solid fa-gauge-high text-brand"></i>
             <span class="font-bold">{{ deviceStore.deviceSelectedObject.speed ? Math.round(deviceStore.deviceSelectedObject.speed * 1.852) : 0 }}</span>
           </div>
 
@@ -200,7 +200,7 @@ const getGpsQuality = (device) => {
 
         <button 
           @click="router.push(`/devices/${deviceStore.deviceSelectedObject.id}`)"
-          class="text-[10px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1"
+          class="text-[10px] font-bold text-brand bg-brand-light hover:bg-brand-light px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1"
         >
           Details <i class="fa-solid fa-chevron-right text-[8px]"></i>
         </button>

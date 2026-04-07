@@ -45,7 +45,7 @@ const viewHistory = () => {
 </script>
 
 <template>
-  <div class="flex flex-col min-h-full bg-gray-50 relative z-10 pointer-events-auto">
+  <div class="flex flex-col min-h-full bg-surface relative z-10 pointer-events-auto">
     
     <div class="sticky top-0 z-20 bg-white shadow-sm border-b border-gray-200 p-4 flex items-center safe-top">
       <button 
@@ -73,7 +73,7 @@ const viewHistory = () => {
           <div class="flex flex-col items-end gap-2">
             <span 
               class="px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider border"
-              :class="device.status === 'online' ? 'bg-green-50 text-green-600 border-green-100' : 'bg-gray-50 text-gray-500 border-gray-200'"
+              :class="device.status === 'online' ? 'bg-green-50 text-green-600 border-green-100' : 'bg-surface text-gray-500 border-gray-200'"
             >
               {{ device.status }}
             </span>
@@ -81,17 +81,17 @@ const viewHistory = () => {
         </div>
 
         <div class="grid grid-cols-2 gap-3 mt-4">
-          <button @click="viewOnMap" class="flex items-center justify-center gap-2 bg-blue-50 text-blue-600 py-2.5 rounded-lg text-sm font-bold hover:bg-blue-100 transition-colors">
+          <button @click="viewOnMap" class="flex items-center justify-center gap-2 bg-brand-light text-brand py-2.5 rounded-lg text-sm font-bold hover:bg-brand-light transition-colors">
             <i class="fa-solid fa-map-location-dot"></i> Map
           </button>
-          <button @click="viewHistory" class="flex items-center justify-center gap-2 bg-gray-50 text-gray-600 py-2.5 rounded-lg text-sm font-bold hover:bg-gray-100 transition-colors">
+          <button @click="viewHistory" class="flex items-center justify-center gap-2 bg-surface text-gray-600 py-2.5 rounded-lg text-sm font-bold hover:bg-gray-100 transition-colors">
             <i class="fa-solid fa-clock-rotate-left"></i> History
           </button>
         </div>
       </div>
 
       <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div class="bg-gray-50 px-4 py-3 border-b border-gray-100 font-bold text-sm text-gray-700">
+        <div class="bg-surface px-4 py-3 border-b border-gray-100 font-bold text-sm text-gray-700">
           Status & Sensors
         </div>
         <div class="divide-y divide-gray-100">
@@ -119,7 +119,7 @@ const viewHistory = () => {
       </div>
 
       <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div class="bg-gray-50 px-4 py-3 border-b border-gray-100 font-bold text-sm text-gray-700">
+        <div class="bg-surface px-4 py-3 border-b border-gray-100 font-bold text-sm text-gray-700">
           Location
         </div>
         <div class="divide-y divide-gray-100">
@@ -153,7 +153,7 @@ const viewHistory = () => {
       </div>
 
       <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div class="bg-gray-50 px-4 py-3 border-b border-gray-100 font-bold text-sm text-gray-700">
+        <div class="bg-surface px-4 py-3 border-b border-gray-100 font-bold text-sm text-gray-700">
           Network
         </div>
         <div class="divide-y divide-gray-100">
@@ -173,7 +173,7 @@ const viewHistory = () => {
       </div>
 
       <div v-if="device.attributes && Object.keys(device.attributes).length > 0" class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div class="bg-gray-50 px-4 py-3 border-b border-gray-100 font-bold text-sm text-gray-700">
+        <div class="bg-surface px-4 py-3 border-b border-gray-100 font-bold text-sm text-gray-700">
           Other Attributes
         </div>
         <div class="divide-y divide-gray-100">

@@ -81,96 +81,80 @@ const processDeviceCode = (code) => {
 </script>
 
 <template>
-  <div class="flex flex-col h-100 bg-gray-50 min-h-screen">
-    
-    <div class="bg-white p-4 shadow-sm flex items-center safe-top">
-      <button @click="router.back()" class="text-gray-600 w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 mr-2 transition-colors outline-none cursor-pointer">
-        <i class="fa-solid fa-arrow-left text-lg"></i>
-      </button>
+  <div class="flex flex-col flex-1 bg-surface">
+    <div class="bg-white p-4 shadow-sm flex items-center">
       <h1 class="text-xl font-bold text-gray-800">Link Device</h1>
     </div>
 
     <div class="flex-1 flex flex-col items-center justify-center p-6 text-center">
-      
-      <div class="w-32 h-32 bg-blue-50 rounded-full flex items-center justify-center mb-6 shadow-inner border border-blue-100">
-        <i class="fa-solid fa-qrcode text-5xl text-blue-600"></i>
+      <div class="w-40 h-40 bg-brand-light rounded-full flex items-center justify-center mb-8 shadow-inner">
+        <i class="fa-solid fa-qrcode text-6xl text-brand"></i>
       </div>
-      
-      <h2 class="text-2xl font-bold text-gray-800 mb-3">
+
+      <h2 class="text-2xl font-bold text-gray-800 mb-4">
         {{ showCameraOption ? 'Scan QR Code' : 'Enter Device Code' }}
       </h2>
 
-      <p class="text-gray-500 mb-6 max-w-xs text-sm leading-relaxed">
+      <p class="text-gray-600 mb-6 max-w-sm text-sm leading-relaxed">
         <span v-if="showCameraOption">
-          Locate the QR code on your new GPS tracker and scan it to link it to your account.
+          Locate the QR code on your new device and scan it to link it to your account.
         </span>
         <span v-else>
-          Type the 15-digit IMEI found on the back of your tracker to link it.
+          Type the 15-digit IMEI found on the back of your device to link it.
         </span>
       </p>
 
-      <div class="h-14 w-full max-w-sm">
-        <div v-if="errorMsg" class="text-sm p-3 rounded-xl text-red-600 bg-red-50 border border-red-200 animate-fade-in flex items-center justify-center gap-2">
-          <i class="fa-solid fa-triangle-exclamation"></i>
-          {{ errorMsg }}
-        </div>
-      </div>
+      <p v-if="errorMsg" class="text-sm mb-4 p-3 rounded w-full max-w-sm text-red-600 bg-red-50 border border-red-200">
+        {{ errorMsg }}
+      </p>
+      <div v-else :style="{minHeight: '50px'}"></div>
     </div>
 
-    <div class="p-6 bg-white shadow-[0_-10px_20px_rgba(0,0,0,0.03)] rounded-t-3xl pb-safe-bottom">
-      
-      <div class="max-w-md mx-auto">
-        <template v-if="showCameraOption">
-          <button 
-            @click="startScan" 
-            :disabled="isScanning"
-            class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-4 rounded-xl flex items-center justify-center transition-colors cursor-pointer shadow-sm active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed outline-none"
+    <div class="p-6 bg-white shadow-[0_-4px_10px_-2px_rgba(0,0,0,0.05)] m-3 rounded-xl">
+      <template v-if="showCameraOption">
+        <button
+          @click="startScan"
+          :disabled="isScanning"
+          class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-4 px-4 rounded-xl flex items-center justify-center transition cursor-pointer text-lg shadow-md active:scale-[0.98] disabled:opacity-50"
+        >
+          <i v-if="isScanning" class="fa-solid fa-circle-notch fa-spin mr-3 text-xl"></i>
+          <i v-else class="fa-solid fa-camera mr-3 text-xl"></i>
+          {{ isScanning ? 'Scanner Active...' : 'Start Camera' }}
+        </button>
+        <button @click="showCameraOption = false; errorMsg = ''" class="w-full mt-4 text-sm text-accent hover:underline cursor-pointer">
+          Enter code manually instead
+        </button>
+      </template>
+
+      <template v-else>
+        <div class="w-full text-left">
+          <input
+            v-model="manualCode"
+            type="text"
+            placeholder="e.g. 123456789012345"
+            class="w-full border p-4 text-lg rounded-xl focus:ring-2 focus:ring-brand outline-none mb-3 tracking-widest text-center"
+            @keyup.enter="submitManualCode"
+          />
+          <button
+            @click="submitManualCode"
+            class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-4 px-4 rounded-xl transition cursor-pointer text-lg shadow-md active:scale-[0.98]"
           >
-            <i v-if="isScanning" class="fa-solid fa-circle-notch fa-spin mr-3 text-lg"></i>
-            <i v-else class="fa-solid fa-camera mr-3 text-lg"></i> 
-            {{ isScanning ? 'Scanner Active...' : 'Start Camera' }}
+            Submit Code
           </button>
-          
-          <button @click="showCameraOption = false; errorMsg = ''" class="w-full mt-4 text-sm font-semibold text-gray-500 hover:text-blue-600 transition-colors cursor-pointer outline-none">
-            Enter code manually instead
+          <button @click="showCameraOption = true; errorMsg = ''" class="w-full mt-4 text-sm text-accent hover:underline cursor-pointer flex justify-center">
+            Back to Scanner
           </button>
-        </template>
-
-        <template v-else>
-          <div class="w-full text-left relative">
-            <i class="fa-solid fa-hashtag absolute left-4 top-[22px] text-gray-400"></i>
-            <input 
-              v-model="manualCode" 
-              type="text" 
-              placeholder="e.g. 123456789012345" 
-              class="w-full border border-gray-200 bg-gray-50 p-4 pl-10 text-lg rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none mb-4 tracking-wider font-mono transition-all" 
-              @keyup.enter="submitManualCode"
-            />
-            
-            <button 
-              @click="submitManualCode" 
-              class="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-4 px-4 rounded-xl flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-sm active:scale-[0.98] outline-none"
-            >
-              Submit Code
-              <i class="fa-solid fa-arrow-right"></i>
-            </button>
-            
-            <button @click="showCameraOption = true; errorMsg = ''" class="w-full mt-4 text-sm font-semibold text-gray-500 hover:text-blue-600 transition-colors cursor-pointer outline-none">
-              Back to Scanner
-            </button>
-          </div>
-        </template>
-
-        <div class="mt-8 pt-6 border-t border-gray-100 text-center">
-          <p class="text-xs text-gray-500 font-medium">
-            Need a new GPS tracker? 
-            <a href="https://yourwebsite.com/shop" target="_blank" class="text-blue-600 hover:underline font-bold ml-1">
-              Shop Devices
-            </a>
-          </p>
         </div>
-      </div>
+      </template>
 
+      <div class="mt-4 pt-4 border-t border-gray-100 text-center">
+        <p class="text-xs text-gray-500 font-medium">
+          Need a new Navitag Device?
+          <a href="https://www.navitag.com/shop" target="_blank" class="text-accent hover:underline font-bold ml-1">
+            Shop Devices
+          </a>
+        </p>
+      </div>
     </div>
   </div>
 </template>

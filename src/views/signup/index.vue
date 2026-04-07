@@ -69,7 +69,7 @@ const handleSignup = async () => {
 </script>
 
 <template>
-  <div class="flex flex-col items-center justify-center flex-1 p-4 bg-gray-50">
+  <div class="flex flex-col items-center justify-center flex-1 p-4 bg-surface">
     <div class="w-full max-w-sm bg-white p-6 rounded-lg shadow-md">
       <h1 class="text-2xl font-bold mb-4 text-center text-gray-800">Create Account</h1>
 
@@ -79,11 +79,11 @@ const handleSignup = async () => {
 
       <form @submit.prevent="handleSignup" class="mt-4">
         <div class="mb-3">
-          <input v-model="name" placeholder="Full Name" type="text" required class="w-full border p-1 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
+          <input v-model="name" placeholder="Full Name" type="text" required class="w-full border p-1 rounded focus:ring-2 focus:ring-brand outline-none" />
         </div>
 
         <div class="mb-3">
-          <input v-model="email" type="email" placeholder="Email" required class="w-full border p-1 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
+          <input v-model="email" type="email" placeholder="Email" required class="w-full border p-1 rounded focus:ring-2 focus:ring-brand outline-none" />
         </div>
         
         <div class="mb-3 relative">
@@ -91,13 +91,13 @@ const handleSignup = async () => {
             v-model="password" 
             :type="showPassword ? 'text' : 'password'" 
             required 
-            class="w-full border p-1 rounded focus:ring-2 focus:ring-blue-500 outline-none pr-10"
+            class="w-full border p-1 rounded focus:ring-2 focus:ring-brand outline-none pr-10"
             placeholder="Password"
           />
           <button 
             type="button"
             @click="showPassword = !showPassword"
-            class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer hover:text-blue-500 transition-colors"
+            class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer hover:text-brand transition-colors"
           >
             <i :class="showPassword ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'"></i>
           </button>
@@ -109,12 +109,12 @@ const handleSignup = async () => {
             :type="showConfirmPassword ? 'text' : 'password'" 
             placeholder="Confirm Password" 
             required 
-            class="w-full border p-1 rounded focus:ring-2 focus:ring-blue-500 outline-none pr-10" 
+            class="w-full border p-1 rounded focus:ring-2 focus:ring-brand outline-none pr-10" 
           />
           <button 
             type="button"
             @click="showConfirmPassword = !showConfirmPassword"
-            class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer hover:text-blue-500 transition-colors"
+            class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer hover:text-brand transition-colors"
           >
             <i :class="showConfirmPassword ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'"></i>
           </button>
@@ -124,7 +124,7 @@ const handleSignup = async () => {
           8 characters long and have 1 Capital, 1 Number, 1 special Character
         </p>
         
-        <button type="submit" :disabled="loading" class="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-2 px-4 rounded transition disabled:opacity-50 cursor-pointer">
+        <button type="submit" :disabled="loading" class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-2 px-4 rounded transition disabled:opacity-50 cursor-pointer">
           {{ loading ? 'Creating Account...' : 'Sign Up' }}
         </button>
       </form>
@@ -134,7 +134,7 @@ const handleSignup = async () => {
 
       <div class="relative flex py-5 items-center">
         <div class="flex-grow border-t border-gray-300"></div>
-        <span class="flex-shrink mx-4 text-gray-400 text-sm">Or Sign Up With</span>
+        <span class="flex-shrink mx-4 text-accent text-sm font-medium">Or Sign Up With</span>
         <div class="flex-grow border-t border-gray-300"></div>
       </div>
 
@@ -153,7 +153,7 @@ const handleSignup = async () => {
 
       <div class="mt-6 text-center text-sm text-gray-600">
         Already have an account? 
-        <RouterLink to="/login" class="text-blue-600 hover:underline">Log In</RouterLink>
+        <RouterLink to="/login" class="text-brand hover:underline">Log In</RouterLink>
       </div>
     </div>
   </div>

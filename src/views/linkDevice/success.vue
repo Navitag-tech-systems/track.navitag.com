@@ -33,7 +33,7 @@ function goToMap() {
 </script>
 
 <template>
-  <div class="flex flex-col min-h-screen bg-gray-50 flex-1">
+  <div class="flex flex-col min-h-screen bg-surface flex-1">
     <div class="bg-white p-4 shadow-sm flex items-center">
       <h1 class="text-xl font-bold text-gray-800 mx-auto">Setup Complete</h1>
     </div>
@@ -41,13 +41,13 @@ function goToMap() {
     <div class="flex-1 flex flex-col items-center justify-center p-6 text-center">
       
       <template v-if="isActivated">
-        <div class="w-32 h-32 bg-blue-100 rounded-full flex items-center justify-center mb-6 shadow-inner mx-auto">
-          <i class="fa-solid fa-check text-6xl text-blue-600"></i>
+        <div class="w-32 h-32 bg-brand-light rounded-full flex items-center justify-center mb-6 shadow-inner mx-auto">
+          <i class="fa-solid fa-check text-6xl text-brand"></i>
         </div>
         
         <h2 class="text-2xl font-bold text-gray-800 mb-2">Device Activated!</h2>
         <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100 w-full max-w-sm text-left mb-6">
-          <h3 class="font-bold text-gray-800 mb-2"><i class="fa-solid fa-satellite mr-2 text-blue-500"></i> Next Steps</h3>
+          <h3 class="font-bold text-gray-800 mb-2"><i class="fa-solid fa-satellite mr-2 text-brand"></i> Next Steps</h3>
           <ul class="text-sm text-gray-600 space-y-2 list-disc pl-4 marker:text-gray-300">
             <li>Finish installing/setting up your device</li>
             <li>Make sure the device is <strong>outside</strong> with a clear view of the sky.</li>
@@ -78,7 +78,7 @@ function goToMap() {
       <button 
         @click="goToMap" 
         :disabled="isRefreshing"
-        class="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-4 px-4 rounded-xl flex items-center justify-center transition cursor-pointer text-lg shadow-md active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+        class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-4 px-4 rounded-xl flex items-center justify-center transition cursor-pointer text-lg shadow-md active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <template v-if="isRefreshing">
           <i class="fa-solid fa-spinner fa-spin mr-2"></i> SYNCING...

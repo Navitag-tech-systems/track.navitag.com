@@ -12,7 +12,7 @@ const props = defineProps({
 </script>
 
 <template>
-  <div class="fixed inset-0 z-50 bg-gray-100 flex flex-col items-center justify-center pt-safe-top pb-safe-bottom">
+  <div class="fixed inset-0 z-50 bg-surface flex flex-col items-center justify-center pt-safe-top pb-safe-bottom">
     <i  class="fa-solid fa-ban text-4xl text-yellow-500"></i>
     
     <h1 class="text-xl font-bold text-gray-800 my-4">

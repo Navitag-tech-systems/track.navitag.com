@@ -104,8 +104,9 @@ export const useDevicesStore = defineStore('devices', () => {
         if (retArr.length < 1) {
              console.log('[Devices] No devices found, redirecting to teaser.');
              router.push('/linkdevice/teaser');
+             throw new Error('NO_DEVICES');
         }
-        
+
         retArr.forEach(device => {
           devices[device.id] = device;
         });
@@ -170,6 +171,10 @@ export const useDevicesStore = defineStore('devices', () => {
       await Promise.all([fetchDevices(), fetchGeofences()]);
       return true; // Successfully fetched
     } catch (err) {
+      if (err.message === 'NO_DEVICES') {
+        loading.value = false;
+        return 'no_devices';
+      }
       console.error('[Devices] fetchAll failed:', err);
       error.value = err.message || 'Failed to fetch tracking data.';
       return false; // Fetch failed

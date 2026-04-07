@@ -1,44 +1,53 @@
-# track.navitag.com
+### PROJECT OVERVIEW AND STATUS
 
-This template should help get you started developing with Vue 3 in Vite.
+# Navitag Track - GPS Tracking Frontend
 
-## Recommended IDE Setup
+Vue 3 + Capacitor 8 mobile app for GPS device tracking. Connects to `api.navitag.net` (PHP/Slim backend) and Traccar servers (GPS tracking backend behind Caddy reverse proxy).
 
-[VS Code](https://code.visualstudio.com/) + [Vue (Official)](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
+**Stack:** Vue 3, Capacitor 8, Tailwind CSS, Pinia, Vue Router, Leaflet (leaflet-vue3)
 
-## Recommended Browser Setup
+---
 
-- Chromium-based browsers (Chrome, Edge, Brave, etc.):
-  - [Vue.js devtools](https://chromewebstore.google.com/detail/vuejs-devtools/nhdogjmejiglipccpnnnanhbledajbpd)
-  - [Turn on Custom Object Formatter in Chrome DevTools](http://bit.ly/object-formatters)
-- Firefox:
-  - [Vue.js devtools](https://addons.mozilla.org/en-US/firefox/addon/vue-js-devtools/)
-  - [Turn on Custom Object Formatter in Firefox DevTools](https://fxdx.dev/firefox-devtools-custom-object-formatters/)
+## Project Status
 
-## Customize configuration
+### SSO Login Flow (Facebook/Apple/Google) — In Progress
 
-See [Vite Configuration Reference](https://vite.dev/config/).
+**Problem:** Facebook SSO users may not have an email in their Firebase profile. The app requires an email for backend user creation (Traccar requires email for user accounts).
 
-## Project Setup
+**Solution implemented:**
 
-```sh
-npm install
-```
+1. **SSO scopes** (`src/utils/auth.js`): All SSO providers now request email scopes (`email`, `profile`/`public_profile`).
 
-### Compile and Hot-Reload for Development
+2. **Email collection flow** (`src/views/login/collectEmail.vue`): If SSO provider doesn't return an email, the app redirects to a collect-email view before proceeding. Guards in `lifecycle.js`, `App.vue`, and `router.js` prevent race conditions during this flow.
 
-```sh
-npm run dev
-```
+3. **Backend email resolution** (`api.navitag.net` — `User.php`):
+   - Email fallback chain: JWT email → request body email → `{uid}@navitagdummy.net`
+   - Backend updates Firebase user's email via Admin SDK when JWT email is missing
+   - Sends verification email for real (non-dummy) emails
+   - Email is immutable after creation (no updates to email in Traccar/MySQL after initial creation)
 
-### Compile and Minify for Production
+4. **Server token fix** (`api.navitag.net` — `Server.php`):
+   - `generateToken()` now resolves email via: JWT → MySQL `users` table → dummy fallback
+   - Ensures password derivation matches what was used during user creation
 
-```sh
-npm run build
-```
+5. **Session invalidation handling** (`collectEmail.vue`):
+   - Firebase Admin SDK email update revokes refresh tokens (per Firebase docs: email change is a "major account change")
+   - After `backendSync()` succeeds, the app shows a success message instead of attempting `startSession()`
+   - User must click "Login Now" to sign out and re-login (JWT will have email on next login)
+   - `needsEmail` flag stays `true` during the transition to keep all lifecycle guards active, preventing error states from race conditions
 
-### Run Unit Tests with [Vitest](https://vitest.dev/)
+6. **Re-login race condition fix** (`src/stores/user.js`):
+   - `clearUser()` now clears `server_url` to prevent `checkConnectionAndReconnect` from racing with `startSession` during re-login
+   - Stale `server_url` was bypassing the `!userStore.server_url` guard, causing concurrent Traccar session attempts and 401 errors
 
-```sh
-npm run test:unit
-```
+### Account Settings
+
+- Email field is read-only in the account page (`src/views/account/index.vue`)
+- Users can update name and phone number
+- Password change available for email/password users
+
+### Key Architecture Notes
+
+- `lifecycle.js`: Central service managing auth state, app state, network state, and socket connections. Uses lock flags (`isStartingSession`, `isReconnecting`) to prevent concurrent operations.
+- `user.js` (Pinia store): Manages Firebase auth, backend sync, Traccar session, and WebSocket connection. Socket declared as `shallowRef` to avoid Vue reactivity overhead.
+- `http.js`: Custom HTTP wrapper using CapacitorHttp for native requests with cookie management.

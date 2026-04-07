@@ -69,13 +69,13 @@ const editGeofence = (id) => {
 </script>
 
 <template>
-  <div class="flex flex-col min-h-full bg-gray-50">
+  <div class="flex flex-col min-h-full bg-surface">
     
     <div class="sticky top-0 z-20 bg-white shadow-sm border-b border-gray-200">
       <div class="p-4">
         <div class="flex justify-between">
           <h1 class="text-xl font-bold text-gray-800 mb-3">Overview</h1>
-          <RouterLink to="/addgeo" class="w-10 h-10 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center shrink-0" >
+          <RouterLink to="/addgeo" class="w-10 h-10 rounded-full bg-accent-light text-accent flex items-center justify-center shrink-0" >
             <i class="fa-solid fa-plus"></i>
           </RouterLink>
         </div>
@@ -89,7 +89,7 @@ const editGeofence = (id) => {
             Devices
           </button>
           <button
-            class="pb-3 text-sm font-semibold whitespace-nowrap transition-colors border-b-2 flex items-center gap-2 outline-none cursor-pointer border-blue-600 text-blue-600"
+            class="pb-3 text-sm font-semibold whitespace-nowrap transition-colors border-b-2 flex items-center gap-2 outline-none cursor-pointer border-brand text-brand"
           >
             <i class="fa-solid fa-draw-polygon"></i>
             Geofences
@@ -101,13 +101,13 @@ const editGeofence = (id) => {
     <div class="p-4 space-y-4 relative z-10">
       
       <div v-if="geofencesList.length === 0" class="text-center text-gray-500 py-10 bg-white rounded-xl border border-gray-200 shadow-sm">
-        <div class="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
+        <div class="w-16 h-16 bg-surface rounded-full flex items-center justify-center mx-auto mb-4">
           <i class="fa-solid fa-draw-polygon text-2xl text-gray-400"></i>
         </div>
         <h3 class="font-bold text-gray-800 mb-1">No Geofences</h3>
         <p class="text-sm px-4 mb-4">You haven't set up any geofences yet. Draw areas on the map to receive alerts when trackers enter or exit.</p>
         <RouterLink to="/addgeo">
-          <button class="bg-blue-50 text-blue-600 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-100 transition cursor-pointer">
+          <button class="bg-accent-light text-accent px-4 py-2 rounded-lg text-sm font-semibold hover:bg-accent-light transition cursor-pointer">
             Create Geofence
           </button>
         </RouterLink>
@@ -120,7 +120,7 @@ const editGeofence = (id) => {
           class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex justify-between items-center transition-all hover:shadow-md"
         >
           <div class="flex items-center gap-4">
-            <div class="w-10 h-10 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center shrink-0">
+            <div class="w-10 h-10 rounded-full bg-brand-light text-brand flex items-center justify-center shrink-0">
               <i class="fa-solid fa-draw-polygon"></i>
             </div>
             <div>
@@ -131,7 +131,7 @@ const editGeofence = (id) => {
           <div class="flex items-center gap-2">
             <button 
               @click="editGeofence(geofence.id)"
-              class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors shrink-0 outline-none"
+              class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-brand hover:bg-brand-light transition-colors shrink-0 outline-none"
               title="Edit Geofence"
             >
               <i class="fa-solid fa-pen-to-square"></i>
@@ -150,7 +150,7 @@ const editGeofence = (id) => {
         <RouterLink to="/addgeo" class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex justify-center items-center transition-all hover:shadow-md">
           <div class="flex items-center gap-4">
 
-            <div class="w-10 h-10 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center shrink-0">
+            <div class="w-10 h-10 rounded-full bg-accent-light text-accent flex items-center justify-center shrink-0">
               <i class="fa-solid fa-plus"></i>
             </div>
             <div>

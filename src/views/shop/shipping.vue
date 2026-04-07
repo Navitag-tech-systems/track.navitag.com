@@ -244,7 +244,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex flex-col min-h-full bg-gray-50 relative z-10 pointer-events-auto">
+  <div class="flex flex-col min-h-full bg-surface relative z-10 pointer-events-auto">
     
     <div class="sticky top-0 z-20 bg-white shadow-sm border-b border-gray-200">
       <div class="p-4 flex items-center">
@@ -263,25 +263,25 @@ onMounted(() => {
     <div class="p-4 space-y-6 pb-32">
 
       <div v-if="needsName || isProduct" class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div class="bg-gray-50 px-4 py-3 border-b border-gray-100 font-bold text-sm text-gray-700 flex items-center gap-2">
-          <i class="fa-solid fa-user text-blue-500"></i> Contact Information
+        <div class="bg-surface px-4 py-3 border-b border-gray-100 font-bold text-sm text-gray-700 flex items-center gap-2">
+          <i class="fa-solid fa-user text-brand"></i> Contact Information
         </div>
         <div class="p-4 space-y-4">
           <div v-if="needsName" class="grid grid-cols-2 gap-3">
             <div>
               <label class="block text-xs font-bold text-gray-600 mb-1">Given Name</label>
-              <input v-model="givenName" type="text" placeholder="First" class="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
+              <input v-model="givenName" type="text" placeholder="First" class="w-full bg-surface border border-gray-200 p-3 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-brand outline-none transition-all" />
             </div>
             <div>
               <label class="block text-xs font-bold text-gray-600 mb-1">Last Name</label>
-              <input v-model="lastName" type="text" placeholder="Last" class="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
+              <input v-model="lastName" type="text" placeholder="Last" class="w-full bg-surface border border-gray-200 p-3 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-brand outline-none transition-all" />
             </div>
           </div>
           
           <div v-if="isProduct">
             <label class="block text-xs font-bold text-gray-600 mb-1">Phone Number</label>
             <div class="flex space-x-2">
-              <div class="relative bg-gray-50 border border-gray-200 p-3 rounded-xl text-sm focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-500 flex items-center justify-center w-[85px] overflow-hidden transition-all">
+              <div class="relative bg-surface border border-gray-200 p-3 rounded-xl text-sm focus-within:bg-white focus-within:ring-2 focus-within:ring-brand flex items-center justify-center w-[85px] overflow-hidden transition-all">
                 <span class="text-gray-800 font-medium">{{ phoneCountryCode }}</span>
                 <i class="fa-solid fa-chevron-down text-[10px] text-gray-400 ml-1"></i>
                 <select v-model="phoneCountryCode" class="absolute inset-0 w-full flex-1 opacity-0 cursor-pointer">
@@ -294,7 +294,7 @@ onMounted(() => {
                 v-model="phoneNumber" 
                 type="tel" 
                 placeholder="(555) 000-0000" 
-                class="flex-1 bg-gray-50 border border-gray-200 p-3 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
+                class="flex-1 bg-surface border border-gray-200 p-3 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-brand outline-none transition-all" 
               />
             </div>
           </div>
@@ -302,7 +302,7 @@ onMounted(() => {
       </div>
 
       <div v-else class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex items-center gap-3">
-        <div class="w-10 h-10 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center shrink-0">
+        <div class="w-10 h-10 bg-brand-light text-brand rounded-full flex items-center justify-center shrink-0">
           <i class="fa-solid fa-user-check"></i>
         </div>
         <div>
@@ -312,8 +312,8 @@ onMounted(() => {
       </div>
 
       <div v-if="isProduct" class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div class="bg-gray-50 px-4 py-3 border-b border-gray-100 font-bold text-sm text-gray-700 flex items-center gap-2">
-          <i class="fa-solid fa-truck-fast text-blue-500"></i> Shipping Address
+        <div class="bg-surface px-4 py-3 border-b border-gray-100 font-bold text-sm text-gray-700 flex items-center gap-2">
+          <i class="fa-solid fa-truck-fast text-brand"></i> Shipping Address
         </div>
         <div class="p-4 space-y-4">
           
@@ -322,20 +322,20 @@ onMounted(() => {
             <button 
               @click="showCountryDropdown = !showCountryDropdown"
               type="button"
-              class="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl text-sm text-left flex justify-between items-center outline-none focus:ring-2 focus:ring-blue-500"
+              class="w-full bg-surface border border-gray-200 p-3 rounded-xl text-sm text-left flex justify-between items-center outline-none focus:ring-2 focus:ring-brand"
             >
               <span :class="country ? 'text-gray-800' : 'text-gray-400'">{{ country || 'Select a country...' }}</span>
               <i class="fa-solid fa-chevron-down text-gray-400 transition-transform" :class="{'rotate-180': showCountryDropdown}"></i>
             </button>
 
             <div v-if="showCountryDropdown" class="absolute z-30 w-full mt-1 bg-white border border-gray-200 shadow-xl rounded-xl overflow-hidden">
-              <div class="p-2 border-b border-gray-100 bg-gray-50 relative">
+              <div class="p-2 border-b border-gray-100 bg-surface relative">
                 <i class="fa-solid fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
                 <input 
                   v-model="countrySearch" 
                   type="text" 
                   placeholder="Search countries..." 
-                  class="w-full pl-8 pr-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-blue-500"
+                  class="w-full pl-8 pr-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-brand"
                 />
               </div>
               <ul class="max-h-48 overflow-y-auto overscroll-contain">
@@ -344,7 +344,7 @@ onMounted(() => {
                   v-for="c in filteredCountries" 
                   :key="c"
                   @click="selectCountry(c)"
-                  class="px-4 py-3 text-sm text-gray-700 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0 transition-colors"
+                  class="px-4 py-3 text-sm text-gray-700 hover:bg-brand-light cursor-pointer border-b border-gray-50 last:border-0 transition-colors"
                 >
                   {{ c }}
                 </li>
@@ -356,26 +356,26 @@ onMounted(() => {
 
           <div>
             <label class="block text-xs font-bold text-gray-600 mb-1">Address Line 1</label>
-            <input v-model="addressLine1" type="text" placeholder="Street address, P.O. box" class="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
+            <input v-model="addressLine1" type="text" placeholder="Street address, P.O. box" class="w-full bg-surface border border-gray-200 p-3 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-brand outline-none transition-all" />
           </div>
           <div>
             <label class="block text-xs font-bold text-gray-600 mb-1">Address Line 2 <span class="font-normal text-gray-400">(Optional)</span></label>
-            <input v-model="addressLine2" type="text" placeholder="Apt, suite, unit, building, floor, etc." class="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
+            <input v-model="addressLine2" type="text" placeholder="Apt, suite, unit, building, floor, etc." class="w-full bg-surface border border-gray-200 p-3 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-brand outline-none transition-all" />
           </div>
           
           <div>
             <label class="block text-xs font-bold text-gray-600 mb-1">City</label>
-            <input v-model="city" type="text" placeholder="City" class="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
+            <input v-model="city" type="text" placeholder="City" class="w-full bg-surface border border-gray-200 p-3 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-brand outline-none transition-all" />
           </div>
 
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="block text-xs font-bold text-gray-600 mb-1">State / Province</label>
-              <input v-model="state" type="text" placeholder="State" class="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
+              <input v-model="state" type="text" placeholder="State" class="w-full bg-surface border border-gray-200 p-3 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-brand outline-none transition-all" />
             </div>
             <div>
               <label class="block text-xs font-bold text-gray-600 mb-1">ZIP / Postal Code</label>
-              <input v-model="zipCode" type="text" placeholder="ZIP code" class="w-full bg-gray-50 border border-gray-200 p-3 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
+              <input v-model="zipCode" type="text" placeholder="ZIP code" class="w-full bg-surface border border-gray-200 p-3 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-brand outline-none transition-all" />
             </div>
           </div>
         </div>
@@ -394,7 +394,7 @@ onMounted(() => {
           </div>
           <div class="border-t border-gray-100 pt-2 mt-2 flex justify-between items-center">
             <span class="font-bold text-gray-800">Total</span>
-            <span class="text-xl font-black text-blue-600">${{ grandTotal.toFixed(2) }}</span>
+            <span class="text-xl font-black text-brand">${{ grandTotal.toFixed(2) }}</span>
           </div>
         </div>
       </div>
@@ -417,7 +417,7 @@ onMounted(() => {
             
             <button 
               @click="showValidationModal = false"
-              class="w-full py-3 px-4 bg-gray-800 hover:bg-gray-900 text-white font-bold rounded-xl text-sm transition-colors outline-none"
+              class="w-full py-3 px-4 bg-brand hover:bg-brand-dark text-white font-bold rounded-xl text-sm transition-colors outline-none"
             >
               Okay
             </button>
@@ -435,7 +435,7 @@ onMounted(() => {
       <button 
         @click="processPayment"
         :disabled="cartStore.loading"
-        class="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-3.5 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 active:scale-[0.98] outline-none disabled:opacity-75"
+        class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-3.5 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 active:scale-[0.98] outline-none disabled:opacity-75"
       >
         <i v-if="cartStore.loading" class="fa-solid fa-circle-notch fa-spin"></i>
         <template v-else>
