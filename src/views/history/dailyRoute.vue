@@ -27,17 +27,34 @@ const imei = route.params.imei;
 // Make date reactive so we can change it without a full page reload
 const currentDate = ref(route.params.date);
 
+// Find the device by IMEI to get plan_level
+const device = computed(() => Object.values(deviceStore.devices).find(d => String(d.uniqueId) === String(imei)));
+const planLevel = computed(() => (device.value?.plan_level || 'basic').toLowerCase());
+const maxDays = computed(() => planLevel.value === 'pro' ? 90 : 31);
+
 // --- DATE HELPER LOGIC ---
 const getTodayString = () => {
   const d = new Date();
-  return d.getFullYear() + '-' + 
-         String(d.getMonth() + 1).padStart(2, '0') + '-' + 
+  return d.getFullYear() + '-' +
+         String(d.getMonth() + 1).padStart(2, '0') + '-' +
+         String(d.getDate()).padStart(2, '0');
+};
+
+const getOldestAllowedDate = () => {
+  const d = new Date();
+  d.setDate(d.getDate() - maxDays.value);
+  return d.getFullYear() + '-' +
+         String(d.getMonth() + 1).padStart(2, '0') + '-' +
          String(d.getDate()).padStart(2, '0');
 };
 
 // Computed property to disable the "Next" button if viewing today's route
 const isNextDisabled = computed(() => {
   return currentDate.value === getTodayString();
+});
+
+const isPrevDisabled = computed(() => {
+  return currentDate.value <= getOldestAllowedDate();
 });
 
 const fetchHistory = async () => {
@@ -175,9 +192,11 @@ onUnmounted(() => {
       <div class="p-4 overflow-y-auto pb-safe-bottom">
         
         <div class="flex justify-center items-center mb-2">
-          <button 
-            @click="changeDate(-1)" 
-            class="text-white text-xs font-bold p-2 bg-accent rounded-lg transition-colors flex items-center"
+          <button
+            @click="changeDate(-1)"
+            :disabled="isPrevDisabled"
+            class="text-xs font-bold p-2 rounded-lg transition-colors flex items-center"
+            :class="isPrevDisabled ? 'text-gray-400 bg-gray-100 cursor-not-allowed opacity-60' : 'text-white bg-accent'"
           >
             <i class="fa-solid fa-chevron-left"></i>
           </button>

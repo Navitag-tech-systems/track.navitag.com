@@ -13,6 +13,16 @@ const selectedDeviceId = ref(null);
 const selectedDate = ref(new Date().toISOString().split('T')[0]); // Default today
 const today = ref(new Date().toISOString().split('T')[0]); // Max date limit
 
+// Plan-based min date
+const minDate = computed(() => {
+  const device = selectedDevice.value;
+  const plan = (device?.plan_level || 'basic').toLowerCase();
+  const maxDays = plan === 'pro' ? 90 : 31;
+  const d = new Date();
+  d.setDate(d.getDate() - maxDays);
+  return d.toISOString().split('T')[0];
+});
+
 const searchQuery = ref('');
 const isDropdownOpen = ref(false);
 
@@ -170,10 +180,11 @@ const generateReport = () => {
           <div v-if="isDropdownOpen" @click="isDropdownOpen = false" class="fixed inset-0 z-20"></div>
         </div>
 
-        <DatePicker 
-          v-model="selectedDate" 
-          label="Report Date" 
-          :max="today" 
+        <DatePicker
+          v-model="selectedDate"
+          label="Report Date"
+          :min="minDate"
+          :max="today"
           class="mb-8"
         />
 
