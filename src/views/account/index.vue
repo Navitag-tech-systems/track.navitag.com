@@ -6,53 +6,22 @@ import { signOut } from '@/utils/auth';
 import { auth } from '@/firebase'; 
 import { baseUrl } from '@/utils/variables';
 import { request } from '@/utils/http';
+import { countries } from '@/utils/countryList';
 
 const router = useRouter();
 const userStore = useUserStore();
 
-// Comprehensive country dial codes mapped with ISO codes
-const countryCodes = [
-  { isos: ['US', 'CA', 'PR'], code: '+1', label: 'US/CA/PR (+1)' },
-  { isos: ['RU', 'KZ'], code: '+7', label: 'RU/KZ (+7)' },
-  { isos: ['EG'], code: '+20', label: 'EG (+20)' },
-  { isos: ['ZA'], code: '+27', label: 'ZA (+27)' },
-  { isos: ['GR'], code: '+30', label: 'GR (+30)' },
-  { isos: ['NL'], code: '+31', label: 'NL (+31)' },
-  { isos: ['BE'], code: '+32', label: 'BE (+32)' },
-  { isos: ['FR'], code: '+33', label: 'FR (+33)' },
-  { isos: ['ES'], code: '+34', label: 'ES (+34)' },
-  { isos: ['HU'], code: '+36', label: 'HU (+36)' },
-  { isos: ['IT'], code: '+39', label: 'IT (+39)' },
-  { isos: ['RO'], code: '+40', label: 'RO (+40)' },
-  { isos: ['CH'], code: '+41', label: 'CH (+41)' },
-  { isos: ['AT'], code: '+43', label: 'AT (+43)' },
-  { isos: ['GB'], code: '+44', label: 'UK (+44)' },
-  { isos: ['DK'], code: '+45', label: 'DK (+45)' },
-  { isos: ['SE'], code: '+46', label: 'SE (+46)' },
-  { isos: ['NO'], code: '+47', label: 'NO (+47)' },
-  { isos: ['PL'], code: '+48', label: 'PL (+48)' },
-  { isos: ['DE'], code: '+49', label: 'DE (+49)' },
-  { isos: ['PE'], code: '+51', label: 'PE (+51)' },
-  { isos: ['MX'], code: '+52', label: 'MX (+52)' },
-  { isos: ['AR'], code: '+54', label: 'AR (+54)' },
-  { isos: ['BR'], code: '+55', label: 'BR (+55)' },
-  { isos: ['CL'], code: '+56', label: 'CL (+56)' },
-  { isos: ['CO'], code: '+57', label: 'CO (+57)' },
-  { isos: ['MY'], code: '+60', label: 'MY (+60)' },
-  { isos: ['AU'], code: '+61', label: 'AU (+61)' },
-  { isos: ['ID'], code: '+62', label: 'ID (+62)' },
-  { isos: ['PH'], code: '+63', label: 'PH (+63)' },
-  { isos: ['NZ'], code: '+64', label: 'NZ (+64)' },
-  { isos: ['SG'], code: '+65', label: 'SG (+65)' },
-  { isos: ['TH'], code: '+66', label: 'TH (+66)' },
-  { isos: ['JP'], code: '+81', label: 'JP (+81)' },
-  { isos: ['KR'], code: '+82', label: 'KR (+82)' },
-  { isos: ['VN'], code: '+84', label: 'VN (+84)' },
-  { isos: ['CN'], code: '+86', label: 'CN (+86)' },
-  { isos: ['TR'], code: '+90', label: 'TR (+90)' },
-  { isos: ['IN'], code: '+91', label: 'IN (+91)' },
-  { isos: ['PK'], code: '+92', label: 'PK (+92)' },
-].sort((a, b) => parseInt(a.code.replace('+', '')) - parseInt(b.code.replace('+', ''))); // <-- This handles the numerical sorting
+// Build dial code groups from countryList: { isos: ['US','CA',...], code: '+1', label: 'US/CA (+1)' }
+const countryCodes = (() => {
+  const grouped = {};
+  for (const c of countries) {
+    if (!grouped[c.dial]) grouped[c.dial] = [];
+    grouped[c.dial].push(c.code);
+  }
+  return Object.entries(grouped)
+    .map(([dial, isos]) => ({ isos, code: dial, label: `${isos.join('/')} (${dial})` }))
+    .sort((a, b) => parseInt(a.code.replace('+', '')) - parseInt(b.code.replace('+', '')));
+})();
 
 // State for Profile Update
 const name = ref('');

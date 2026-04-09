@@ -44,10 +44,29 @@ Vue 3 + Capacitor 8 mobile app for GPS device tracking. Connects to `api.navitag
 
 - Email field is read-only in the account page (`src/views/account/index.vue`)
 - Users can update name and phone number
+- Phone input uses shared country dial code list from `countryList.js`
 - Password change available for email/password users
 
-### Key Architecture Notes
+### Signup
 
-- `lifecycle.js`: Central service managing auth state, app state, network state, and socket connections. Uses lock flags (`isStartingSession`, `isReconnecting`) to prevent concurrent operations.
-- `user.js` (Pinia store): Manages Firebase auth, backend sync, Traccar session, and WebSocket connection. Socket declared as `shallowRef` to avoid Vue reactivity overhead.
+- Country server selector with searchable modal (`src/views/signup/index.vue`)
+- Country list shared via `src/utils/countryList.js` (used by both signup and account pages)
+
+### Device Settings (`src/views/lists/deviceSettings.vue`)
+
+- **Labeling card**: Device name and map icon category selection
+- **Status card**: Active/disabled toggle, plan level display, expiration date, and Top Up button linking to `https://www.navitag.com/top-up/:imei`
+- Plan level and expiration data fetched from `GET /user/device-expiration` and mapped onto device objects in the Pinia store
+
+### History / Daily Route (`src/views/history/dailyRoute.vue`)
+
+- Floating X close button (top-right) instead of top navigation bar
+- Date navigation with prev/next buttons
+- Collapsible event log with timeline items synced to map markers
+
+### Navigation & Auth Architecture
+
+- `lifecycle.js`: Central service managing auth state, app state, network state, and socket connections. Uses lock flags (`isStartingSession`, `isReconnecting`) to prevent concurrent operations. Single authority for post-auth navigation.
+- `user.js` (Pinia store): Manages Firebase auth, backend sync, Traccar session, and WebSocket connection. Socket declared as `shallowRef` to avoid Vue reactivity overhead. Includes `traccarLogout()` for clean session teardown (native cookie clearing + web localStorage cleanup).
 - `http.js`: Custom HTTP wrapper using CapacitorHttp for native requests with cookie management.
+- Logout clears both Firebase and Traccar sessions. Web uses localStorage to persist `server_url` for cold-boot Traccar session cleanup.

@@ -58,7 +58,7 @@ const handleProviderLogin = async (providerHandler) => {
     <div class="w-full max-w-sm bg-white p-6 rounded-lg shadow-md">
       <h1 class="text-2xl font-bold mb-3 text-center text-gray-800">Welcome Back</h1>
 
-      <div v-show="userStore.countryCode !== null" class="text-center text-gray-500 mb-3 font-semibold">Country Server: {{ userStore.countryCode }}</div>
+      <!--div v-show="userStore.countryCode !== null" class="text-center text-gray-500 mb-3 font-semibold">Country Server: {{ userStore.countryCode }}</div-->
 
       <form @submit.prevent="handleLogin" class="mt-4">
         <input v-model="email" type="email" placeholder="Email" required class="w-full border p-1 rounded mb-3 focus:ring-2 focus:ring-brand outline-none" />
@@ -87,12 +87,6 @@ const handleProviderLogin = async (providerHandler) => {
 
       <p v-if="feedbackMsg" :class="['mt-4 text-center text-sm', isError ? 'text-red-500' : 'text-gray-600']">{{ feedbackMsg }}</p>
 
-      <div class="mt-6 text-center text-sm text-gray-600">
-        Don't have an account?
-        <RouterLink v-if="!loading" to="/signup" class="text-brand hover:underline">Sign Up</RouterLink>
-        <span v-else class="text-gray-400">Sign Up</span>
-      </div>
-
       <div class="relative flex py-5 items-center">
         <div class="flex-grow border-t border-gray-300"></div>
         <span class="flex-shrink mx-4 text-accent text-sm font-medium">Or Login With</span>
@@ -110,6 +104,12 @@ const handleProviderLogin = async (providerHandler) => {
         >
           <i :class="`${p.icon} text-xl`"></i>
         </button>
+      </div>
+
+      <div class="mt-6 text-center font-bold text-gray-600">
+        Don't have an account?
+        <RouterLink v-if="!loading" to="/signup" class="text-brand hover:underline">Sign Up</RouterLink>
+        <span v-else class="text-gray-400">Sign Up</span>
       </div>
     </div>
   </div>

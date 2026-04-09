@@ -1,8 +1,9 @@
 <script setup>
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { RouterLink } from 'vue-router';
-import { supportedProviders, getErrorMessage, createUserWithEmailAndPassword } from '@/utils/auth'; 
+import { supportedProviders, getErrorMessage, createUserWithEmailAndPassword } from '@/utils/auth';
 import { useUserStore } from '@/stores/user.js';
+import { countries } from '@/utils/countryList';
 
 const userStore = useUserStore();
 const email = ref('');
@@ -11,6 +12,25 @@ const name = ref('');
 const confirmPassword = ref('');
 const errorMsg = ref('');
 const loading = ref(false);
+const showCountryModal = ref(false);
+const countrySearch = ref('');
+
+const filteredCountries = computed(() => {
+  if (!countrySearch.value) return countries;
+  const q = countrySearch.value.toLowerCase();
+  return countries.filter(c => c.name.toLowerCase().includes(q) || c.code.toLowerCase().includes(q));
+});
+
+const currentCountryName = computed(() => {
+  const match = countries.find(c => c.code === userStore.countryCode);
+  return match ? match.name : userStore.countryCode;
+});
+
+const selectCountry = (c) => {
+  userStore.countryCode = c.code;
+  showCountryModal.value = false;
+  countrySearch.value = '';
+};
 
 // Toggle States
 const showPassword = ref(false);
@@ -70,8 +90,15 @@ const handleSignup = async () => {
     <div class="w-full max-w-sm bg-white p-6 rounded-lg shadow-md">
       <h1 class="text-2xl font-bold mb-4 text-center text-gray-800">Create Account</h1>
 
-      <div v-show="userStore.countryCode !== null" class="text-center text-gray-500 mb-3 font-semibold text-sm">
-        Country Server: {{ userStore.countryCode }}
+      <div v-show="userStore.countryCode !== null" class="flex items-center justify-center gap-1 mb-3">
+        <span class="text-gray-500 font-semibold text-sm">Country Server: {{ currentCountryName }}</span>
+        <button
+          type="button"
+          @click="showCountryModal = true"
+          class="text-brand hover:text-brand-dark transition text-xs cursor-pointer"
+        >
+          <i class="fa-solid fa-pen-to-square"></i>
+        </button>
       </div>
 
       <form @submit.prevent="handleSignup" class="mt-4">
@@ -148,9 +175,40 @@ const handleSignup = async () => {
         </button>
       </div>
 
-      <div class="mt-6 text-center text-sm text-gray-600">
-        Already have an account? 
+      <div class="mt-6 text-center text-gray-600 font-bold">
+        Already have an account?
         <RouterLink to="/login" class="text-brand hover:underline">Log In</RouterLink>
+      </div>
+    </div>
+
+    <!-- Country Selector Modal -->
+    <div v-if="showCountryModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40" @click.self="showCountryModal = false">
+      <div class="bg-white rounded-xl shadow-lg w-full max-w-xs mx-4 overflow-hidden">
+        <div class="p-4 border-b border-gray-100">
+          <h2 class="text-sm font-bold text-gray-800 text-center">Select Country Server</h2>
+          <input
+            v-model="countrySearch"
+            type="text"
+            placeholder="Search..."
+            class="w-full border p-2 rounded mt-3 text-sm focus:ring-2 focus:ring-brand outline-none"
+          />
+        </div>
+        <ul class="max-h-60 overflow-y-auto">
+          <li
+            v-for="c in filteredCountries"
+            :key="c.code"
+            @click="selectCountry(c)"
+            class="px-4 py-3 text-sm text-gray-700 cursor-pointer border-b border-gray-50 last:border-0 flex items-center justify-between"
+            :class="userStore.countryCode === c.code ? 'bg-brand-light font-bold text-brand' : 'hover:bg-gray-50'"
+          >
+            <span>{{ c.name }} <span class="text-gray-400 text-xs">{{ c.code }}</span></span>
+            <i v-if="userStore.countryCode === c.code" class="fa-solid fa-check text-brand text-xs"></i>
+          </li>
+          <li v-if="filteredCountries.length === 0" class="px-4 py-4 text-sm text-gray-400 text-center italic">No match</li>
+        </ul>
+        <div class="p-3 border-t border-gray-100">
+          <button @click="showCountryModal = false" class="w-full text-sm text-gray-500 hover:text-gray-700 transition cursor-pointer">Cancel</button>
+        </div>
       </div>
     </div>
   </div>

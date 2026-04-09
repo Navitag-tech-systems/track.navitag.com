@@ -118,6 +118,7 @@ export const useDevicesStore = defineStore('devices', () => {
       if(exps && exps.status =="success"){
         exps.message.forEach((el) => {
           devices[el.server_ref].expiration = el.expiration
+          devices[el.server_ref].plan_level = el.plan_level
         })
       } else{
         return false

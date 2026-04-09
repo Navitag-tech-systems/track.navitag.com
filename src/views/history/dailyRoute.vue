@@ -160,17 +160,13 @@ onUnmounted(() => {
 <template>
   <div class="flex flex-col h-full relative z-10 pointer-events-none">
     
-    <div class="pointer-events-auto bg-white/95 backdrop-blur-sm shadow-sm border-b border-gray-200 p-4 flex items-center safe-top">
-      <button 
-        @click="router.back()" 
-        class="w-10 h-10 flex items-center justify-center text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-full transition-colors mr-2 outline-none"
+    <div class="pointer-events-auto absolute top-3 right-3">
+      <button
+        @click="router.back"
+        class="w-9 h-9 flex items-center justify-center bg-white/95 backdrop-blur-sm text-red-500 hover:text-gray-800 hover:bg-gray-100 rounded-full shadow-sm border border-gray-200 transition-colors outline-none cursor-pointer"
       >
-        <i class="fa-solid fa-arrow-left text-lg"></i>
+        <i class="fa-solid fa-xmark text-lg"></i>
       </button>
-      <div>
-        <h1 class="text-lg font-bold text-gray-800 leading-tight">History Report</h1>
-        <p class="text-[11px] text-gray-500 font-medium">{{ currentDate }}</p>
-      </div>
     </div>
 
     <div class="flex-1 min-h-[30vh]"></div>
