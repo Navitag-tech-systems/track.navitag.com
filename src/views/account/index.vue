@@ -202,8 +202,6 @@ const updatePassword = async () => {
 const handleLogout = async () => {
   try {
     await signOut();
-    userStore.clearUser();
-    router.push('/login');
   } catch (error) {
     console.error('Logout error:', error);
   }

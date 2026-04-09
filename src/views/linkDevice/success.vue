@@ -27,8 +27,8 @@ onMounted(async () => {
 
 // Simple navigation function for the button
 function goToMap() {
-  if (isRefreshing.value) return; 
-  //router.push("/"); routing should be handled by the lifecycle
+  if (isRefreshing.value) return;
+  router.push("/");
 }
 </script>
 

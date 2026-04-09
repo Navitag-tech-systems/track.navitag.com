@@ -1,6 +1,6 @@
 <script setup>
 import { ref } from 'vue';
-import { useRouter, RouterLink } from 'vue-router';
+import { RouterLink } from 'vue-router';
 import { supportedProviders, getErrorMessage, createUserWithEmailAndPassword } from '@/utils/auth'; 
 import { useUserStore } from '@/stores/user.js';
 
@@ -11,7 +11,6 @@ const name = ref('');
 const confirmPassword = ref('');
 const errorMsg = ref('');
 const loading = ref(false);
-const router = useRouter();
 
 // Toggle States
 const showPassword = ref(false);
@@ -33,7 +32,6 @@ const handleProviderSignup = async (providerHandler) => {
   errorMsg.value = '';
   try {
     await providerHandler();
-    router.replace('/');
   } catch (e) {
     errorMsg.value = "Signup failed: " + e.message;
   } finally {
@@ -59,7 +57,6 @@ const handleSignup = async () => {
   try {
     userStore.name = name.value;
     await createUserWithEmailAndPassword(email.value, password.value);
-    router.push('/');
   } catch (e) {
     errorMsg.value = getErrorMessage(e);
   } finally {

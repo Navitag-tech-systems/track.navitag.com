@@ -2,7 +2,7 @@ import { defineStore } from 'pinia';
 // 1. Swapped markRaw for shallowRef
 import { ref, computed, shallowRef } from 'vue'; 
 import { FirebaseMessaging } from '@capacitor-firebase/messaging';
-import { Capacitor } from '@capacitor/core'; 
+import { Capacitor, CapacitorCookies } from '@capacitor/core';
 import { setUserId } from '@/utils/analytics';
 import { baseUrl } from '@/utils/variables';
 import { auth } from '@/firebase'; 
@@ -183,6 +183,9 @@ export const useUserStore = defineStore('user', () => {
 
       server_url.value = syncRes.server_url || false;
       server_token.value = syncRes.server_token || false;
+      if (server_url.value && !Capacitor.isNativePlatform()) {
+        localStorage.setItem('server_url', server_url.value);
+      }
       return true;
     } catch (err) {
       console.error('Backend sync failed:', err);
@@ -332,8 +335,6 @@ export const useUserStore = defineStore('user', () => {
 
       if (socketInstance) {
         socket.value = socketInstance;
-        // You had routing here before, keep it if this is exactly how you want your flow!
-        router.push('/'); 
       } else {
         console.error('final socket connection failed');
         error.value = true;
@@ -341,6 +342,30 @@ export const useUserStore = defineStore('user', () => {
     } catch (err) {
       console.error('Socket connection threw an error:', err);
       error.value = true;
+    }
+  }
+
+  async function traccarLogout() {
+    const url = server_url.value || (!Capacitor.isNativePlatform() && localStorage.getItem('server_url'));
+    if (!url) return;
+    try {
+      await request.send({
+        url: `https://${url}/api/session`,
+        method: 'DELETE',
+        isTraccar: true,
+      });
+    } catch (err) {
+      console.warn('Traccar session DELETE failed (may already be expired):', err.message);
+    }
+    if (Capacitor.isNativePlatform()) {
+      // Clear the native cookie jar for this server
+      try {
+        await CapacitorCookies.clearCookies({ url: `https://${url}` });
+      } catch (err) {
+        console.warn('Failed to clear native cookies:', err.message);
+      }
+    } else {
+      localStorage.removeItem('server_url');
     }
   }
 
@@ -354,18 +379,11 @@ export const useUserStore = defineStore('user', () => {
     needsEmail.value = false;
     email.value = null;
     error.value = false;
-    
-    // Redirect to "/" when the user is cleared/logged out
-    router.push('/'); 
-  }
-
-  function gotoLogin(){
-    router.push("/login")
   }
 
   return {
     user, idToken, countryCode, ipLocation, loading, isLoggedIn, internet, error, needsEmail,
-    setUser, clearUser, serverConnect, connectSocket, fetchCountryCode, backendSync, disconnectSocket, gotoLogin, getFreshToken, initPushNotifications,
+    setUser, clearUser, traccarLogout, serverConnect, connectSocket, fetchCountryCode, backendSync, disconnectSocket, getFreshToken, initPushNotifications,
     server_url, server_token, server_connect, socket, name, phone, email
   };
 });

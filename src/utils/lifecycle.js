@@ -55,11 +55,23 @@ export const LifecycleService = {
           return;
         }
 
-        await this.startSession();
+        const sessionStarted = await this.startSession();
+        if (sessionStarted) {
+          router.replace('/');
+        }
       } else {
         console.log('🛑 Auth State: Logged Out');
-        this.stopSession();
-        userStore.gotoLogin()
+        if (userStore.isLoggedIn) {
+          this.stopSession();
+        } else {
+          // Clear any leftover Traccar session from a previous session
+          userStore.traccarLogout().catch(() => {});
+          userStore.clearUser();
+          // Cold boot with no user — redirect to login only if on a protected route
+          if (router.currentRoute.value.meta.requiresAuth) {
+            router.replace('/login');
+          }
+        }
       }
     });
 
@@ -100,7 +112,7 @@ export const LifecycleService = {
   },
 
   async startSession() {
-    if (this.isStartingSession) return;
+    if (this.isStartingSession) return false;
     this.isStartingSession = true;
 
     const userStore = useUserStore();
@@ -108,7 +120,7 @@ export const LifecycleService = {
 
     if (userStore.needsEmail) {
       this.isStartingSession = false;
-      return;
+      return false;
     }
 
     try {
@@ -125,7 +137,7 @@ export const LifecycleService = {
         if (!retried) {
           console.error('❌ Backend Sync Failed after retry');
           userStore.error = true;
-          return;
+          return false;
         }
       }
 
@@ -133,7 +145,7 @@ export const LifecycleService = {
       if (!connected) {
         console.error('❌ Server Connect Failed');
         userStore.error = true;
-        return;
+        return false;
       }
 
       // Fetch both stores in parallel to cut loading time in half
@@ -141,37 +153,40 @@ export const LifecycleService = {
 
       if (fetched === 'no_devices') {
         // User has no linked devices — redirect already handled, stop the session chain
-        return;
+        return false;
       }
 
       if (!fetched) {
         console.error('❌ Failed to fetch devices or geofences');
         userStore.error = true;
-        return;
+        return false;
       }
 
       userStore.connectSocket(
         deviceStore.processSocketData,
         () => this.handleSocketDisconnect()
       );
+
+      return true;
     } finally {
       this.isStartingSession = false;
     }
   },
 
-  stopSession() {
+  async stopSession() {
     const userStore = useUserStore();
     const deviceStore = useDevicesStore();
-    
-    
+
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
-    
+
     userStore.disconnectSocket();
+    await userStore.traccarLogout();
     userStore.clearUser();
     deviceStore.clearData();
     this.isReconnecting = false;
     this.isStartingSession = false;
-    console.log('logout')
+    console.log('logout');
+    router.replace('/login');
   },
 
   async checkConnectionAndReconnect() {
