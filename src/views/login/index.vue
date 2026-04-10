@@ -2,8 +2,20 @@
 import { ref } from 'vue';
 import { useUserStore } from '@/stores/user.js';
 import { RouterLink } from 'vue-router';
+import { Capacitor } from '@capacitor/core';
+import { Browser } from '@capacitor/browser';
 
 import { supportedProviders, getErrorMessage, signInWithEmailAndPassword, sendEmailVerification } from '@/utils/auth';
+
+const forgotPasswordUrl = 'https://www.navitag.com/forgot-password';
+
+function goToForgotPassword() {
+  if (Capacitor.isNativePlatform()) {
+    Browser.open({ url: forgotPasswordUrl });
+  } else {
+    window.location.href = forgotPasswordUrl;
+  }
+}
 
 const email = ref('');
 const password = ref('');
@@ -74,7 +86,7 @@ const handleProviderLogin = async (providerHandler) => {
             </button>
           </div>
           <div class="text-right mt-1">
-            <RouterLink v-if="!loading" to="/forgot-password" class="text-xs text-brand hover:underline">Forgot password?</RouterLink>
+            <a v-if="!loading" href="#" @click.prevent="goToForgotPassword" class="text-xs text-brand hover:underline">Forgot password?</a>
             <span v-else class="text-xs text-gray-400">Forgot password?</span>
           </div>
         </div>

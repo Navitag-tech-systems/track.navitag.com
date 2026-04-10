@@ -61,8 +61,13 @@ Vue 3 + Capacitor 8 mobile app for GPS device tracking. Connects to `api.navitag
 ### History / Daily Route (`src/views/history/dailyRoute.vue`)
 
 - Floating X close button (top-right) instead of top navigation bar
-- Date navigation with prev/next buttons
+- Date navigation with prev/next buttons, plan-limited (Basic: 31 days, Pro: 90 days)
 - Collapsible event log with timeline items synced to map markers
+
+### History Setup (`src/views/history/setup.vue`)
+
+- Date picker enforces plan-based min date (Basic: 31 days, Pro: 90 days)
+- Dynamically updates based on selected device's `plan_level`
 
 ### Navigation & Auth Architecture
 

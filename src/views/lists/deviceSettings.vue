@@ -1,6 +1,8 @@
 <script setup>
 import { ref, computed, onMounted, watch} from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { Capacitor } from '@capacitor/core';
+import { Browser } from '@capacitor/browser';
 import { useDevicesStore } from '@/stores/devices.js';
 import { useUserStore } from '@/stores/user.js';
 import { request } from '@/utils/http.js';
@@ -37,6 +39,15 @@ onMounted(() => {
   }
 });
 
+
+async function openTopUp() {
+  const url = `https://www.navitag.com/top-up/${device.value.uniqueId}`
+  if (Capacitor.isNativePlatform()) {
+    await Browser.open({ url })
+  } else {
+    window.open(url, '_blank')
+  }
+}
 
 async function toggleDevice (mode = true){
   const ispState = await request.send({
@@ -233,14 +244,13 @@ watch(isActive, async (nv, ov) => {
           <span class="text-sm font-bold" :class="device.expiration ? 'text-gray-800' : 'text-red-500'">{{ device.expiration ? new Date(device.expiration).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A' }}</span>
         </div>
 
-        <a
-          :href="`https://www.navitag.com/top-up/${device.uniqueId}`"
-          target="_blank"
+        <button
+          @click="openTopUp"
           class="w-full bg-accent hover:bg-accent/90 text-white font-bold py-3 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 active:scale-[0.98]"
         >
           <i class="fa-solid fa-bolt"></i>
           Top Up
-        </a>
+        </button>
       </div>
 
     </div>

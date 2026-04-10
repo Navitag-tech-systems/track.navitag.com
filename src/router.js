@@ -8,7 +8,7 @@ import geoEdit from '@/views/map/geofenceEdit.vue'
 import LoginView from '@/views/login/index.vue'
 import CollectEmailView from '@/views/login/collectEmail.vue'
 import SignupView from '@/views/signup/index.vue'
-import ForgotPasswordView from '@/views/pwReset/index.vue'
+
 
 import LinkDeviceStart from '@/views/linkDevice/start.vue'
 import LinkDeviceSelect from '@/views/linkDevice/select.vue'
@@ -165,11 +165,6 @@ const router = createRouter({
       name: 'signup',
       component: SignupView
     },
-    {
-      path: '/forgot-password',
-      name: 'forgot-password',
-      component: ForgotPasswordView
-    },
   ]
 })
 
@@ -182,7 +177,7 @@ router.beforeEach((to, from, next) => {
     next('/login')
   } else if (userStore.needsEmail && to.name !== 'collect-email') {
     next('/collect-email')
-  } else if (['login', 'signup', 'forgot-password'].includes(to.name) && isAuthenticated) {
+  } else if (['login', 'signup'].includes(to.name) && isAuthenticated) {
     next('/')
   } else {
     next()
