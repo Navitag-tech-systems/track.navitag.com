@@ -61,6 +61,7 @@ export const supportedProviders = [
         if (displayName) {
           const userStore = useUserStore();
           userStore.name = displayName;
+          localStorage.setItem('apple_pending_name', displayName);
         }
 
         return result.user;

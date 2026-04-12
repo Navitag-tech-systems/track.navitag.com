@@ -51,6 +51,7 @@ Vue 3 + Capacitor 8 mobile app for GPS device tracking. Connects to `api.navitag
 
 - Country server selector with searchable modal (`src/views/signup/index.vue`)
 - Country list shared via `src/utils/countryList.js` (used by both signup and account pages)
+- **Apple name capture** (`src/utils/auth.js`): Apple only provides the user's display name on the very first sign-in. The name is captured immediately and persisted to `localStorage` (`apple_pending_name`) so it survives the collect-email sign-out/re-login cycle. `backendSync()` in `src/stores/user.js` reads the cached name as a fallback when Pinia state and `firebaseUser.displayName` are both empty, and cleans up the cache after successful sync. The backend (`api.navitag.net` — `User.php`) also sets Firebase `displayName` via the Admin SDK during sync, making the name permanently available on all future logins.
 
 ### Device Settings (`src/views/lists/deviceSettings.vue`)
 

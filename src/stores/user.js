@@ -162,6 +162,11 @@ export const useUserStore = defineStore('user', () => {
 
       if (name.value) data.name = name.value;
       if (user.value.displayName) data.name = user.value.displayName;
+      // Fallback: Apple name cached in localStorage from first sign-in
+      if (!data.name) {
+        const cachedName = localStorage.getItem('apple_pending_name');
+        if (cachedName) data.name = cachedName;
+      }
       if (phone.value) data.phone = phone.value;
       if (user.value.phoneNumber) data.phone = user.value.phoneNumber;
       // Include email from user object or stored email (for SSO users whose JWT may not have it yet)
@@ -180,6 +185,7 @@ export const useUserStore = defineStore('user', () => {
 
       if (syncRes.name) name.value = syncRes.name;
       if (syncRes.phone) phone.value = syncRes.phone;
+      localStorage.removeItem('apple_pending_name');
 
       server_url.value = syncRes.server_url || false;
       server_token.value = syncRes.server_token || false;
