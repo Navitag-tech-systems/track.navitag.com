@@ -37,8 +37,6 @@ const startScan = async () => {
       cameraDirection: 1 // 1 corresponds to 'BACK' camera
     });
 
-    isScanning.value = false;
-
     // 3. Process the result
     if (result && result.ScanResult) {
       processDeviceCode(result.ScanResult);
@@ -47,12 +45,13 @@ const startScan = async () => {
       showCameraOption.value = false;
     }
   } catch (err) {
-    isScanning.value = false;
     console.error("Scanner error:", err);
-    
+
     // Fallback to manual input view
     showCameraOption.value = false;
     errorMsg.value = "Camera access denied or scanner failed. Please enter the code manually.";
+  } finally {
+    isScanning.value = false;
   }
 };
 
@@ -82,7 +81,7 @@ const processDeviceCode = (code) => {
 
 <template>
   <div class="flex flex-col h-100 bg-surface ">
-    <div class="bg-white p-4 shadow-sm flex items-center">
+    <div v-show="!isScanning" class="bg-white p-4 shadow-sm flex items-center">
       <button @click="router.back()" class="text-gray-600 mr-4 cursor-pointer hover:text-gray-900">
         <i class="fa-solid fa-arrow-left text-xl"></i>
       </button>
