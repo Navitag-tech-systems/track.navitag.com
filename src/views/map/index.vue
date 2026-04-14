@@ -1,12 +1,20 @@
 <script setup>
 import { ref, computed } from 'vue';
-import { useRouter } from 'vue-router'; 
+import { useRouter } from 'vue-router';
 import { useUserStore } from '@/stores/user.js';
 import { useDevicesStore } from '@/stores/devices.js';
+import ShareModal from '@/components/ShareModal.vue';
 
-const router = useRouter(); 
+const router = useRouter();
 const deviceStore = useDevicesStore();
 const userStore = useUserStore();
+
+const showShareModal = ref(false);
+
+const openShareModal = () => {
+  if (!deviceStore.deviceSelectedObject) return;
+  showShareModal.value = true;
+};
 
 // --- Search State ---
 const searchQuery = ref('');
@@ -153,12 +161,22 @@ const getGpsQuality = (device) => {
     >
       <div class="flex justify-between items-center mb-1">
         <h2 class="text-sm font-bold text-gray-800 truncate pr-4">{{ deviceStore.deviceSelectedObject.name }}</h2>
-        <button 
-          @click="deviceStore.deviceSelected = null" 
-          class="w-6 h-6 flex items-center justify-center bg-gray-100 text-gray-500 rounded-full hover:bg-gray-200 transition-colors shrink-0"
-        >
-          <i class="fa-solid fa-xmark text-xs"></i>
-        </button>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button
+            @click="openShareModal"
+            class="w-6 h-6 flex items-center justify-center bg-gray-100 text-gray-500 rounded-full hover:bg-gray-200 transition-colors"
+            aria-label="Share tracking link"
+          >
+            <i class="fa-solid fa-share-nodes text-xs"></i>
+          </button>
+          <button
+            @click="deviceStore.deviceSelected = null"
+            class="w-6 h-6 flex items-center justify-center bg-gray-100 text-gray-500 rounded-full hover:bg-gray-200 transition-colors"
+            aria-label="Close"
+          >
+            <i class="fa-solid fa-xmark text-xs"></i>
+          </button>
+        </div>
       </div>
 
       <div class="flex items-center gap-2 mb-2">
@@ -208,6 +226,12 @@ const getGpsQuality = (device) => {
       </div>
 
     </div>
+
+    <ShareModal
+      v-model="showShareModal"
+      :imei="deviceStore.deviceSelectedObject?.uniqueId"
+      :label="deviceStore.deviceSelectedObject?.name"
+    />
 
   </div>
 </template>

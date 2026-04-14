@@ -26,6 +26,7 @@
     "@capacitor/geolocation": "^8.1.0",
     "@capacitor/ios": "^8.1.0",
     "@capacitor/network": "^8.0.1",
+    "@capacitor/share": "^8.0.1",
     "@fortawesome/fontawesome-free": "^7.1.0",
     "@geoman-io/leaflet-geoman-free": "^2.19.2",
     "@tailwindcss/vite": "^4.1.18",

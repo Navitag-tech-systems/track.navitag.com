@@ -2,9 +2,19 @@
 import { ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useDevicesStore } from '@/stores/devices.js';
+import ShareModal from '@/components/ShareModal.vue';
 
 const router = useRouter();
 const deviceStore = useDevicesStore();
+
+// --- Share Modal ---
+const showShareModal = ref(false);
+const shareTarget = ref({ imei: null, name: '' });
+
+const openShare = (device) => {
+  shareTarget.value = { imei: device.uniqueId, name: device.name || '' };
+  showShareModal.value = true;
+};
 
 // --- State ---
 const searchQuery = ref('');
@@ -228,7 +238,16 @@ const formatDate = (dateString) => {
             </div>
 
             <div class="flex-1 min-w-0">
-              <h2 class="text-lg font-bold text-gray-800 leading-tight truncate">{{ device.name || 'Unnamed Tracker' }}</h2>
+              <div class="flex items-center gap-2">
+                <h2 class="text-lg font-bold text-gray-800 leading-tight truncate">{{ device.name || 'Unnamed Tracker' }}</h2>
+                <button
+                  @click.stop="openShare(device)"
+                  class="w-6 h-6 flex items-center justify-center bg-gray-100 text-gray-500 rounded-full hover:bg-gray-200 transition-colors shrink-0"
+                  aria-label="Share tracking link"
+                >
+                  <i class="fa-solid fa-share-nodes text-xs"></i>
+                </button>
+              </div>
               <p class="text-[11px] text-gray-400 font-mono mt-0.5 truncate">IMEI: {{ device.uniqueId }}</p>
             </div>
 
@@ -339,6 +358,12 @@ const formatDate = (dateString) => {
         </RouterLink>
       </div>
     </div>
+
+    <ShareModal
+      v-model="showShareModal"
+      :imei="shareTarget.imei"
+      :label="shareTarget.name"
+    />
   </div>
 </template>
 

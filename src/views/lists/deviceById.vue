@@ -1,11 +1,14 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useDevicesStore } from '@/stores/devices.js';
+import ShareModal from '@/components/ShareModal.vue';
 
 const route = useRoute();
 const router = useRouter();
 const deviceStore = useDevicesStore();
+
+const showShareModal = ref(false);
 
 // Get the device ID from the URL
 const deviceId = route.params.id;
@@ -66,9 +69,17 @@ const viewHistory = () => {
       <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
         <div class="flex justify-between items-start mb-4">
           <div>
-            <h2 class="text-xl font-bold text-gray-800">{{ device.name }}</h2>
+            <div class="flex items-center gap-2">
+              <h2 class="text-xl font-bold text-gray-800">{{ device.name }}</h2>
+              <button
+                @click="showShareModal = true"
+                class="w-6 h-6 flex items-center justify-center bg-gray-100 text-gray-500 rounded-full hover:bg-gray-200 transition-colors shrink-0"
+                aria-label="Share tracking link"
+              >
+                <i class="fa-solid fa-share-nodes text-xs"></i>
+              </button>
+            </div>
             <p class="text-xs text-gray-400 font-mono mt-1">IMEI: {{ device.uniqueId }}</p>
-            <p class="text-xs text-gray-400 font-mono">ID: {{ device.id }}</p>
           </div>
           <div class="flex flex-col items-end gap-2">
             <span 
@@ -191,5 +202,12 @@ const viewHistory = () => {
       </div>
 
     </div>
+
+    <ShareModal
+      v-if="device"
+      v-model="showShareModal"
+      :imei="device.uniqueId"
+      :label="device.name"
+    />
   </div>
 </template>
