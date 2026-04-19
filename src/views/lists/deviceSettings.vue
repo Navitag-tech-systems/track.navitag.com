@@ -34,6 +34,7 @@ onMounted(() => {
     name.value = device.value.name || '';
     category.value = device.value.category;
     isActive.value = !device.value.disabled
+    deviceStore.fetchDeviceExpirations();
   } else {
     errorMsg.value = "Device not found.";
   }
@@ -219,12 +220,16 @@ watch(isActive, async (nv, ov) => {
       <div v-if="device" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
         <h2 class="text-lg font-bold text-gray-800">Status</h2>
 
-        <div class="p-4 border rounded-lg"> <label class="relative flex items-center justify-between cursor-pointer w-full">
+        <div class="p-4 border rounded-lg">
+          <label
+            class="relative flex items-center justify-between w-full"
+            :class="device.actionable === false ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'"
+          >
             <input
               type="checkbox"
               v-model="isActive"
               class="sr-only peer"
-              :disabled="loading"
+              :disabled="loading || device.actionable === false"
             >
 
             <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-brand-light rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand"></div>
@@ -232,6 +237,9 @@ watch(isActive, async (nv, ov) => {
               {{ isActive ? 'Active' : 'Disabled' }}
             </span>
           </label>
+          <p v-if="device.actionable === false" class="text-xs text-gray-500 mt-2">
+            This device cannot be toggled at this time.
+          </p>
         </div>
 
         <div class="flex items-center justify-between p-4 border rounded-lg">

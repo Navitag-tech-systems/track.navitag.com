@@ -111,26 +111,30 @@ export const useDevicesStore = defineStore('devices', () => {
           devices[device.id] = device;
         });
       }
-      const exps = await request.send({
-        url: `${baseUrl}/user/device-expiration`,
-        token: userStore.idToken
-      });
-      if(exps && exps.status =="success"){
-        exps.message.forEach((el) => {
-          devices[el.server_ref].expiration = el.expiration
-          devices[el.server_ref].plan_level = el.plan_level
-        })
-      } else{
-        return false
-      }
-      
-
-      // add logic to map and add expiration proprty to deviceStore.devices object
+      await fetchDeviceExpirations();
 
     } catch (err) {
       console.error('[Devices] Fetch failed:', err);
       throw err;
     }
+  }
+
+  async function fetchDeviceExpirations() {
+    const exps = await request.send({
+      url: `${baseUrl}/user/device-expiration`,
+      token: userStore.idToken
+    });
+    if (exps && exps.status == "success") {
+      exps.message.forEach((el) => {
+        if (devices[el.server_ref]) {
+          devices[el.server_ref].expiration = el.expiration;
+          devices[el.server_ref].plan_level = el.plan_level;
+          devices[el.server_ref].actionable = el.actionable;
+        }
+      });
+      return true;
+    }
+    return false;
   }
 
   async function fetchGeofences() {
@@ -198,6 +202,6 @@ export const useDevicesStore = defineStore('devices', () => {
     devices, geofences, loading, error, deviceMarkers, deviceMarkerKeys,
     deviceSelectedObject, deviceSelected, mapUpdate, draftPolygon, activeRoute,
     processSocketData, 
-    fetchDevices, fetchGeofences, fetchAll, clearData
+    fetchDevices, fetchGeofences, fetchDeviceExpirations, fetchAll, clearData
   };
 });
