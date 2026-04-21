@@ -1,6 +1,12 @@
 
 import { auth } from '@/firebase';
 import { useUserStore } from '@/stores/user.js';
+import { Capacitor } from '@capacitor/core';
+
+// On web (desktop + mobile), use redirect — popup is unreliable on mobile
+// because backgrounded tabs get evicted mid-OAuth. On native, the option
+// is ignored (native SDKs handle the flow).
+const signInMode = Capacitor.isNativePlatform() ? undefined : 'redirect';
 /* ------------------------------------------------------------------
  * Auth providers
  * ------------------------------------------------------------------ */
@@ -16,6 +22,7 @@ export const supportedProviders = [
         console.log('[Google SSO] Starting sign-in');
         const result = await auth.signInWithGoogle({
           scopes: ['email', 'profile'],
+          mode: signInMode,
         });
         return result.user;
       } catch (error) {
@@ -34,6 +41,7 @@ export const supportedProviders = [
         console.log('[Facebook SSO] Starting sign-in');
         const result = await auth.signInWithFacebook({
           scopes: ['email', 'public_profile'],
+          mode: signInMode,
         });
         return result.user;
       } catch (error) {
@@ -52,6 +60,7 @@ export const supportedProviders = [
         console.log('[Apple SSO] Starting sign-in');
         const result = await auth.signInWithApple({
           scopes: ['email', 'name'],
+          mode: signInMode,
         });
 
         // Apple only provides the name on FIRST sign-in — capture it immediately
