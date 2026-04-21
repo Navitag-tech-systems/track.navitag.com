@@ -19,7 +19,6 @@ export const useUserStore = defineStore('user', () => {
   const name = ref(null);
   const phone = ref(null);
   const email = ref(null);
-  const needsEmail = ref(false);
   const server_url = ref(null);
   const server_token = ref(null);
   const server_connect = ref(false);
@@ -35,7 +34,6 @@ export const useUserStore = defineStore('user', () => {
   const isLoggedIn = computed(() => user.value !== null && user.value !== false);
 
   const loading = computed(() => {
-    if (needsEmail.value) return false;
     if (user.value === null) {
       return true;
     } else if (user.value === false) {
@@ -142,11 +140,7 @@ export const useUserStore = defineStore('user', () => {
     user.value = firebaseUser;
     if (firebaseUser) {
       await getFreshToken();
-      // Only request notification permissions if the user has an email.
-      // For SSO users without email, defer until after email collection.
-      if (firebaseUser.email) {
-        initPushNotifications();
-      }
+      initPushNotifications();
       await setUserId(firebaseUser.uid);
       return true;
     }
@@ -382,13 +376,12 @@ export const useUserStore = defineStore('user', () => {
     server_url.value = null;
     server_token.value = null;
     server_connect.value = false;
-    needsEmail.value = false;
     email.value = null;
     error.value = false;
   }
 
   return {
-    user, idToken, countryCode, ipLocation, loading, isLoggedIn, internet, error, needsEmail,
+    user, idToken, countryCode, ipLocation, loading, isLoggedIn, internet, error,
     setUser, clearUser, traccarLogout, serverConnect, connectSocket, fetchCountryCode, backendSync, disconnectSocket, getFreshToken, initPushNotifications,
     server_url, server_token, server_connect, socket, name, phone, email
   };

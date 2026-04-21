@@ -6,7 +6,6 @@ import geoView from '@/views/map/geofence.vue'
 import geoEdit from '@/views/map/geofenceEdit.vue'
 
 import LoginView from '@/views/login/index.vue'
-import CollectEmailView from '@/views/login/collectEmail.vue'
 import SignupView from '@/views/signup/index.vue'
 
 
@@ -150,12 +149,6 @@ const router = createRouter({
     // { path: '/payment/success', name: 'payment-success', component: paySuccess, meta: {requiresAuth: true, activeTab: 'shop'} },
     // { path: '/payment/fail', name: 'payment-fail', component: payFail, meta: {requiresAuth: true, activeTab: 'shop'} },
     {
-      path: '/collect-email',
-      name: 'collect-email',
-      component: CollectEmailView,
-      meta: { requiresAuth: true }
-    },
-    {
       path: '/login',
       name: 'login',
       component: LoginView
@@ -175,8 +168,6 @@ router.beforeEach((to, from, next) => {
   if (to.meta.requiresAuth && userStore.user === false) {
     console.log('router login redirect')
     next('/login')
-  } else if (userStore.needsEmail && to.name !== 'collect-email') {
-    next('/collect-email')
   } else if (['login', 'signup'].includes(to.name) && isAuthenticated) {
     next('/')
   } else {

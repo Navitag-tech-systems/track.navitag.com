@@ -71,8 +71,8 @@ async function retryConnection() {
     :class="{ 'pb-safe-bottom': !showNav }"
   >
     <Loading v-if="masterLoading"/>
-    <Error v-if="userStore.error && !userStore.needsEmail"/>
-    <NoNet v-if="!userStore.internet && !userStore.needsEmail"/>
+    <Error v-if="userStore.error"/>
+    <NoNet v-if="!userStore.internet"/>
 
     <main 
       class="flex-1 w-full relative"

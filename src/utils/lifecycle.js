@@ -39,21 +39,7 @@ export const LifecycleService = {
       if (firebaseUser) {
         console.log('✅ Auth State: Logged In');
 
-        // Check for missing email BEFORE setUser so needsEmail is true
-        // before user.value becomes truthy — prevents the loading overlay
-        // from flashing over the collect-email view.
-        if (!firebaseUser.email) {
-          console.warn('⚠️ SSO user has no email — prompting for collection');
-          userStore.needsEmail = true;
-        }
-
         await userStore.setUser(firebaseUser);
-
-        if (userStore.needsEmail) {
-          userStore.error = false;
-          router.replace('/collect-email');
-          return;
-        }
 
         const sessionStarted = await this.startSession();
         if (sessionStarted) {
@@ -90,7 +76,7 @@ export const LifecycleService = {
       if (!Capacitor.isNativePlatform()) return;
 
       if (isActive) {
-        if (userStore.isLoggedIn && !userStore.needsEmail) {
+        if (userStore.isLoggedIn) {
           await this.checkConnectionAndReconnect();
         }
       } else {
@@ -105,7 +91,7 @@ export const LifecycleService = {
       console.log(`📡 Network Status: ${status.connected ? 'Online' : 'Offline'}`);
       userStore.internet = status.connected;
 
-      if (status.connected && userStore.isLoggedIn && !userStore.needsEmail) {
+      if (status.connected && userStore.isLoggedIn) {
         await this.checkConnectionAndReconnect();
       }
     });
@@ -117,11 +103,6 @@ export const LifecycleService = {
 
     const userStore = useUserStore();
     const deviceStore = useDevicesStore();
-
-    if (userStore.needsEmail) {
-      this.isStartingSession = false;
-      return false;
-    }
 
     try {
       if (this.countryCodePromise) {
@@ -193,7 +174,7 @@ export const LifecycleService = {
     if (this.isReconnecting) return;
 
     const userStore = useUserStore();
-    if (userStore.needsEmail || !userStore.server_url) return;
+    if (!userStore.server_url) return;
 
     this.isReconnecting = true;
     const deviceStore = useDevicesStore();
