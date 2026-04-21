@@ -50,7 +50,7 @@ const handleLogin = async () => {
   }
 };
 
-// Provider Login (Google/Facebook/Apple)
+// Provider Login (Google/Apple)
 const handleProviderLogin = async (providerHandler) => {
   loading.value = true;
   setFeedback('Signing in...');

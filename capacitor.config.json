@@ -19,7 +19,6 @@
       "skipNativeAuth": false,
       "providers": [
         "google.com",
-        "facebook.com",
         "apple.com"
       ]
     },

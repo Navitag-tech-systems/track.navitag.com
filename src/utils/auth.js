@@ -32,28 +32,6 @@ export const supportedProviders = [
     }
   },
   {
-    id: 'facebook',
-    name: 'Facebook',
-    color: 'bg-blue-600', // Adjusted to standard Facebook blue
-    icon: 'fa-brands fa-facebook-f', // FontAwesome brand icon
-    handler: async () => {
-      try {
-        console.log('[Facebook SSO] Starting sign-in');
-        const result = await auth.signInWithFacebook({
-          scopes: ['email', 'public_profile'],
-          mode: signInMode,
-          customParameters: [
-            { key: 'display', value: 'popup' },
-          ],
-        });
-        return result.user;
-      } catch (error) {
-        console.error('[Facebook SSO] Error:', error);
-        throw error;
-      } 
-    }
-  },
-  {
     id: 'apple',
     name: 'Apple',
     color: 'bg-black',
