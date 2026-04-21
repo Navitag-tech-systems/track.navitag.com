@@ -42,6 +42,9 @@ export const supportedProviders = [
         const result = await auth.signInWithFacebook({
           scopes: ['email', 'public_profile'],
           mode: signInMode,
+          customParameters: [
+            { key: 'display', value: 'popup' },
+          ],
         });
         return result.user;
       } catch (error) {
