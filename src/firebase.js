@@ -6,7 +6,7 @@ import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 // 1. Your Web Config from Firebase Console
 const firebaseConfig = {
   apiKey: "AIzaSyBlPBeK-kc2jKhYJzG1d70QWiuWLTr62LM",
-  authDomain: "auth.navitag.com",
+  authDomain: "track.navitag.com",
   projectId: "track-navitag-com",
   storageBucket: "track-navitag-com.firebasestorage.app",
   messagingSenderId: "729666105352",
