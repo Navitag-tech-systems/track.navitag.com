@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { LifecycleService } from '@/utils/lifecycle.js';
+import { LifecycleService } from '@/utils/lifecycle';
 
 const route = useRoute();
 const router = useRouter();

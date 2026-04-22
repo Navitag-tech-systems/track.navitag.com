@@ -28,20 +28,6 @@ html, body, #app {
 }
 
 
-.xendit-dialog-backdrop {
-  z-index: 9999 !important;
-  position: fixed !important;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-}
-
-.xendit-dialog {
-  z-index: 10000 !important;
-  position: relative !important;
-}
-
 /* ---------------------------------------------------------------
    @capacitor/barcode-scanner — web overlay styles (web only;
    selectors are scoped by IDs the plugin only creates on web).

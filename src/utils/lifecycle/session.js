@@ -1,101 +1,12 @@
-import { Capacitor } from '@capacitor/core';
-import { App } from '@capacitor/app';
-import { Network } from '@capacitor/network';
-import { auth } from '@/firebase';
 import { useUserStore } from '@/stores/user';
 import { useDevicesStore } from '@/stores/devices';
 import router from '@/router';
 
-let isInitialized = false;
-
-export const LifecycleService = {
+export const session = {
   reconnectTimer: null,
-  isReconnecting: false, // Lock to prevent concurrent overlapping sequences
-  isStartingSession: false, // Lock to prevent duplicate startSession calls
-
-  init() {
-    if (isInitialized) return;
-    isInitialized = true;
-
-    const userStore = useUserStore();
-
-    Network.getStatus().then(status => {
-      userStore.internet = status.connected;
-    });
-
-    console.log('🚀 Lifecycle Service Initialized');
-
-    this.countryCodePromise = userStore.fetchCountryCode().then(code => {
-      if (!code) {
-        console.error('❌ Country code required but unavailable after all retries');
-        userStore.error = true;
-      }
-      return code;
-    });
-
-    auth.addListener('authStateChange', async (data) => {
-      const firebaseUser = data.user;
-
-      if (firebaseUser) {
-        console.log('✅ Auth State: Logged In');
-
-        await userStore.setUser(firebaseUser);
-
-        const sessionStarted = await this.startSession();
-        if (sessionStarted) {
-          router.replace('/');
-        }
-      } else {
-        console.log('🛑 Auth State: Logged Out');
-        if (userStore.isLoggedIn) {
-          this.stopSession();
-        } else {
-          // Clear any leftover Traccar session from a previous session
-          userStore.traccarLogout().catch(() => {});
-          userStore.clearUser();
-          // Cold boot with no user — redirect to login only if on a protected route
-          if (router.currentRoute.value.meta.requiresAuth) {
-            router.replace('/login');
-          }
-        }
-      }
-    });
-
-    auth.addListener('idTokenChange', async (data) => {
-      if (data.user) {
-        const result = await auth.getIdToken();
-        userStore.idToken = result.token;
-        console.log('🔑 ID Token refreshed');
-      }
-    });
-
-    App.addListener('appStateChange', async ({ isActive }) => {
-      console.log(`📱 App State Changed: ${isActive ? 'Active' : 'Background'}`);
-
-      // Prevent running background socket logic on Web
-      if (!Capacitor.isNativePlatform()) return;
-
-      if (isActive) {
-        if (userStore.isLoggedIn) {
-          await this.checkConnectionAndReconnect();
-        }
-      } else {
-        if (userStore.socket) {
-          console.log('⏸️ Pausing: Closing WebSocket');
-          userStore.disconnectSocket();
-        }
-      }
-    });
-
-    Network.addListener('networkStatusChange', async (status) => {
-      console.log(`📡 Network Status: ${status.connected ? 'Online' : 'Offline'}`);
-      userStore.internet = status.connected;
-
-      if (status.connected && userStore.isLoggedIn) {
-        await this.checkConnectionAndReconnect();
-      }
-    });
-  },
+  isReconnecting: false,
+  isStartingSession: false,
+  countryCodePromise: null,
 
   async startSession() {
     if (this.isStartingSession) return false;
@@ -111,7 +22,6 @@ export const LifecycleService = {
 
       const synced = await userStore.backendSync();
       if (!synced) {
-        // Retry once with a force-refreshed token before giving up
         console.warn('⚠️ Backend Sync Failed — retrying with fresh token...');
         const freshToken = await userStore.getFreshToken();
         const retried = freshToken ? await userStore.backendSync(freshToken) : false;
@@ -129,11 +39,9 @@ export const LifecycleService = {
         return false;
       }
 
-      // Fetch both stores in parallel to cut loading time in half
-      const fetched = await deviceStore.fetchAll()
+      const fetched = await deviceStore.fetchAll();
 
       if (fetched === 'no_devices') {
-        // User has no linked devices — redirect already handled, stop the session chain
         return false;
       }
 
@@ -182,17 +90,17 @@ export const LifecycleService = {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
 
     try {
-      const sessionValid = await userStore.serverConnect(); 
-      
+      const sessionValid = await userStore.serverConnect();
+
       if (sessionValid) {
-        const fetched = await deviceStore.fetchAll()
+        const fetched = await deviceStore.fetchAll();
 
         if (!fetched) {
           console.error('❌ Failed to fetch devices or geofences');
           userStore.error = true;
           return;
         }
-        
+
         userStore.connectSocket(
           deviceStore.processSocketData,
           () => this.handleSocketDisconnect()
@@ -214,7 +122,6 @@ export const LifecycleService = {
 
     const userStore = useUserStore();
     const deviceStore = useDevicesStore();
-    
 
     console.log('🔄 Initiating manual data reload and socket cycle...');
 
@@ -227,8 +134,7 @@ export const LifecycleService = {
       }
 
       console.log('📥 Fetching latest devices and geofences...');
-      // Fetch both stores in parallel to cut loading time in half
-      const fetched = await deviceStore.fetchAll()
+      const fetched = await deviceStore.fetchAll();
 
       if (!fetched) {
         console.error('❌ Failed to fetch devices or geofences');
@@ -243,7 +149,6 @@ export const LifecycleService = {
       );
 
       console.log('✅ Data reloaded and socket reconnected successfully!');
-
     } catch (error) {
       console.error('❌ Error during reload and reconnect sequence:', error);
       userStore.error = true;
@@ -254,16 +159,16 @@ export const LifecycleService = {
 
   handleSocketDisconnect() {
     const userStore = useUserStore();
-    
+
     if (!userStore.isLoggedIn || !userStore.internet) return;
 
     console.log('🔄 Socket dropped. Attempting to reconnect in 5 seconds...');
-    
+
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
 
     this.reconnectTimer = setTimeout(async () => {
       console.log('🔄 Firing auto-reconnect sequence...');
       await this.checkConnectionAndReconnect();
-    }, 5000); 
+    }, 5000);
   }
 };

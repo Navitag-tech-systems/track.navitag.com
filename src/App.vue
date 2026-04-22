@@ -3,7 +3,6 @@ import { computed } from 'vue';
 import { useRoute, RouterView } from 'vue-router';
 import { useUserStore } from '@/stores/user.js';
 import { useDevicesStore } from '@/stores/devices.js';
-import { useCartStore } from '@/stores/cart.js';
 import BottomNav from './components/bottomNav.vue';
 import Loading from '@/components/loading.vue';
 import Error from '@/components/error.vue';
@@ -15,7 +14,6 @@ import { LifecycleService } from '@/utils/lifecycle'
 const userStore = useUserStore();
 const deviceStore = useDevicesStore();
 const route = useRoute();
-const cartStore = useCartStore()
 
 // Check if we are on the main map screen
 const isMapRoute = computed(() => {
@@ -36,7 +34,7 @@ const isMapRoute = computed(() => {
 });
 
 const masterLoading = computed(() => {
-  if(deviceStore.loading || userStore.loading || cartStore.loading){
+  if(deviceStore.loading || userStore.loading){
     return true
   } else {
     return false

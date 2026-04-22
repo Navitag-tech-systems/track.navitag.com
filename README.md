@@ -10,6 +10,52 @@ Vue 3 + Capacitor 8 mobile app for GPS device tracking. Connects to `api.navitag
 
 ## Project Status
 
+### Lifecycle Service Split
+
+`src/utils/lifecycle.js` (269 lines) was split into a folder of focused modules:
+
+```
+src/utils/lifecycle/
+  index.js              public facade — LifecycleService.init() + method delegates
+  session.js            startSession, stopSession, checkConnectionAndReconnect,
+                        reloadAndReconnect, handleSocketDisconnect + locks/timer
+  listeners/
+    auth.js             Firebase authStateChange + idTokenChange
+    appState.js         Capacitor App foreground/background
+    network.js          Capacitor Network status + change
+```
+
+- Behavior unchanged. Same public API on `LifecycleService` (callers in `main.js`, `App.vue`, `geofence.vue`, `geofenceEdit.vue`, `linkDevice/success.vue` untouched except for one extension fix).
+- Singleton state (`isStartingSession`, `isReconnecting`, `reconnectTimer`, `countryCodePromise`) now lives on the `session` object in `session.js` — single owner for all lock mutations.
+- Each listener file registers one Capacitor/Firebase listener and delegates to `session`.
+
+**TODO — manual regression tests before shipping:**
+- [ ] Fresh login (email/password) → session starts → lands on `/`
+- [ ] Fresh login (Google SSO) → session starts → lands on `/`
+- [ ] Fresh login (Apple SSO, first time) → name captured → backend sync → lands on `/`
+- [ ] Logout → sockets close, stores clear, redirected to `/login`
+- [ ] Cold boot while logged in (persisted session) → silent reconnect
+- [ ] Native: background the app → socket disconnects; foreground → `checkConnectionAndReconnect` fires
+- [ ] Toggle airplane mode while logged in → `networkStatusChange` triggers reconnect on recovery
+- [ ] Simulate socket drop (kill server / drop WS) → 5s auto-reconnect via `handleSocketDisconnect`
+- [ ] `linkDevice/success` flow → `reloadAndReconnect` refetches devices and reconnects socket
+- [ ] Concurrent trigger (foreground + network recover same moment) → only one reconnect runs (lock works)
+- [ ] 401 during `startSession` → token refresh retry succeeds on second attempt
+
+### Ecommerce Removed
+
+Shop, cart, and payment flows have been removed from the app. Deleted: `src/views/shop/`, `src/views/payment/`, `src/stores/cart.js`, `xendit-components-web` dependency, and the shop tab in `bottomNav.vue`. Device purchasing is now handled entirely on the marketing site (`navitag.com/shop`) via external CTA links in `lists/devices.vue` and `linkDevice/addOrBuy.vue`.
+
+Also removed: `src/stores/user-backup.js` (stale backup).
+
+**TODO — regression check:**
+- [ ] No dead routes (`/data-plans`, `/app-shop`, `/shipping/*`, `/payment/*`) resolve — all should 404
+- [ ] Bottom nav shows 4 tabs (Items, History, Map, Account) — no Shop tab
+- [ ] `App.vue` loading overlay still triggers on user/device loading (cart store removed from `masterLoading`)
+- [ ] External "Shop Devices" CTAs in `lists/devices.vue` and `linkDevice/addOrBuy.vue` still open `navitag.com/shop` in browser
+- [ ] `npm install` rebuilds cleanly with `xendit-components-web` gone
+- [ ] No stale Xendit styles referenced anywhere (`.xendit-dialog*` removed from `style.css`)
+
 ### SSO Login Flow (Facebook/Apple/Google) — In Progress
 
 **Problem:** Facebook SSO users may not have an email in their Firebase profile. The app requires an email for backend user creation (Traccar requires email for user accounts).
@@ -72,7 +118,7 @@ Vue 3 + Capacitor 8 mobile app for GPS device tracking. Connects to `api.navitag
 
 ### Navigation & Auth Architecture
 
-- `lifecycle.js`: Central service managing auth state, app state, network state, and socket connections. Uses lock flags (`isStartingSession`, `isReconnecting`) to prevent concurrent operations. Single authority for post-auth navigation.
+- `utils/lifecycle/`: Split into `session.js` (orchestration + locks) and `listeners/{auth,appState,network}.js`. `index.js` exposes the `LifecycleService` facade (`init`, `startSession`, `stopSession`, `checkConnectionAndReconnect`, `reloadAndReconnect`). Lock flags (`isStartingSession`, `isReconnecting`) and the reconnect timer live on the `session` singleton in `session.js`. Single authority for post-auth navigation.
 - `user.js` (Pinia store): Manages Firebase auth, backend sync, Traccar session, and WebSocket connection. Socket declared as `shallowRef` to avoid Vue reactivity overhead. Includes `traccarLogout()` for clean session teardown (native cookie clearing + web localStorage cleanup).
 - `http.js`: Custom HTTP wrapper using CapacitorHttp for native requests with cookie management.
 - Logout clears both Firebase and Traccar sessions. Web uses localStorage to persist `server_url` for cold-boot Traccar session cleanup.
