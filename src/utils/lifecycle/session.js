@@ -1,5 +1,7 @@
 import { useUserStore } from '@/stores/user';
 import { useDevicesStore } from '@/stores/devices';
+import { request } from '@/utils/http';
+import { baseUrl } from '@/utils/variables';
 import router from '@/router';
 
 export const session = {
@@ -56,10 +58,30 @@ export const session = {
         () => this.handleSocketDisconnect()
       );
 
+      deviceStore.enforceGeofenceLimit();
+
+      this.fetchUserNotifications();
+
       return true;
     } finally {
       this.isStartingSession = false;
     }
+  },
+
+  fetchUserNotifications() {
+    const userStore = useUserStore();
+    if (!userStore.server_url) return;
+    request.send({
+      url: `https://${userStore.server_url}/api/notifications`,
+      method: 'GET',
+      isTraccar: true,
+    })
+      .then(res => {
+        const list = Array.isArray(res) ? res : [];
+        userStore.notifications = list;
+        console.log('🔔 Notifications loaded:', list.length);
+      })
+      .catch(err => console.warn('⚠️ Notifications fetch failed:', err?.message || err));
   },
 
   async stopSession() {
@@ -69,6 +91,17 @@ export const session = {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
 
     userStore.disconnectSocket();
+
+    try {
+      await request.send({
+        url: `${baseUrl}/user/logout`,
+        method: 'POST',
+        token: userStore.idToken,
+      });
+    } catch (err) {
+      console.warn('⚠️ Backend logout failed:', err?.message || err);
+    }
+
     await userStore.traccarLogout();
     userStore.clearUser();
     deviceStore.clearData();
@@ -105,6 +138,10 @@ export const session = {
           deviceStore.processSocketData,
           () => this.handleSocketDisconnect()
         );
+
+        deviceStore.enforceGeofenceLimit();
+
+        this.fetchUserNotifications();
       } else {
         userStore.error = true;
       }
@@ -147,6 +184,10 @@ export const session = {
         deviceStore.processSocketData,
         () => this.handleSocketDisconnect()
       );
+
+      deviceStore.enforceGeofenceLimit();
+
+      this.fetchUserNotifications();
 
       console.log('✅ Data reloaded and socket reconnected successfully!');
     } catch (error) {

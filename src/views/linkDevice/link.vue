@@ -2,17 +2,41 @@
 import { ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useUserStore } from '@/stores/user.js';
+import { useDevicesStore } from '@/stores/devices.js';
 import { baseUrl } from '@/utils/variables';
 import { request } from '@/utils/http';
 
 const route = useRoute();
 const router = useRouter();
 const userStore = useUserStore();
+const deviceStore = useDevicesStore();
 
 const imei = route.params.imei;
 const deviceName = ref('');
 const loading = ref(false);
 const errorMsg = ref('');
+
+async function autoLinkNewDevice(targetImei) {
+  try {
+    await deviceStore.fetchDevices();
+    const match = Object.values(deviceStore.devices).find(
+      d => String(d.uniqueId) === String(targetImei)
+    );
+    if (!match) {
+      console.warn('[LinkDevice] New device not found in Traccar list after link:', targetImei);
+      return;
+    }
+
+    await deviceStore.fetchDeviceExpirations();
+
+    await Promise.all([
+      deviceStore.linkAllNotificationsToDevice(match.id),
+      deviceStore.linkDefaultGeofencesToDevice(match.id),
+    ]);
+  } catch (err) {
+    console.warn('[LinkDevice] Auto-link new device failed:', err?.message || err);
+  }
+}
 
 const linkDeviceToAccount = async () => {
   if (!deviceName.value || deviceName.value.trim() === '') {
@@ -35,8 +59,8 @@ const linkDeviceToAccount = async () => {
     });
 
     if (data.status === 'success') {
-      // Route based on whether the user chose to skip activation
-        router.push(`/linkdevice/enable/${imei}`);
+      autoLinkNewDevice(imei);
+      router.push(`/linkdevice/enable/${imei}`);
     } else {
       throw new Error(data.error || data.message || 'Unknown error occurred.');
     }

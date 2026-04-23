@@ -8,11 +8,28 @@ Vue 3 + Capacitor 8 mobile app for GPS device tracking. Connects to `api.navitag
 
 ---
 
+## TODO
+
+**Lifecycle / session — manual regression tests before shipping:**
+- [ ] Logout → sockets close, stores clear, redirected to `/login`
+- [ ] Cold boot while logged in (persisted session) → silent reconnect
+- [ ] Native: background the app → socket disconnects; foreground → `checkConnectionAndReconnect` fires
+- [ ] Toggle airplane mode while logged in → `networkStatusChange` triggers reconnect on recovery
+  - **Known bug (low priority):** Disabling airplane mode shows the Error page instead of recovering cleanly. Root cause: when airplane mode turns ON, the WS close handler fires before `networkStatusChange` flips `userStore.internet` to `false`, so `handleSocketDisconnect` schedules a 5s reconnect timer. That timer then fires while still offline, `serverConnect()` fails, and sets `userStore.error = true`. When network returns, `<NoNet />` hides but `error` was never cleared, so `<Error />` shows.
+  - **Fix sketch (3 small changes in `src/utils/lifecycle/`):**
+    1. `session.js` — `checkConnectionAndReconnect`: bail out early if `!userStore.internet`.
+    2. `session.js` — `handleSocketDisconnect` timer callback: re-check `userStore.internet` before firing reconnect.
+    3. `listeners/network.js` — on recovery (`status.connected === true`), clear `userStore.error = false` before calling `checkConnectionAndReconnect`.
+- [ ] Simulate socket drop (kill server / drop WS) → 5s auto-reconnect via `handleSocketDisconnect`
+- [ ] `linkDevice/success` flow → `reloadAndReconnect` refetches devices and reconnects socket
+- [ ] Concurrent trigger (foreground + network recover same moment) → only one reconnect runs (lock works)
+- [ ] 401 during `startSession` → token refresh retry succeeds on second attempt
+
 ## Project Status
 
-### Lifecycle Service Split
+### Lifecycle Service
 
-`src/utils/lifecycle.js` (269 lines) was split into a folder of focused modules:
+`src/utils/lifecycle/` — split into focused modules:
 
 ```
 src/utils/lifecycle/
@@ -25,66 +42,21 @@ src/utils/lifecycle/
     network.js          Capacitor Network status + change
 ```
 
-- Behavior unchanged. Same public API on `LifecycleService` (callers in `main.js`, `App.vue`, `geofence.vue`, `geofenceEdit.vue`, `linkDevice/success.vue` untouched except for one extension fix).
-- Singleton state (`isStartingSession`, `isReconnecting`, `reconnectTimer`, `countryCodePromise`) now lives on the `session` object in `session.js` — single owner for all lock mutations.
+- Singleton state (`isStartingSession`, `isReconnecting`, `reconnectTimer`, `countryCodePromise`) lives on the `session` object in `session.js` — single owner for all lock mutations.
 - Each listener file registers one Capacitor/Firebase listener and delegates to `session`.
+- **Post-lifecycle fetch:** `fetchUserNotifications()` fires non-blocking at the end of every successful lifecycle path (`startSession`, `checkConnectionAndReconnect`, `reloadAndReconnect`). Hits Traccar `GET /api/notifications` directly and stores the array into `userStore.notifications` for the Device Settings notifications card.
+- **Logout:** `stopSession` calls `POST ${baseUrl}/user/logout` with the user's `idToken` before `traccarLogout()`. Wrapped in try/catch — a failure warns but never blocks Traccar teardown, store cleanup, or `/login` redirect.
 
-**TODO — manual regression tests before shipping:**
-- [ ] Fresh login (email/password) → session starts → lands on `/`
-- [ ] Fresh login (Google SSO) → session starts → lands on `/`
-- [ ] Fresh login (Apple SSO, first time) → name captured → backend sync → lands on `/`
-- [ ] Logout → sockets close, stores clear, redirected to `/login`
-- [ ] Cold boot while logged in (persisted session) → silent reconnect
-- [ ] Native: background the app → socket disconnects; foreground → `checkConnectionAndReconnect` fires
-- [ ] Toggle airplane mode while logged in → `networkStatusChange` triggers reconnect on recovery
-- [ ] Simulate socket drop (kill server / drop WS) → 5s auto-reconnect via `handleSocketDisconnect`
-- [ ] `linkDevice/success` flow → `reloadAndReconnect` refetches devices and reconnects socket
-- [ ] Concurrent trigger (foreground + network recover same moment) → only one reconnect runs (lock works)
-- [ ] 401 during `startSession` → token refresh retry succeeds on second attempt
+### Auth / SSO
+
+- **Providers:** Google SSO, Apple SSO, email/password. (Facebook SSO removed.)
+- **Email is required** for backend user creation (Traccar requires email). All current SSO providers return an email, so the in-app email-collection flow has been removed.
+- **Apple name capture** (`src/utils/auth.js`): Apple only provides the user's display name on the very first sign-in. The name is captured immediately and persisted to `localStorage` (`apple_pending_name`). `backendSync()` in `src/stores/user.js` reads the cached name as a fallback when Pinia state and `firebaseUser.displayName` are both empty, and cleans up the cache after successful sync. The backend (`api.navitag.net` — `User.php`) also sets Firebase `displayName` via the Admin SDK during sync, making the name permanently available on future logins.
+- **Web SSO** uses redirect mode; same-origin Firebase auth handler used for mobile web.
 
 ### Ecommerce Removed
 
-Shop, cart, and payment flows have been removed from the app. Deleted: `src/views/shop/`, `src/views/payment/`, `src/stores/cart.js`, `xendit-components-web` dependency, and the shop tab in `bottomNav.vue`. Device purchasing is now handled entirely on the marketing site (`navitag.com/shop`) via external CTA links in `lists/devices.vue` and `linkDevice/addOrBuy.vue`.
-
-Also removed: `src/stores/user-backup.js` (stale backup).
-
-**TODO — regression check:**
-- [ ] No dead routes (`/data-plans`, `/app-shop`, `/shipping/*`, `/payment/*`) resolve — all should 404
-- [ ] Bottom nav shows 4 tabs (Items, History, Map, Account) — no Shop tab
-- [ ] `App.vue` loading overlay still triggers on user/device loading (cart store removed from `masterLoading`)
-- [ ] External "Shop Devices" CTAs in `lists/devices.vue` and `linkDevice/addOrBuy.vue` still open `navitag.com/shop` in browser
-- [ ] `npm install` rebuilds cleanly with `xendit-components-web` gone
-- [ ] No stale Xendit styles referenced anywhere (`.xendit-dialog*` removed from `style.css`)
-
-### SSO Login Flow (Facebook/Apple/Google) — In Progress
-
-**Problem:** Facebook SSO users may not have an email in their Firebase profile. The app requires an email for backend user creation (Traccar requires email for user accounts).
-
-**Solution implemented:**
-
-1. **SSO scopes** (`src/utils/auth.js`): All SSO providers now request email scopes (`email`, `profile`/`public_profile`).
-
-2. **Email collection flow** (`src/views/login/collectEmail.vue`): If SSO provider doesn't return an email, the app redirects to a collect-email view before proceeding. Guards in `lifecycle.js`, `App.vue`, and `router.js` prevent race conditions during this flow.
-
-3. **Backend email resolution** (`api.navitag.net` — `User.php`):
-   - Email fallback chain: JWT email → request body email → `{uid}@navitagdummy.net`
-   - Backend updates Firebase user's email via Admin SDK when JWT email is missing
-   - Sends verification email for real (non-dummy) emails
-   - Email is immutable after creation (no updates to email in Traccar/MySQL after initial creation)
-
-4. **Server token fix** (`api.navitag.net` — `Server.php`):
-   - `generateToken()` now resolves email via: JWT → MySQL `users` table → dummy fallback
-   - Ensures password derivation matches what was used during user creation
-
-5. **Session invalidation handling** (`collectEmail.vue`):
-   - Firebase Admin SDK email update revokes refresh tokens (per Firebase docs: email change is a "major account change")
-   - After `backendSync()` succeeds, the app shows a success message instead of attempting `startSession()`
-   - User must click "Login Now" to sign out and re-login (JWT will have email on next login)
-   - `needsEmail` flag stays `true` during the transition to keep all lifecycle guards active, preventing error states from race conditions
-
-6. **Re-login race condition fix** (`src/stores/user.js`):
-   - `clearUser()` now clears `server_url` to prevent `checkConnectionAndReconnect` from racing with `startSession` during re-login
-   - Stale `server_url` was bypassing the `!userStore.server_url` guard, causing concurrent Traccar session attempts and 401 errors
+Shop, cart, and payment flows have been removed from the app. Deleted: `src/views/shop/`, `src/views/payment/`, `src/stores/cart.js`, `xendit-components-web` dependency, and the shop tab in `bottomNav.vue`. Device purchasing is handled entirely on the marketing site (`navitag.com/shop`) via external CTA links in `lists/devices.vue` and `linkDevice/addOrBuy.vue`. Regression checks complete.
 
 ### Account Settings
 
@@ -97,13 +69,42 @@ Also removed: `src/stores/user-backup.js` (stale backup).
 
 - Country server selector with searchable modal (`src/views/signup/index.vue`)
 - Country list shared via `src/utils/countryList.js` (used by both signup and account pages)
-- **Apple name capture** (`src/utils/auth.js`): Apple only provides the user's display name on the very first sign-in. The name is captured immediately and persisted to `localStorage` (`apple_pending_name`) so it survives the collect-email sign-out/re-login cycle. `backendSync()` in `src/stores/user.js` reads the cached name as a fallback when Pinia state and `firebaseUser.displayName` are both empty, and cleans up the cache after successful sync. The backend (`api.navitag.net` — `User.php`) also sets Firebase `displayName` via the Admin SDK during sync, making the name permanently available on all future logins.
 
 ### Device Settings (`src/views/lists/deviceSettings.vue`)
 
-- **Labeling card**: Device name and map icon category selection
+- **Profile card**: Device name, map icon category, and speed limit.
+  - **Speed limit**: input in km/h with "No speed limit" toggle. Traccar stores `device.attributes.speedLimit` in knots, so the view converts at the boundary (`KNOTS_PER_KPH = 1 / 1.852`). Toggle ON → `speedLimit` key deleted from attributes on save; toggle OFF → requires 1–300 km/h. Input is `type="text"` with `inputmode="numeric"` (no native spinners) and three-layer input guards (`keydown`/`input`/`paste`) that block non-digits, strip leading zeros, and clamp at 300.
+- **Notifications card** (between Profile and Status): lists every notification from `userStore.notifications` as a toggle row. On load, `deviceStore.fetchDeviceNotifications(deviceId)` hits Traccar `GET /api/notifications?deviceId=<id>` to determine which are linked. Toggles are optimistic — UI flips immediately, then `POST`/`DELETE /api/permissions { deviceId, notificationId }` runs; failure rolls back the toggle and shows an error banner. Per-row `busy` state prevents double-clicks.
 - **Status card**: Active/disabled toggle, plan level display, expiration date, and Top Up button linking to `https://www.navitag.com/top-up/:imei`
 - Plan level and expiration data fetched from `GET /user/device-expiration` and mapped onto device objects in the Pinia store
+
+### Geofences (`src/views/lists/geofences.vue`, `src/views/map/geofence.vue`)
+
+- **Plan-based limits** (centralized in `src/stores/devices.js` as `geofenceLimit` / `canCreateGeofence` / `hasProPlan` computeds): non-Pro users get **2** geofences, Pro users get **10**.
+- Entry-point gating: all "create geofence" buttons (`geofences.vue` × 3, `linkDevice/select.vue` × 1) check `canCreateGeofence` and pop `components/geofenceLimitModal.vue` instead of routing to `/addgeo` when over limit.
+- Background reconciliation: `enforceGeofenceLimit()` runs fire-and-forget at every lifecycle complete (`startSession` / `checkConnectionAndReconnect` / `reloadAndReconnect` in `utils/lifecycle/session.js`). Sorts geofences by Traccar ID descending (highest = newest) and `DELETE`s the excess so server state always matches the user's tier.
+- **Conditional auto-link on geofence create** (`deviceStore.linkGeofenceToEligibleDevices`): when the new geofence is the 1st or 2nd for the account (pre-create count `< 2`) it links to **every device**. When it's the 3rd or beyond it links **only to devices with `plan_level === 'Pro'`**. Called from `views/map/geofence.vue` right after `POST /api/geofences` succeeds.
+
+> **⚠️ Edit this if a higher tier than Pro is added.** The 2/10 split lives in one place — `geofenceLimit` in `src/stores/devices.js`. Update that computed to a tier→limit map (e.g. `{ Basic: 2, Pro: 10, Enterprise: 50 }`) and the gating + background cleanup will follow automatically. Also revisit `hasProPlan` — it's currently used as a binary "any Pro device?" check; new tiers may need a `highestPlanTier` computed instead.
+
+### Link Device — auto-link on success (`src/views/linkDevice/link.vue`)
+
+After `POST ${baseUrl}/user/link-device` succeeds, `autoLinkNewDevice(imei)` runs in the background before the view routes on:
+
+1. `deviceStore.fetchDevices()` — refresh the Traccar device list so the new record appears.
+2. Find the new device by `uniqueId === imei`.
+3. `deviceStore.fetchDeviceExpirations()` — hydrate `plan_level` from the navitag backend.
+4. In parallel:
+   - `deviceStore.linkAllNotificationsToDevice(id)` — one `POST /api/permissions { deviceId, notificationId }` per entry in `userStore.notifications`.
+   - `deviceStore.linkDefaultGeofencesToDevice(id)` — picks the first N existing geofence IDs (ascending) and links them. N = `10` if the device is Pro, else `2`.
+
+Wrapped in try/catch with non-blocking navigation, so link failures log a warning but never trap the user on the link screen.
+
+### User Notifications (`userStore.notifications`)
+
+- Loaded from **Traccar** `GET /api/notifications` at every successful lifecycle completion (no `api.navitag.net` involvement).
+- Reset to `[]` in `clearUser()` on logout.
+- Consumed by Device Settings' Notifications card and by `link.vue`'s auto-link flow.
 
 ### History / Daily Route (`src/views/history/dailyRoute.vue`)
 
@@ -118,7 +119,7 @@ Also removed: `src/stores/user-backup.js` (stale backup).
 
 ### Navigation & Auth Architecture
 
-- `utils/lifecycle/`: Split into `session.js` (orchestration + locks) and `listeners/{auth,appState,network}.js`. `index.js` exposes the `LifecycleService` facade (`init`, `startSession`, `stopSession`, `checkConnectionAndReconnect`, `reloadAndReconnect`). Lock flags (`isStartingSession`, `isReconnecting`) and the reconnect timer live on the `session` singleton in `session.js`. Single authority for post-auth navigation.
+- `utils/lifecycle/`: Split into `session.js` (orchestration + locks) and `listeners/{auth,appState,network}.js`. `index.js` exposes the `LifecycleService` facade (`init`, `startSession`, `stopSession`, `checkConnectionAndReconnect`, `reloadAndReconnect`). Lock flags (`isStartingSession`, `isReconnecting`) and the reconnect timer live on the `session` singleton. Single authority for post-auth navigation.
 - `user.js` (Pinia store): Manages Firebase auth, backend sync, Traccar session, and WebSocket connection. Socket declared as `shallowRef` to avoid Vue reactivity overhead. Includes `traccarLogout()` for clean session teardown (native cookie clearing + web localStorage cleanup).
 - `http.js`: Custom HTTP wrapper using CapacitorHttp for native requests with cookie management.
 - Logout clears both Firebase and Traccar sessions. Web uses localStorage to persist `server_url` for cold-boot Traccar session cleanup.

@@ -62,6 +62,8 @@ const saveToTraccar = async (latLngs) => {
 
     if(!newGeofence) userStore.error = true
 
+    await deviceStore.linkGeofenceToEligibleDevices(newGeofence.id);
+
     // Update local Pinia store immediately to reflect changes on the map
     // Note: Store keeps [lat, lon] format for Leaflet, while Server gets WKT [lon, lat]
     const leafletPoints = pointsArray.map(p => [p.lng, p.lat]);
@@ -70,7 +72,7 @@ const saveToTraccar = async (latLngs) => {
       name: newGeofence.name,
       points: leafletPoints
     };
-    
+
     LifecycleService.startSession()
 
     // Success! Update local Pinia store  

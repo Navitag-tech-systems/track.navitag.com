@@ -1,9 +1,10 @@
 <script setup>
 import { ref, computed } from 'vue';
-import { RouterLink, useRouter } from 'vue-router';
+import { useRouter } from 'vue-router';
 import { useDevicesStore } from '@/stores/devices.js';
 import { useUserStore } from '@/stores/user.js';
 import { request } from '@/utils/http';
+import GeofenceLimitModal from '@/components/geofenceLimitModal.vue';
 
 const router = useRouter();
 const deviceStore = useDevicesStore();
@@ -13,6 +14,15 @@ const userStore = useUserStore();
 const showDeleteModal = ref(false);
 const geofenceToDelete = ref(null);
 const isDeleting = ref(false);
+const showLimitModal = ref(false);
+
+const handleNewGeofence = () => {
+  if (!deviceStore.canCreateGeofence) {
+    showLimitModal.value = true;
+    return;
+  }
+  router.push('/addgeo');
+};
 
 // Convert the reactive object into an array for the v-for loop
 const geofencesList = computed(() => {
@@ -75,9 +85,9 @@ const editGeofence = (id) => {
       <div class="p-4">
         <div class="flex justify-between">
           <h1 class="text-xl font-bold text-gray-800 mb-3">Overview</h1>
-          <RouterLink to="/addgeo" class="w-10 h-10 rounded-full bg-accent-light text-accent flex items-center justify-center shrink-0" >
+          <button @click="handleNewGeofence" class="w-10 h-10 rounded-full bg-accent-light text-accent flex items-center justify-center shrink-0 outline-none cursor-pointer">
             <i class="fa-solid fa-plus"></i>
-          </RouterLink>
+          </button>
         </div>
         
         <div class="flex space-x-6 overflow-x-auto no-scrollbar">
@@ -106,11 +116,9 @@ const editGeofence = (id) => {
         </div>
         <h3 class="font-bold text-gray-800 mb-1">No Geofences</h3>
         <p class="text-sm px-4 mb-4">You haven't set up any geofences yet. Draw areas on the map to receive alerts when trackers enter or exit.</p>
-        <RouterLink to="/addgeo">
-          <button class="bg-accent-light text-accent px-4 py-2 rounded-lg text-sm font-semibold hover:bg-accent-light transition cursor-pointer">
-            Create Geofence
-          </button>
-        </RouterLink>
+        <button @click="handleNewGeofence" class="bg-accent-light text-accent px-4 py-2 rounded-lg text-sm font-semibold hover:bg-accent-light transition cursor-pointer">
+          Create Geofence
+        </button>
       </div>
 
       <div v-else class="space-y-3">
@@ -147,7 +155,7 @@ const editGeofence = (id) => {
           </div>
         </div>
 
-        <RouterLink to="/addgeo" class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex justify-center items-center transition-all hover:shadow-md">
+        <button @click="handleNewGeofence" class="w-full bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex justify-center items-center transition-all hover:shadow-md cursor-pointer outline-none">
           <div class="flex items-center gap-4">
 
             <div class="w-10 h-10 rounded-full bg-accent-light text-accent flex items-center justify-center shrink-0">
@@ -157,9 +165,11 @@ const editGeofence = (id) => {
               <h3 class="font-bold text-gray-800 leading-tight">NEW GEOFENCE</h3>
             </div>
           </div>
-        </RouterLink>
+        </button>
       </div>
     </div>
+
+    <GeofenceLimitModal :show="showLimitModal" @close="showLimitModal = false" />
 
     <teleport to="body">
       <div v-if="showDeleteModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm transition-opacity">

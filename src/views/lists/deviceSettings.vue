@@ -20,11 +20,96 @@ const device = computed(() => deviceStore.devices[deviceId]);
 
 const name = ref('');
 const category = ref('');
+const speedLimitKph = ref('');
+const noSpeedLimit = ref(true);
 const loading = ref(false);
 const errorMsg = ref('');
 const successMsg = ref('');
 
 const isActive = ref(null);
+
+const linkedNotificationIds = ref(new Set());
+const notificationsLoading = ref(false);
+const notificationBusyIds = ref(new Set());
+
+const availableNotifications = computed(() => userStore.notifications || []);
+
+function notificationLabel(n) {
+  const raw = n?.attributes?.alarms || n?.type || 'Notification';
+  return raw
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/^./, c => c.toUpperCase())
+    .trim();
+}
+
+async function loadLinkedNotifications() {
+  notificationsLoading.value = true;
+  try {
+    const list = await deviceStore.fetchDeviceNotifications(deviceId);
+    linkedNotificationIds.value = new Set(list.map(n => n.id));
+  } finally {
+    notificationsLoading.value = false;
+  }
+}
+
+async function toggleNotification(notif) {
+  const id = notif.id;
+  if (notificationBusyIds.value.has(id)) return;
+
+  const wasLinked = linkedNotificationIds.value.has(id);
+  const next = new Set(linkedNotificationIds.value);
+  if (wasLinked) next.delete(id); else next.add(id);
+  linkedNotificationIds.value = next;
+
+  notificationBusyIds.value = new Set(notificationBusyIds.value).add(id);
+
+  const ok = wasLinked
+    ? await deviceStore.unlinkDeviceNotification(deviceId, id)
+    : await deviceStore.linkDeviceNotification(deviceId, id);
+
+  if (!ok) {
+    const rollback = new Set(linkedNotificationIds.value);
+    if (wasLinked) rollback.add(id); else rollback.delete(id);
+    linkedNotificationIds.value = rollback;
+    errorMsg.value = `Failed to ${wasLinked ? 'disable' : 'enable'} ${notificationLabel(notif)}.`;
+  }
+
+  const nextBusy = new Set(notificationBusyIds.value);
+  nextBusy.delete(id);
+  notificationBusyIds.value = nextBusy;
+}
+
+const KNOTS_PER_KPH = 1 / 1.852;
+const SPEED_LIMIT_MAX_KPH = 300;
+
+function onSpeedLimitInput(e) {
+  const digitsOnly = e.target.value.replace(/\D+/g, '');
+  let next = digitsOnly.replace(/^0+(?=\d)/, '');
+  if (next !== '' && Number(next) > SPEED_LIMIT_MAX_KPH) {
+    next = String(SPEED_LIMIT_MAX_KPH);
+  }
+  if (next !== e.target.value) e.target.value = next;
+  speedLimitKph.value = next;
+}
+
+function onSpeedLimitKeydown(e) {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const allowed = ['Backspace', 'Delete', 'Tab', 'Enter', 'Home', 'End', 'ArrowLeft', 'ArrowRight'];
+  if (allowed.includes(e.key)) return;
+  if (!/^[0-9]$/.test(e.key)) e.preventDefault();
+}
+
+function onSpeedLimitPaste(e) {
+  e.preventDefault();
+  const text = (e.clipboardData || window.clipboardData).getData('text') || '';
+  const digitsOnly = text.replace(/\D+/g, '');
+  let next = (speedLimitKph.value === '' ? '' : String(speedLimitKph.value)) + digitsOnly;
+  next = next.replace(/^0+(?=\d)/, '');
+  if (next !== '' && Number(next) > SPEED_LIMIT_MAX_KPH) {
+    next = String(SPEED_LIMIT_MAX_KPH);
+  }
+  speedLimitKph.value = next;
+}
 
 // Categories supported by your Leaflet component
 
@@ -34,7 +119,16 @@ onMounted(() => {
     name.value = device.value.name || '';
     category.value = device.value.category;
     isActive.value = !device.value.disabled
+    const existingKnots = device.value.attributes?.speedLimit;
+    if (existingKnots && existingKnots > 0) {
+      noSpeedLimit.value = false;
+      speedLimitKph.value = Math.round(existingKnots * 1.852);
+    } else {
+      noSpeedLimit.value = true;
+      speedLimitKph.value = '';
+    }
     deviceStore.fetchDeviceExpirations();
+    loadLinkedNotifications();
   } else {
     errorMsg.value = "Device not found.";
   }
@@ -66,55 +160,52 @@ const saveDevice = async () => {
     return;
   }
   
+  let kphNum = null;
+  if (!noSpeedLimit.value) {
+    const kphRaw = String(speedLimitKph.value).trim();
+    if (kphRaw === '') {
+      errorMsg.value = 'Enter a speed limit or enable "No speed limit".';
+      return;
+    }
+    kphNum = Number(kphRaw);
+    if (!Number.isFinite(kphNum) || kphNum <= 0 || kphNum > SPEED_LIMIT_MAX_KPH) {
+      errorMsg.value = `Speed limit must be between 1 and ${SPEED_LIMIT_MAX_KPH} km/h.`;
+      return;
+    }
+  }
+
   loading.value = true;
   errorMsg.value = '';
   successMsg.value = '';
 
   try {
+    const nextAttributes = { ...(device.value.attributes || {}) };
+    if (noSpeedLimit.value) {
+      delete nextAttributes.speedLimit;
+    } else {
+      nextAttributes.speedLimit = kphNum * KNOTS_PER_KPH;
+    }
+
     // Traccar expects the full device object on PUT
     const updatedDevice = {
       "id": deviceId,
       "name": name.value.trim(),
       "uniqueId": device.value.uniqueId,
-      //"status": "string",
       "disabled": !isActive.value,
-      //"lastUpdate": "2019-08-24T14:15:22Z",
-      //"positionId": 0,
       "groupId": device.value.groupId,
       "phone": device.value.phone,
       "model": device.value.model,
       "contact": device.value.contact,
       "category": category.value,
-      "attributes": device.value.attributes
+      "attributes": nextAttributes
     }
 
-    const update = await request.send({
-      url: `https://${userStore.server_url}/api/devices/${deviceId}`,
-      method: 'PUT',
-      isTraccar: true,
-      data: updatedDevice,
-    });
+    const update = await deviceStore.updateDevice(deviceId, updatedDevice);
 
-    if(update){
-      deviceStore.devices[deviceId] = update
-      const catObj = categoryMapping.find(category => category.server === update.category)
-
-      const newMarker = {
-          id: deviceId, 
-          latlon: deviceStore.deviceMarkers[deviceId].latlon,
-          bearing: deviceStore.deviceMarkers[deviceId].bearing,
-          color: deviceStore.deviceMarkers[deviceId].color,
-          label: update.name,
-          type: catObj.map
-        };
-
-        //lgoic not working to replace old marker with new marker
-      delete deviceStore.deviceMarkers[deviceId]
-      deviceStore.deviceMarkers[deviceId] = newMarker
-      //deviceStore.updatedDevice = newMarker
+    if (update) {
       router.push("/")
     } else {
-      userStore.error= true
+      userStore.error = true
     }
 
   } catch (err) {
@@ -165,7 +256,7 @@ watch(isActive, async (nv, ov) => {
       <div v-else class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
         <form @submit.prevent="saveDevice" class="space-y-5">
 
-          <h2 class="text-lg font-bold text-gray-800">Labeling</h2>
+          <h2 class="text-lg font-bold text-gray-800">Profile</h2>
 
           <div>
             <label class="block text-sm font-bold text-gray-700 mb-2">Device Name</label>
@@ -196,6 +287,41 @@ watch(isActive, async (nv, ov) => {
             </div>
           </div>
 
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-2">Speed Limit</label>
+
+            <div class="p-4 border border-gray-200 rounded-xl mb-3">
+              <label class="relative flex items-center justify-between w-full cursor-pointer">
+                <input
+                  type="checkbox"
+                  v-model="noSpeedLimit"
+                  class="sr-only peer"
+                >
+                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-brand-light rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand"></div>
+                <span class="text-md font-medium text-gray-900">No speed limit</span>
+              </label>
+            </div>
+
+            <div class="relative" :class="noSpeedLimit ? 'opacity-50 pointer-events-none' : ''">
+              <i class="fa-solid fa-gauge-high absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              <input
+                :value="speedLimitKph"
+                @input="onSpeedLimitInput"
+                @keydown="onSpeedLimitKeydown"
+                @paste="onSpeedLimitPaste"
+                type="text"
+                inputmode="numeric"
+                pattern="[0-9]*"
+                maxlength="3"
+                placeholder="e.g. 100"
+                :disabled="noSpeedLimit"
+                :aria-disabled="noSpeedLimit"
+                class="w-full pl-11 pr-16 py-3.5 bg-surface border border-gray-200 rounded-xl text-sm font-bold text-gray-700 focus:bg-white focus:border-brand focus:ring-2 focus:ring-brand-light transition-all outline-none disabled:cursor-not-allowed"
+              />
+              <span class="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400 uppercase tracking-wider">km/h</span>
+            </div>
+          </div>
+
           <div v-if="errorMsg" class="bg-red-50 text-red-600 text-sm p-3 rounded-xl border border-red-100 flex items-center gap-2">
             <i class="fa-solid fa-circle-exclamation"></i>
             {{ errorMsg }}
@@ -215,6 +341,45 @@ watch(isActive, async (nv, ov) => {
             {{ loading ? 'Saving...' : 'Save Changes' }}
           </button>
         </form>
+      </div>
+
+      <div v-if="device" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
+        <h2 class="text-lg font-bold text-gray-800">Notifications</h2>
+
+        <div v-if="notificationsLoading" class="flex items-center justify-center p-6 text-gray-400 text-sm">
+          <i class="fa-solid fa-circle-notch fa-spin mr-2"></i>
+          Loading notifications…
+        </div>
+
+        <div v-else-if="availableNotifications.length === 0" class="text-center text-gray-500 text-sm py-6">
+          No notifications available.
+        </div>
+
+        <div v-else class="space-y-2">
+          <div
+            v-for="notif in availableNotifications"
+            :key="notif.id"
+            class="p-4 border rounded-lg"
+          >
+            <label class="relative flex items-center justify-between w-full cursor-pointer">
+              <input
+                type="checkbox"
+                :checked="linkedNotificationIds.has(notif.id)"
+                :disabled="notificationBusyIds.has(notif.id)"
+                @change="toggleNotification(notif)"
+                class="sr-only peer"
+              >
+              <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-brand-light rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand"></div>
+              <span class="text-md font-medium text-gray-900 flex items-center gap-2">
+                {{ notificationLabel(notif) }}
+                <i
+                  v-if="notificationBusyIds.has(notif.id)"
+                  class="fa-solid fa-circle-notch fa-spin text-xs text-gray-400"
+                ></i>
+              </span>
+            </label>
+          </div>
+        </div>
       </div>
 
       <div v-if="device" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">

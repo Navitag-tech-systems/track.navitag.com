@@ -22,6 +22,7 @@ export const useUserStore = defineStore('user', () => {
   const server_url = ref(null);
   const server_token = ref(null);
   const server_connect = ref(false);
+  const notifications = ref([]);
   
   // 2. THIS IS THE CRITICAL FIX: Declare as a shallowRef
   const socket = shallowRef(null);
@@ -376,6 +377,7 @@ export const useUserStore = defineStore('user', () => {
     server_url.value = null;
     server_token.value = null;
     server_connect.value = false;
+    notifications.value = [];
     email.value = null;
     error.value = false;
   }
@@ -383,6 +385,6 @@ export const useUserStore = defineStore('user', () => {
   return {
     user, idToken, countryCode, ipLocation, loading, isLoggedIn, internet, error,
     setUser, clearUser, traccarLogout, serverConnect, connectSocket, fetchCountryCode, backendSync, disconnectSocket, getFreshToken, initPushNotifications,
-    server_url, server_token, server_connect, socket, name, phone, email
+    server_url, server_token, server_connect, notifications, socket, name, phone, email
   };
 });

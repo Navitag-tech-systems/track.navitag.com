@@ -1,7 +1,12 @@
 <script setup>
+import { ref } from 'vue';
 import { useRouter } from 'vue-router';
+import { useDevicesStore } from '@/stores/devices.js';
+import GeofenceLimitModal from '@/components/geofenceLimitModal.vue';
 
 const router = useRouter();
+const deviceStore = useDevicesStore();
+const showLimitModal = ref(false);
 
 const options = [
   {
@@ -24,8 +29,12 @@ const options = [
   }
 ];
 
-const navigateTo = (route) => {
-  router.push(route);
+const handleSelect = (option) => {
+  if (option.id === 'geofence' && !deviceStore.canCreateGeofence) {
+    showLimitModal.value = true;
+    return;
+  }
+  router.push(option.route);
 };
 </script>
 
@@ -39,10 +48,10 @@ const navigateTo = (route) => {
 
     <div class="p-4 space-y-4 mt-2">
       
-      <button 
-        v-for="option in options" 
+      <button
+        v-for="option in options"
         :key="option.id"
-        @click="navigateTo(option.route)"
+        @click="handleSelect(option)"
         class="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-5 flex items-center text-left transition-all hover:shadow-md hover:border-brand-light active:scale-[0.98] outline-none cursor-pointer group"
       >
         <div :class="[option.bg, option.color, 'w-14 h-14 rounded-full flex items-center justify-center text-2xl shrink-0 transition-transform group-hover:scale-110']">
@@ -60,6 +69,8 @@ const navigateTo = (route) => {
       </button>
 
     </div>
+
+    <GeofenceLimitModal :show="showLimitModal" @close="showLimitModal = false" />
   </div>
 </template>
 

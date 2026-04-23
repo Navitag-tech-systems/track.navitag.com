@@ -186,6 +186,178 @@ export const useDevicesStore = defineStore('devices', () => {
     }
   }
   
+  async function updateDevice(deviceId, payload) {
+    if (!userStore.server_url) return null;
+
+    try {
+      const updated = await request.send({
+        url: `https://${userStore.server_url}/api/devices/${deviceId}`,
+        method: 'PUT',
+        isTraccar: true,
+        data: payload,
+      });
+
+      if (!updated) return null;
+
+      if (devices[deviceId]) {
+        Object.assign(devices[deviceId], updated);
+      } else {
+        devices[deviceId] = updated;
+      }
+
+      const catObj = categoryMapping.find(c => c.server === updated.category)
+        ?? categoryMapping.find(c => c.server === null);
+
+      const existing = deviceMarkers[deviceId] || {};
+      const newMarker = {
+        id: deviceId,
+        latlon: existing.latlon,
+        bearing: existing.bearing,
+        color: existing.color,
+        label: updated.name,
+        type: catObj.map,
+      };
+
+      deviceMarkers[deviceId] = newMarker;
+      mapUpdate.value = newMarker;
+
+      return updated;
+    } catch (err) {
+      console.error('[Devices] updateDevice failed:', err);
+      return null;
+    }
+  }
+
+  async function fetchDeviceNotifications(deviceId) {
+    if (!userStore.server_url) return [];
+    try {
+      const list = await request.send({
+        url: `https://${userStore.server_url}/api/notifications?deviceId=${deviceId}`,
+        isTraccar: true,
+      });
+      return Array.isArray(list) ? list : [];
+    } catch (err) {
+      console.error('[Devices] fetchDeviceNotifications failed:', err);
+      return [];
+    }
+  }
+
+  async function linkDeviceNotification(deviceId, notificationId) {
+    if (!userStore.server_url) return false;
+    try {
+      await request.send({
+        url: `https://${userStore.server_url}/api/permissions`,
+        method: 'POST',
+        isTraccar: true,
+        data: { deviceId: Number(deviceId), notificationId: Number(notificationId) },
+      });
+      return true;
+    } catch (err) {
+      console.error('[Devices] linkDeviceNotification failed:', err);
+      return false;
+    }
+  }
+
+  async function unlinkDeviceNotification(deviceId, notificationId) {
+    if (!userStore.server_url) return false;
+    try {
+      await request.send({
+        url: `https://${userStore.server_url}/api/permissions`,
+        method: 'DELETE',
+        isTraccar: true,
+        data: { deviceId: Number(deviceId), notificationId: Number(notificationId) },
+      });
+      return true;
+    } catch (err) {
+      console.error('[Devices] unlinkDeviceNotification failed:', err);
+      return false;
+    }
+  }
+
+  async function linkDeviceGeofence(deviceId, geofenceId) {
+    if (!userStore.server_url) return false;
+    try {
+      await request.send({
+        url: `https://${userStore.server_url}/api/permissions`,
+        method: 'POST',
+        isTraccar: true,
+        data: { deviceId: Number(deviceId), geofenceId: Number(geofenceId) },
+      });
+      return true;
+    } catch (err) {
+      console.error('[Devices] linkDeviceGeofence failed:', err);
+      return false;
+    }
+  }
+
+  async function linkGeofenceToEligibleDevices(geofenceId) {
+    const priorCount = Object.keys(geofences).length;
+    const linkAll = priorCount < 2;
+
+    const targets = Object.values(devices).filter(d =>
+      linkAll ? true : d.plan_level === 'Pro'
+    );
+
+    if (!targets.length) return true;
+
+    const results = await Promise.all(
+      targets.map(d => linkDeviceGeofence(d.id, geofenceId))
+    );
+    const ok = results.every(Boolean);
+    if (!ok) console.warn('[Devices] Some devices failed to link to geofence', geofenceId);
+    return ok;
+  }
+
+  async function linkDefaultGeofencesToDevice(deviceId) {
+    const device = devices[deviceId];
+    const limit = device?.plan_level === 'Pro' ? 10 : 2;
+
+    const ids = Object.keys(geofences)
+      .map(Number)
+      .sort((a, b) => a - b)
+      .slice(0, limit);
+
+    if (!ids.length) return true;
+
+    const results = await Promise.all(
+      ids.map(gid => linkDeviceGeofence(deviceId, gid))
+    );
+    const ok = results.every(Boolean);
+    if (!ok) console.warn('[Devices] Some geofences failed to link to device', deviceId);
+    return ok;
+  }
+
+  async function linkAllNotificationsToDevice(deviceId) {
+    const notifs = userStore.notifications || [];
+    if (!notifs.length) return true;
+    const results = await Promise.all(
+      notifs.map(n => linkDeviceNotification(deviceId, n.id))
+    );
+    const ok = results.every(Boolean);
+    if (!ok) console.warn('[Devices] Some notifications failed to link to device', deviceId);
+    return ok;
+  }
+
+  async function enforceGeofenceLimit() {
+    if (!userStore.server_url) return;
+    const limit = geofenceLimit.value;
+    const ids = Object.keys(geofences).map(Number).sort((a, b) => b - a);
+    if (ids.length <= limit) return;
+
+    const excess = ids.slice(0, ids.length - limit);
+    console.log(`[Geofences] Over limit (${ids.length}/${limit}). Deleting newest ${excess.length}: ${excess.join(', ')}`);
+
+    await Promise.all(excess.map(id =>
+      request.send({
+        url: `https://${userStore.server_url}/api/geofences/${id}`,
+        method: 'DELETE',
+        isTraccar: true,
+      }).then(() => {
+        delete geofences[id];
+      }).catch(err => console.error(`[Geofences] Failed to delete excess geofence ${id}:`, err))
+    ));
+  }
+
   function clearData() {
     Object.keys(devices).forEach(key => delete devices[key]);
     Object.keys(deviceMarkers).forEach(key => delete deviceMarkers[key]);
@@ -197,11 +369,18 @@ export const useDevicesStore = defineStore('devices', () => {
   // --- Getters ---
   const deviceMarkerKeys = computed(() => Object.keys(deviceMarkers));
   const deviceSelectedObject = computed(() => (deviceSelected.value && devices[deviceSelected.value]) || null);
+  const hasProPlan = computed(() => Object.values(devices).some(d => d.plan_level === 'Pro'));
+  const geofenceLimit = computed(() => hasProPlan.value ? 10 : 2);
+  const canCreateGeofence = computed(() => Object.keys(geofences).length < geofenceLimit.value);
 
   return {
     devices, geofences, loading, error, deviceMarkers, deviceMarkerKeys,
     deviceSelectedObject, deviceSelected, mapUpdate, draftPolygon, activeRoute,
-    processSocketData, 
-    fetchDevices, fetchGeofences, fetchDeviceExpirations, fetchAll, clearData
+    hasProPlan, geofenceLimit, canCreateGeofence,
+    processSocketData,
+    fetchDevices, fetchGeofences, fetchDeviceExpirations, fetchAll, updateDevice,
+    fetchDeviceNotifications, linkDeviceNotification, unlinkDeviceNotification, linkAllNotificationsToDevice,
+    linkDeviceGeofence, linkDefaultGeofencesToDevice, linkGeofenceToEligibleDevices,
+    enforceGeofenceLimit, clearData
   };
 });
