@@ -22,7 +22,6 @@ app.use(router);
 LifecycleService.init();
 
 // Register the PWA service worker on web (no-op on native).
-// Currently gated behind ?pwa=1 — see src/utils/pwa.js.
 registerPwa();
 
 

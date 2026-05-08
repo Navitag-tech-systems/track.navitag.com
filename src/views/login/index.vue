@@ -66,16 +66,25 @@ const installIsIOS = (() => {
   return /iPad|iPhone|iPod/.test(ua) ||
     (ua.includes('Mac') && navigator.maxTouchPoints > 1);
 })();
+const installIsAndroid = (() => {
+  if (typeof navigator === 'undefined') return false;
+  return /Android/.test(navigator.userAgent || '');
+})();
 const showInstallLink = computed(() => !installNative && !installStandalone && !installStore.installed);
 const showIosInstructions = ref(false);
-const installFallbackMessage = ref('');
+const showManualInstructions = ref(false);
 
 async function clickLoginInstall() {
-  installFallbackMessage.value = '';
+  showIosInstructions.value = false;
+  showManualInstructions.value = false;
+
+  // iOS Safari has no programmatic install — show steps inline.
   if (installIsIOS) {
-    showIosInstructions.value = !showIosInstructions.value;
+    showIosInstructions.value = true;
     return;
   }
+
+  // Programmatic install if Chrome has fired beforeinstallprompt for us.
   if (installStore.deferred) {
     try {
       await installStore.deferred.prompt();
@@ -85,7 +94,11 @@ async function clickLoginInstall() {
     installStore.markResolved();
     return;
   }
-  installFallbackMessage.value = 'Your browser hasn\'t offered an install prompt yet. Open the browser menu (three dots) and choose "Install app" or "Add to Home screen".';
+
+  // No deferred event captured yet (Chrome's engagement heuristic hasn't
+  // fired, browser doesn't support beforeinstallprompt, etc.). Show the
+  // canonical manual install path for the platform.
+  showManualInstructions.value = true;
 }
 
 // Provider Login (Google/Apple)
@@ -147,10 +160,27 @@ const handleProviderLogin = async (providerHandler) => {
             <li>Scroll down and tap <strong>Add to Home Screen</strong>.</li>
             <li>Tap <strong>Add</strong> in the top-right corner.</li>
           </ol>
-          <p class="mt-2 text-gray-500 italic">Only works in Safari on iOS.</p>
+          <p class="mt-2 text-gray-500 italic">Only works in Safari on iOS — not Chrome or other browsers.</p>
         </div>
 
-        <p v-if="installFallbackMessage" class="text-amber-700 text-xs mt-2 leading-snug">{{ installFallbackMessage }}</p>
+        <div v-if="showManualInstructions && installIsAndroid" class="mt-3 p-3 bg-gray-50 rounded-lg text-xs text-gray-700 leading-relaxed border border-gray-200">
+          <p class="font-semibold mb-2">Install on Android:</p>
+          <ol class="list-decimal list-inside space-y-1">
+            <li>Tap the <strong><i class="fa-solid fa-ellipsis-vertical"></i> three-dots menu</strong> in the top-right of Chrome.</li>
+            <li>Tap <strong>Install app</strong> (or <strong>Add to Home screen</strong>).</li>
+            <li>Confirm <strong>Install</strong> in the dialog.</li>
+          </ol>
+          <p class="mt-2 text-gray-500 italic">Doesn't work in private/incognito mode or in-app browsers (Facebook, Instagram, etc.).</p>
+        </div>
+
+        <div v-if="showManualInstructions && !installIsAndroid && !installIsIOS" class="mt-3 p-3 bg-gray-50 rounded-lg text-xs text-gray-700 leading-relaxed border border-gray-200">
+          <p class="font-semibold mb-2">Install on this device:</p>
+          <ol class="list-decimal list-inside space-y-1">
+            <li>Look for the <strong><i class="fa-solid fa-circle-down"></i> install icon</strong> in the URL bar.</li>
+            <li>Or open the browser menu and choose <strong>Install Navitag</strong>.</li>
+            <li>Confirm <strong>Install</strong> in the dialog.</li>
+          </ol>
+        </div>
       </form>
 
       <p v-if="feedbackMsg" :class="['mt-4 text-center text-sm', isError ? 'text-red-500' : 'text-gray-600']">{{ feedbackMsg }}</p>

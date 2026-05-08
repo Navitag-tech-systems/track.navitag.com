@@ -13,13 +13,6 @@ export async function registerPwa() {
 
   if (!('serviceWorker' in navigator)) return;
 
-  // First-deploy gate: until the SW is verified cleanly registering /
-  // updating / unregistering in production, only sessions arriving with
-  // ?pwa=1 get the SW. Remove the next two lines in the follow-up deploy
-  // once verified. See PROPOSED_PWA.md §9.2.
-  const params = new URLSearchParams(window.location.search);
-  if (!params.has('pwa')) return;
-
   // Mobile/tablet only: capture the install prompt event so we can either
   // (a) let Chrome's built-in mini-infobar surface during suppression, or
   // (b) render our own toast once INSTALL_TOAST_ENABLED is flipped on.

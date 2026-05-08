@@ -248,17 +248,19 @@ const installIsIOS = (() => {
   return /iPad|iPhone|iPod/.test(ua) ||
     (ua.includes('Mac') && navigator.maxTouchPoints > 1);
 })();
+const installIsAndroid = (() => {
+  if (typeof navigator === 'undefined') return false;
+  return /Android/.test(navigator.userAgent || '');
+})();
 const showIosInstructions = ref(false);
-const installFallbackMessage = ref('');
+const showManualInstructions = ref(false);
 const installSuccessMessage = ref('');
 
 const showInstallCard = computed(() => !installNative && !installStandalone && !installStore.installed);
-const canInstallProgrammatic = computed(() => !!installStore.deferred);
 
 const installHelpText = computed(() => {
   if (installIsIOS) return 'Add Navitag to your home screen for an app-like experience.';
-  if (canInstallProgrammatic.value) return 'Install Navitag for a faster, app-like experience.';
-  return 'Install Navitag for a faster, app-like experience. If the button below does nothing, open your browser menu (three dots) and choose "Install app" or "Add to Home screen".';
+  return 'Install Navitag for a faster, app-like experience.';
 });
 
 const installButtonLabel = computed(() => {
@@ -267,11 +269,12 @@ const installButtonLabel = computed(() => {
 });
 
 async function clickAccountInstall() {
-  installFallbackMessage.value = '';
+  showIosInstructions.value = false;
+  showManualInstructions.value = false;
   installSuccessMessage.value = '';
 
   if (installIsIOS) {
-    showIosInstructions.value = !showIosInstructions.value;
+    showIosInstructions.value = true;
     return;
   }
 
@@ -282,21 +285,20 @@ async function clickAccountInstall() {
       if (choice?.outcome === 'accepted') {
         installSuccessMessage.value = 'Install accepted. Look for the app on your home screen.';
       } else {
-        installFallbackMessage.value = 'Install dismissed. You can try again from your browser menu later.';
+        showManualInstructions.value = true;
       }
-    } catch (err) {
-      installFallbackMessage.value = 'Install prompt unavailable. Open your browser menu and choose "Install app" or "Add to Home screen".';
+    } catch {
+      showManualInstructions.value = true;
     }
     installStore.setDeferred(null);
     installStore.markResolved();
     return;
   }
 
-  // No deferred event captured. Either Chrome's engagement heuristic hasn't
-  // fired yet, the device isn't installable (in-app webview, unsupported
-  // browser), or the user reached this page without ever passing through
-  // the ?pwa=1 first-deploy gate.
-  installFallbackMessage.value = 'Your browser hasn\'t offered an install prompt yet. Open the browser menu (three dots) and choose "Install app" or "Add to Home screen". On Chrome desktop, look for the install icon in the URL bar.';
+  // No deferred event captured (engagement heuristic not yet met,
+  // unsupported browser, in-app webview, etc.). Show the platform's
+  // canonical manual install path.
+  showManualInstructions.value = true;
 }
 
 const handleLogout = async () => {
@@ -443,8 +445,26 @@ const handleLogout = async () => {
           <p class="mt-2 text-gray-500 italic">Only works in Safari on iOS — not Chrome or other browsers.</p>
         </div>
 
+        <div v-if="showManualInstructions && installIsAndroid" class="mt-4 p-3 bg-gray-50 rounded-lg text-xs text-gray-700 leading-relaxed border border-gray-200">
+          <p class="font-semibold mb-2">Install on Android:</p>
+          <ol class="list-decimal list-inside space-y-1">
+            <li>Tap the <strong><i class="fa-solid fa-ellipsis-vertical"></i> three-dots menu</strong> in the top-right of Chrome.</li>
+            <li>Tap <strong>Install app</strong> (or <strong>Add to Home screen</strong>).</li>
+            <li>Confirm <strong>Install</strong> in the dialog.</li>
+          </ol>
+          <p class="mt-2 text-gray-500 italic">Doesn't work in private/incognito mode or in-app browsers.</p>
+        </div>
+
+        <div v-if="showManualInstructions && !installIsAndroid && !installIsIOS" class="mt-4 p-3 bg-gray-50 rounded-lg text-xs text-gray-700 leading-relaxed border border-gray-200">
+          <p class="font-semibold mb-2">Install on this device:</p>
+          <ol class="list-decimal list-inside space-y-1">
+            <li>Look for the <strong><i class="fa-solid fa-circle-down"></i> install icon</strong> in the URL bar.</li>
+            <li>Or open the browser menu and choose <strong>Install Navitag</strong>.</li>
+            <li>Confirm <strong>Install</strong> in the dialog.</li>
+          </ol>
+        </div>
+
         <p v-if="installSuccessMessage" class="text-green-600 text-sm mt-3"><i class="fa-solid fa-check mr-1"></i>{{ installSuccessMessage }}</p>
-        <p v-if="installFallbackMessage" class="text-amber-700 text-xs mt-3 leading-snug">{{ installFallbackMessage }}</p>
       </div>
 
       <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100">

@@ -150,7 +150,7 @@ The Workbox build is configured in `vite.config.js` with `globIgnores: ['**/fire
 
 What users see during suppression: **no automatic install UI on Android Chrome or iOS Safari.** Chrome 76+ removed the auto-displayed mini-infobar; modern Chrome Android only offers install via the three-dots menu unless a page calls `.prompt()`. Desktop Chrome/Edge shows a small URL-bar install icon. iOS Safari has no install prompt at all (manual Share → Add to Home Screen only). This is the intended quietly-shipping behavior — install rate at launch is expected to be very low (internal testers + URL-bar-icon noticers).
 
-**First-deploy gate (transitional).** `src/utils/pwa.js` short-circuits `registerPwa()` unless the URL contains `?pwa=1`. This limits the blast radius of the very first SW deploy to verified sessions. **Remove the gate (the two-line `URLSearchParams` block) in the immediate follow-up deploy** once the SW is verified registering / updating / unregistering cleanly via `https://track.navitag.com/?pwa=1` + DevTools → Application. Until removed, normal visitors do not get a Workbox SW. (FCM SW is separate and is **not** behind this gate — its bug surface is tiny.)
+**First-deploy gate (removed).** During initial rollout `pwa.js` was gated behind `?pwa=1` to limit blast radius until the Workbox SW was verified registering / updating / unregistering cleanly via DevTools. That verification is complete and the gate has been removed — every web visitor now gets the Workbox SW. The kill-switch protocol below is the recovery path for any future SW regression.
 
 **Firebase version-sync rule (load-bearing).** When bumping `firebase` in `package.json`:
 1. Run `npm install` then `npm ls firebase` to read the resolved version.
