@@ -18,52 +18,18 @@ firebase.initializeApp({
   appId: "1:729666105352:web:5bde3b1e1b78bb280ca1bd"
 });
 
-// ---------------------------------------------------------------------------
-// Branded background notifications.
-//
-// We register our own `push` listener BEFORE calling firebase.messaging() so
-// our listener fires first. We call stopImmediatePropagation() to block the
-// Firebase SDK's auto-display path, then render the notification ourselves
-// with explicit icon/badge so the same branding shows on Android Chrome PWA
-// regardless of FCM SDK quirks. iOS PWA push (16.4+) honors apple-touch-icon
-// for the small icon — the explicit icon here is for Android.
-//
-// Backend sends `notification: { title, body }` plus optional `data`. We do
-// not parse data fields beyond an optional `tag` for grouping; the backend
-// controls everything else.
-// ---------------------------------------------------------------------------
-self.addEventListener('push', (event) => {
-  if (!event.data) return;
+// Initialize messaging so the SW participates in FCM token validation /
+// refresh lifecycle. Display branding (icon, badge, click target) is owned
+// by the backend's WebPushConfig — see PushService::sendToToken which sends
+// webpush.notification.icon|badge plus webpush.fcm_options.link. The FCM
+// SDK auto-displays system notifications using those overrides; this SW
+// does not need an onBackgroundMessage handler for that path.
+firebase.messaging();
 
-  let payload;
-  try {
-    payload = event.data.json();
-  } catch {
-    return; // not JSON — let downstream listeners handle
-  }
-
-  // Only take over for messages with a notification field. Pure data-only
-  // messages can be added later via firebase.messaging().onBackgroundMessage
-  // without conflicting with this branch.
-  if (!payload || !payload.notification) return;
-
-  event.stopImmediatePropagation();
-
-  const title = payload.notification.title || 'Navitag';
-  const body  = payload.notification.body  || '';
-  const tag   = (payload.data && (payload.data.tag || payload.data.device_id)) || 'navitag';
-
-  event.waitUntil(
-    self.registration.showNotification(title, {
-      body,
-      icon: '/icons/icon-192.png',
-      badge: '/icons/icon-192.png',
-      tag,
-      data: payload.data || {},
-    })
-  );
-});
-
+// notificationclick: focus an existing PWA window if one is open, otherwise
+// fall through to the default behavior (FCM honors webpush.fcm_options.link
+// which the backend sets to "/"). Without this handler, every tap would
+// spawn a duplicate window even when the PWA is already open.
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
@@ -75,20 +41,15 @@ self.addEventListener('notificationclick', (event) => {
       includeUncontrolled: true,
     });
 
-    // Focus an existing PWA window on our origin if one is open. Avoids
-    // spawning a duplicate window every tap.
     for (const client of matchedClients) {
       try {
         const clientUrl = new URL(client.url);
-        if (clientUrl.origin === self.location.origin) {
-          if ('focus' in client) {
-            await client.focus();
-            // Best-effort send the user back to "/" inside the focused window.
-            if ('navigate' in client) {
-              try { await client.navigate(targetUrl); } catch {}
-            }
-            return;
+        if (clientUrl.origin === self.location.origin && 'focus' in client) {
+          await client.focus();
+          if ('navigate' in client) {
+            try { await client.navigate(targetUrl); } catch {}
           }
+          return;
         }
       } catch {}
     }
@@ -98,8 +59,3 @@ self.addEventListener('notificationclick', (event) => {
     }
   })());
 });
-
-// firebase.messaging() must still be initialized so the SW participates in
-// FCM token validation / refresh. Token registration itself happens in the
-// main app via getToken() — this is just lifecycle plumbing.
-firebase.messaging();
