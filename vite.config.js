@@ -20,7 +20,12 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,webp}'],
         // The FCM SW manages its own lifecycle (browser fetches it directly
         // for SW update checks); precaching it here would be wasteful.
-        globIgnores: ['**/firebase-messaging-sw.js']
+        globIgnores: ['**/firebase-messaging-sw.js'],
+        // Let Firebase OAuth helper paths fall through to the network so
+        // Vercel's /__/auth/* rewrite to track-navitag-com.firebaseapp.com
+        // can serve the auth widget. Without this, Workbox's navigation
+        // fallback returns index.html and breaks signInWithRedirect.
+        navigateFallbackDenylist: [/^\/__\//]
       }
     }),
   ],

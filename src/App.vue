@@ -73,36 +73,38 @@ async function retryConnection() {
   await LifecycleService.checkConnectionAndReconnect();
 }
 
-// Returns 'install' | 'notification' | null per PROPOSED_PWA.md §5.5.
-// Install branch is gated by INSTALL_TOAST_ENABLED (currently false at
-// launch) — its body is dead-code-eliminated until the constant flips
-// to true. Notification branch is the live behavior at launch.
+// Returns 'install' | 'notification' | null. Prompt matrix:
+//   Desktop web:        neither (pointer:coarse=false; not standalone)
+//   Mobile/tablet web:  install only (no notifications on web per project rule)
+//   Installed PWA:      notification only (already installed)
+//   Native (Capacitor): neither (early return; native handles push directly)
 const currentToast = computed(() => {
   if (isInIframe()) return null;
   if (Capacitor.isNativePlatform()) return null;
   if (!userStore.isLoggedIn) return null;
 
-  if (INSTALL_TOAST_ENABLED) {
-    const isStandalone =
-      window.matchMedia('(display-mode: standalone)').matches ||
-      window.navigator.standalone === true;
-    if (!isStandalone) {
-      const isMobileTouch = window.matchMedia('(pointer: coarse)').matches;
-      const installDismissedAt = Number(
-        localStorage.getItem('pwa_install_dismissed_at') || 0
-      );
-      if (
-        isMobileTouch &&
-        installStore.deferred &&
-        !installStore.resolvedThisSession &&
-        !installStore.installed &&
-        Date.now() - installDismissedAt >= INSTALL_DISMISS_COOLDOWN_MS
-      ) {
-        return 'install';
-      }
+  const isStandalone =
+    window.matchMedia('(display-mode: standalone)').matches ||
+    window.navigator.standalone === true;
+  const isMobileTouch = window.matchMedia('(pointer: coarse)').matches;
+
+  if (INSTALL_TOAST_ENABLED && !isStandalone && isMobileTouch) {
+    const installDismissedAt = Number(
+      localStorage.getItem('pwa_install_dismissed_at') || 0
+    );
+    if (
+      installStore.deferred &&
+      !installStore.resolvedThisSession &&
+      !installStore.installed &&
+      Date.now() - installDismissedAt >= INSTALL_DISMISS_COOLDOWN_MS
+    ) {
+      return 'install';
     }
   }
 
+  // Notification toast only inside the installed PWA — not in any browser tab.
+  // Project rule: no web notifications, only PWA/native.
+  if (!isStandalone) return null;
   if (!userStore.showPushEnableToast) return null;
   if (userStore.pushPermission !== 'prompt') return null;
   const pushDismissedAt = Number(localStorage.getItem('pwa_push_dismissed_at') || 0);

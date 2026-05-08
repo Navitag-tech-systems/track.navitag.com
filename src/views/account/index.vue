@@ -234,13 +234,18 @@ onMounted(() => {
   userStore.checkPushPermission();
 });
 
-// Install PWA section — manual install entry point for testing.
-// Hidden inside the native app and once the PWA is already installed.
+// Install PWA section — manual install entry point.
+// Hidden on: native app, already-installed PWA, and desktop (no install on
+// desktop per project rule — install promotion is mobile/tablet web only).
 const installNative = Capacitor.isNativePlatform();
 const installStandalone = (() => {
   if (typeof window === 'undefined') return false;
   return window.matchMedia('(display-mode: standalone)').matches ||
     window.navigator.standalone === true;
+})();
+const installIsMobileTouch = (() => {
+  if (typeof window === 'undefined') return false;
+  return window.matchMedia('(pointer: coarse)').matches;
 })();
 const installIsIOS = (() => {
   if (typeof navigator === 'undefined') return false;
@@ -256,7 +261,12 @@ const showIosInstructions = ref(false);
 const showManualInstructions = ref(false);
 const installSuccessMessage = ref('');
 
-const showInstallCard = computed(() => !installNative && !installStandalone && !installStore.installed);
+const showInstallCard = computed(() =>
+  !installNative &&
+  !installStandalone &&
+  !installStore.installed &&
+  installIsMobileTouch
+);
 
 const installHelpText = computed(() => {
   if (installIsIOS) return 'Add Navitag to your home screen for an app-like experience.';

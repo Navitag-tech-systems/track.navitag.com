@@ -1,12 +1,12 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 
-// When true, render our custom install toast (Phase 4/7). When false,
-// Chrome's built-in mini-infobar surfaces naturally on mobile because the
-// beforeinstallprompt listener does NOT preventDefault during suppression.
-// See PROPOSED_PWA.md resolved decisions block. Re-enable later by flipping
-// to true; no other migration needed.
-export const INSTALL_TOAST_ENABLED = false;
+// Kill switch for our custom install toast. When true, the toast owns the
+// install promotion on mobile/tablet web and we preventDefault the browser's
+// mini-infobar. When false, Chrome's built-in infobar surfaces naturally
+// because the beforeinstallprompt listener does NOT preventDefault. Flip to
+// false to disable the toast without code changes (e.g., during incidents).
+export const INSTALL_TOAST_ENABLED = true;
 
 export const useInstallStore = defineStore('install', () => {
   const deferred = ref(null);
