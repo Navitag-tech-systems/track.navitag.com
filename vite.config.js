@@ -4,6 +4,7 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 import tailwindcss from '@tailwindcss/vite'
+import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -11,6 +12,17 @@ export default defineConfig({
     vue(),
     tailwindcss(),
     vueDevTools(),
+    VitePWA({
+      registerType: 'autoUpdate',
+      injectRegister: null,
+      manifest: false,
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,webp}'],
+        // The FCM SW manages its own lifecycle (browser fetches it directly
+        // for SW update checks); precaching it here would be wasteful.
+        globIgnores: ['**/firebase-messaging-sw.js']
+      }
+    }),
   ],
   resolve: {
     alias: {

@@ -3,6 +3,7 @@ import { computed } from 'vue';
 import { useRoute, RouterView } from 'vue-router';
 import { useUserStore } from '@/stores/user.js';
 import { useDevicesStore } from '@/stores/devices.js';
+import { useInstallStore, INSTALL_TOAST_ENABLED } from '@/stores/install.js';
 import BottomNav from './components/bottomNav.vue';
 import Loading from '@/components/loading.vue';
 import Error from '@/components/error.vue';
@@ -10,10 +11,23 @@ import NoNet from './components/noNet.vue';
 import { getPlatformInfo, liqKey } from './utils/variables';
 import { leafletMap } from '@burkaloo/leaflet-vue3'
 import { LifecycleService } from '@/utils/lifecycle'
+import { Capacitor } from '@capacitor/core';
+
+const PUSH_DISMISS_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
+const INSTALL_DISMISS_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000;
 
 const userStore = useUserStore();
 const deviceStore = useDevicesStore();
+const installStore = useInstallStore();
 const route = useRoute();
+
+function isInIframe() {
+  try {
+    return window.self !== window.top;
+  } catch {
+    return true;
+  }
+}
 
 // Check if we are on the main map screen
 const isMapRoute = computed(() => {
@@ -59,6 +73,67 @@ async function retryConnection() {
   await LifecycleService.checkConnectionAndReconnect();
 }
 
+// Returns 'install' | 'notification' | null per PROPOSED_PWA.md §5.5.
+// Install branch is gated by INSTALL_TOAST_ENABLED (currently false at
+// launch) — its body is dead-code-eliminated until the constant flips
+// to true. Notification branch is the live behavior at launch.
+const currentToast = computed(() => {
+  if (isInIframe()) return null;
+  if (Capacitor.isNativePlatform()) return null;
+  if (!userStore.isLoggedIn) return null;
+
+  if (INSTALL_TOAST_ENABLED) {
+    const isStandalone =
+      window.matchMedia('(display-mode: standalone)').matches ||
+      window.navigator.standalone === true;
+    if (!isStandalone) {
+      const isMobileTouch = window.matchMedia('(pointer: coarse)').matches;
+      const installDismissedAt = Number(
+        localStorage.getItem('pwa_install_dismissed_at') || 0
+      );
+      if (
+        isMobileTouch &&
+        installStore.deferred &&
+        !installStore.resolvedThisSession &&
+        !installStore.installed &&
+        Date.now() - installDismissedAt >= INSTALL_DISMISS_COOLDOWN_MS
+      ) {
+        return 'install';
+      }
+    }
+  }
+
+  if (!userStore.showPushEnableToast) return null;
+  if (userStore.pushPermission !== 'prompt') return null;
+  const pushDismissedAt = Number(localStorage.getItem('pwa_push_dismissed_at') || 0);
+  if (Date.now() - pushDismissedAt < PUSH_DISMISS_COOLDOWN_MS) return null;
+  return 'notification';
+});
+
+function dismissPushToast() {
+  localStorage.setItem('pwa_push_dismissed_at', String(Date.now()));
+  userStore.showPushEnableToast = false;
+}
+
+async function clickInstall() {
+  if (!installStore.deferred) return;
+  try {
+    await installStore.deferred.prompt();
+    await installStore.deferred.userChoice;
+  } catch {
+    // prompt() throws if the event has already been used; treat as resolved.
+  }
+  installStore.setDeferred(null);
+  installStore.markResolved();
+}
+
+function dismissInstallToast() {
+  try {
+    localStorage.setItem('pwa_install_dismissed_at', String(Date.now()));
+  } catch {}
+  installStore.markResolved();
+}
+
 </script>
 
 <template>
@@ -71,6 +146,42 @@ async function retryConnection() {
     <Loading v-if="masterLoading"/>
     <Error v-if="userStore.error"/>
     <NoNet v-if="!userStore.internet"/>
+
+    <div
+      v-if="currentToast === 'install'"
+      class="fixed top-[calc(env(safe-area-inset-top)+12px)] left-4 right-4 z-50 bg-white shadow-lg rounded-lg p-4 flex items-center gap-3"
+    >
+      <span class="flex-1 text-sm text-slate-800">
+        Install Navitag for a faster, app-like experience.
+      </span>
+      <button
+        class="px-3 py-1 bg-blue-600 text-white rounded text-sm"
+        @click="clickInstall"
+      >
+        Install
+      </button>
+      <button class="text-slate-500 text-sm" @click="dismissInstallToast">
+        Dismiss
+      </button>
+    </div>
+
+    <div
+      v-if="currentToast === 'notification'"
+      class="fixed top-[calc(env(safe-area-inset-top)+12px)] left-4 right-4 z-50 bg-white shadow-lg rounded-lg p-4 flex items-center gap-3"
+    >
+      <span class="flex-1 text-sm text-slate-800">
+        Enable notifications to receive device alerts.
+      </span>
+      <button
+        class="px-3 py-1 bg-blue-600 text-white rounded text-sm"
+        @click="userStore.enablePushFromGesture()"
+      >
+        Enable
+      </button>
+      <button class="text-slate-500 text-sm" @click="dismissPushToast">
+        Dismiss
+      </button>
+    </div>
 
     <main 
       class="flex-1 w-full relative"

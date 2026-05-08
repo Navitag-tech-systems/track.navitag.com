@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue';
+import { ref, watch, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '@/stores/user.js';
 import { signOut } from '@/utils/auth';
@@ -168,6 +168,69 @@ const updatePassword = async () => {
   }
 };
 
+// State for Push Notifications
+const pushBusy = ref(false);
+const pushMessage = ref('');
+const pushError = ref('');
+
+const pushEnabled = computed(() => userStore.pushPermission === 'granted');
+const pushUnsupported = computed(() => userStore.pushPermission === 'unsupported');
+
+const pushHelpText = computed(() => {
+  switch (userStore.pushPermission) {
+    case 'granted':
+      return 'Enabled. Tap to refresh the device token.';
+    case 'denied':
+      return 'Blocked at the system level. Open your device settings to allow notifications.';
+    case 'unsupported':
+      return 'Notifications are not supported on this platform.';
+    case 'prompt':
+    case 'prompt-with-rationale':
+      return 'Tap to enable push notifications on this device.';
+    default:
+      return 'Tap to enable push notifications on this device.';
+  }
+});
+
+const togglePush = async () => {
+  if (pushBusy.value || pushUnsupported.value) return;
+  pushBusy.value = true;
+  pushMessage.value = '';
+  pushError.value = '';
+
+  try {
+    if (userStore.pushPermission === 'denied') {
+      pushError.value = 'Notifications are blocked. Open your device settings to enable them, then come back.';
+      return;
+    }
+
+    const result = await userStore.enablePushFromGesture();
+
+    if (result === 'granted') {
+      pushMessage.value = userStore.fcmToken
+        ? 'Notifications enabled.'
+        : 'Permission granted, but token registration failed. Try again.';
+    } else if (result === 'token-error') {
+      pushError.value = 'Permission granted, but failed to register with the server. Try again.';
+    } else if (result === 'denied') {
+      pushError.value = 'Permission denied. Open your device settings to enable notifications.';
+    } else if (result === 'unsupported') {
+      pushError.value = 'Notifications are not supported on this platform.';
+    } else {
+      pushError.value = 'Unable to enable notifications.';
+    }
+  } catch (err) {
+    console.error('Toggle push failed:', err);
+    pushError.value = err?.message || 'Failed to update notification permission.';
+  } finally {
+    pushBusy.value = false;
+  }
+};
+
+onMounted(() => {
+  userStore.checkPushPermission();
+});
+
 const handleLogout = async () => {
   try {
     await signOut();
@@ -250,6 +313,43 @@ const handleLogout = async () => {
             {{ profileLoading ? 'Saving...' : 'Save Profile' }}
           </button>
         </form>
+      </div>
+
+      <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
+        <h2 class="text-lg font-bold text-gray-800 mb-4">Notifications</h2>
+
+        <div class="flex items-center justify-between">
+          <div class="flex-1 pr-4">
+            <p class="text-sm font-medium text-gray-800">Push notifications</p>
+            <p class="text-xs text-gray-500 mt-1 leading-snug">{{ pushHelpText }}</p>
+          </div>
+
+          <button
+            type="button"
+            :disabled="pushBusy || pushUnsupported"
+            @click="togglePush"
+            :aria-pressed="pushEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0',
+              pushEnabled ? 'bg-brand' : 'bg-gray-300',
+              (pushBusy || pushUnsupported) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+            ]"
+          >
+            <span
+              :class="[
+                'inline-block h-4 w-4 transform rounded-full bg-white transition shadow',
+                pushEnabled ? 'translate-x-6' : 'translate-x-1'
+              ]"
+            />
+            <i
+              v-if="pushBusy"
+              class="fa-solid fa-circle-notch fa-spin absolute -right-6 text-gray-400 text-sm"
+            ></i>
+          </button>
+        </div>
+
+        <p v-if="pushMessage" class="text-green-600 text-sm mt-3"><i class="fa-solid fa-check mr-1"></i>{{ pushMessage }}</p>
+        <p v-if="pushError" class="text-red-500 text-sm mt-3">{{ pushError }}</p>
       </div>
 
       <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100">

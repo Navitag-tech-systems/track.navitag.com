@@ -14,6 +14,8 @@ export const useUserStore = defineStore('user', () => {
   const user = ref(null);
   const idToken = ref(null);
   const fcmToken = ref(null);
+  const pushPermission = ref('unknown');
+  const showPushEnableToast = ref(false);
   const countryCode = ref(null);
   const ipLocation = ref(null);
   const name = ref(null);
@@ -88,41 +90,129 @@ export const useUserStore = defineStore('user', () => {
     return null;
   }
 
-  async function initPushNotifications() {
-    const platform = Capacitor.getPlatform();
-    if (platform === 'web' && window.location.protocol === 'http:') {
+  async function isPushSupportedHere() {
+    // FirebaseMessaging.isSupported() returns true on Android/iOS native and
+    // checks for Push API + Notification API + ServiceWorker on web. Replaces
+    // the old `protocol === 'http:'` heuristic which mis-classified iOS
+    // Safari < 16.4 and other unsupported environments.
+    try {
+      const result = await FirebaseMessaging.isSupported();
+      return result?.isSupported === true;
+    } catch {
       return false;
     }
+  }
 
-    let status = await FirebaseMessaging.checkPermissions();
-    if (status.receive !== 'granted') {
-      status = await FirebaseMessaging.requestPermissions();
+  function describeWebDevice() {
+    if (Capacitor.isNativePlatform()) return undefined;
+    const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+    if (/iPad|iPhone|iPod/.test(ua)) return 'Safari (iOS web)';
+    if (/Android/.test(ua))          return 'Chrome (Android web)';
+    if (/Mac/.test(ua))              return 'Safari (macOS web)';
+    if (/Windows/.test(ua))          return 'Chrome (Windows web)';
+    return 'Web';
+  }
+
+  async function checkPushPermission() {
+    if (!(await isPushSupportedHere())) {
+      pushPermission.value = 'unsupported';
+      return 'unsupported';
     }
-    
-    if (status.receive === 'granted') {
-      const result = await FirebaseMessaging.getToken({
+    try {
+      const status = await FirebaseMessaging.checkPermissions();
+      pushPermission.value = status.receive;
+      return status.receive;
+    } catch (err) {
+      console.error('checkPushPermission failed:', err);
+      pushPermission.value = 'unknown';
+      return 'unknown';
+    }
+  }
+
+  async function retrieveAndPersistFcmToken() {
+    try {
+      const options = {
         vapidKey: 'BNfYDc6R8T-d0Mbmv8Idhmu0Ufl5zqiK9GSty0XNKDkp38ETHDV74t2BwmjiEd4aN-GYobZbLq-r_I_ga25a--Q',
-      });
+      };
+      if (Capacitor.getPlatform() === 'web') {
+        // Web requires the FCM SW registration to mint a token. Native plugin
+        // handles its own SW equivalent internally.
+        options.serviceWorkerRegistration = await navigator.serviceWorker.register(
+          '/firebase-messaging-sw.js'
+        );
+      }
+      const result = await FirebaseMessaging.getToken(options);
       fcmToken.value = result.token;
-      
+
       if (result.token) {
         try {
+          const platform = Capacitor.getPlatform(); // 'web' | 'android' | 'ios'
+          const deviceLabel = describeWebDevice();
           await request.send({
             url: `${baseUrl}/user/fcm-token`,
             method: 'POST',
-            data: { fcm_token: result.token },
+            data: {
+              fcm_token: result.token,
+              platform,
+              ...(deviceLabel ? { device_label: deviceLabel } : {}),
+            },
             token: idToken.value
           });
           console.log('Successfully retrieved & saved FCM Token');
         } catch (err) {
           console.error('Failed to send FCM token to backend:', err);
+          return 'token-error';
         }
       }
-      
+
       FirebaseMessaging.addListener('notificationReceived', (event) => {
         console.log('Notification:', event.notification);
       });
+      return 'granted';
+    } catch (err) {
+      console.warn('FCM token retrieval failed:', err);
+      return 'token-error';
     }
+  }
+
+  async function initPushNotifications() {
+    if (!(await isPushSupportedHere())) {
+      pushPermission.value = 'unsupported';
+      return 'unsupported';
+    }
+
+    let status = await FirebaseMessaging.checkPermissions();
+    if (status.receive !== 'granted') {
+      if (!Capacitor.isNativePlatform()) {
+        // Web: defer permission request to a user gesture. Browsers (Safari
+        // especially) auto-deny Notification.requestPermission() calls that
+        // aren't tied to a click. The toast in App.vue calls
+        // enablePushFromGesture() below from a real click handler.
+        pushPermission.value = status.receive;
+        showPushEnableToast.value = true;
+        return status.receive;
+      }
+      status = await FirebaseMessaging.requestPermissions();
+    }
+    pushPermission.value = status.receive;
+
+    if (status.receive === 'granted') {
+      return await retrieveAndPersistFcmToken();
+    }
+    return status.receive;
+  }
+
+  async function enablePushFromGesture() {
+    // Must run synchronously inside a user-gesture event handler so Safari
+    // accepts the permission request. Called from the App.vue toast Enable
+    // button and from the account-page push toggle.
+    const status = await FirebaseMessaging.requestPermissions();
+    pushPermission.value = status.receive;
+    showPushEnableToast.value = false;
+    if (status.receive === 'granted') {
+      return await retrieveAndPersistFcmToken();
+    }
+    return status.receive;
   }
 
   // Actions
@@ -384,7 +474,8 @@ export const useUserStore = defineStore('user', () => {
 
   return {
     user, idToken, countryCode, ipLocation, loading, isLoggedIn, internet, error,
-    setUser, clearUser, traccarLogout, serverConnect, connectSocket, fetchCountryCode, backendSync, disconnectSocket, getFreshToken, initPushNotifications,
-    server_url, server_token, server_connect, notifications, socket, name, phone, email
+    setUser, clearUser, traccarLogout, serverConnect, connectSocket, fetchCountryCode, backendSync, disconnectSocket, getFreshToken, initPushNotifications, enablePushFromGesture, checkPushPermission,
+    server_url, server_token, server_connect, notifications, socket, name, phone, email,
+    fcmToken, pushPermission, showPushEnableToast
   };
 });

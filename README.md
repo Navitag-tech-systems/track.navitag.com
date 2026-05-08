@@ -25,6 +25,8 @@ Vue 3 + Capacitor 8 mobile app for GPS device tracking. Connects to `api.navitag
 - [ ] Concurrent trigger (foreground + network recover same moment) → only one reconnect runs (lock works)
 - [ ] 401 during `startSession` → token refresh retry succeeds on second attempt
 
+**PWA maintenance — see "PWA maintenance" subsection under Project Status.**
+
 ## Project Status
 
 ### Lifecycle Service
@@ -123,3 +125,73 @@ Wrapped in try/catch with non-blocking navigation, so link failures log a warnin
 - `user.js` (Pinia store): Manages Firebase auth, backend sync, Traccar session, and WebSocket connection. Socket declared as `shallowRef` to avoid Vue reactivity overhead. Includes `traccarLogout()` for clean session teardown (native cookie clearing + web localStorage cleanup).
 - `http.js`: Custom HTTP wrapper using CapacitorHttp for native requests with cookie management.
 - Logout clears both Firebase and Traccar sessions. Web uses localStorage to persist `server_url` for cold-boot Traccar session cleanup.
+
+### PWA maintenance
+
+The web app at `https://track.navitag.com` ships as an installable PWA. It was added as a temporary stopgap during the native-store release delay; **do not invest in PWA-only features beyond the existing minimum parity list**. Sunset / migration to native stores will be planned separately. Detailed design + open decisions live in `PROPOSED_PWA.md` while it exists; this section is the durable operational summary.
+
+**Hard gate.** `Capacitor.isNativePlatform()` separates PWA-only code paths from native. Any new service-worker registration, `beforeinstallprompt` handler, `display-mode` check, or web-only push code must respect this gate. Canonical pattern in `src/utils/pwa.js`:
+
+```js
+if (Capacitor.isNativePlatform()) { /* defensive unregister, then return */ }
+if (!('serviceWorker' in navigator)) return;
+```
+
+**Two service workers, separate scopes.** They don't conflict — push events route only to the FCM SW.
+
+| File | Generator | Scope | Purpose |
+|---|---|---|---|
+| `dist/sw.js` (Workbox) | `vite-plugin-pwa` (build-time from `public/` + bundled assets) | `/` | App-shell / asset precache for installability |
+| `public/firebase-messaging-sw.js` | hand-edited, copied as-is | `/firebase-cloud-messaging-push-scope` | Background push delivery |
+
+The Workbox build is configured in `vite.config.js` with `globIgnores: ['**/firebase-messaging-sw.js']` so Workbox does not precache or intercept the FCM SW.
+
+**Install toast suppressed at launch.** `INSTALL_TOAST_ENABLED = false` in `src/stores/install.js`. The `beforeinstallprompt` listener in `pwa.js` captures + stashes the deferred event but does **not** call `e.preventDefault()` while suppression is active — so Chrome's built-in mini-infobar surfaces unmodified on mobile/Chromium for users who want to self-install. Re-enabling our custom toast later: flip the constant to `true` and rebuild. The full install template + handlers in `App.vue` are already wired (currently dead-code-eliminated by Rollup).
+
+**First-deploy gate (transitional).** `src/utils/pwa.js` short-circuits `registerPwa()` unless the URL contains `?pwa=1`. This limits the blast radius of the very first SW deploy to verified sessions. **Remove the gate (the two-line `URLSearchParams` block) in the immediate follow-up deploy** once the SW is verified registering / updating / unregistering cleanly via `https://track.navitag.com/?pwa=1` + DevTools → Application. Until removed, normal visitors do not get a Workbox SW. (FCM SW is separate and is **not** behind this gate — its bug surface is tiny.)
+
+**Firebase version-sync rule (load-bearing).** When bumping `firebase` in `package.json`:
+1. Run `npm install` then `npm ls firebase` to read the resolved version.
+2. Update **both** `importScripts` URLs in `public/firebase-messaging-sw.js` to that exact resolved version.
+3. Land both changes in the **same commit**.
+4. Reviewer must visually verify the SW moved with the package on every Firebase upgrade PR.
+
+A guard comment exists at the top of `firebase-messaging-sw.js` for this reason. Skew between bundled SDK and SW SDK silently breaks background notifications for some users — symptom is annoying to track down. See `PROPOSED_PWA.md` Phase 8 → "Firebase version-sync protocol" for the full rationale.
+
+**SW kill-switch protocol.** Never rename or delete `sw.js` or `firebase-messaging-sw.js` outright. Vercel's SPA fallback would serve `index.html` at the missing path, the browser would fail to parse HTML as JS, and the old SW would keep running. Instead, **replace** the file contents with a stub that calls `self.registration.unregister()` and `clients.claim()`, deploy, wait ~24-48h for users to navigate at least once, then redeploy a fixed SW. Stub body for either SW:
+
+```js
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (event) => {
+  event.waitUntil((async () => {
+    await self.registration.unregister();
+    const clients = await self.clients.matchAll();
+    clients.forEach(c => c.navigate(c.url));
+  })());
+});
+```
+
+For the Workbox SW, the cleanest path is to comment out the `VitePWA(...)` plugin call in `vite.config.js` and ship a literal `public/sw.js` containing the stub. Vite copies `public/` → `dist/` root unprocessed.
+
+**Asset regeneration warning.** PWA icons live at `public/icons/icon-{192,512,512-maskable}.png` and `public/apple-touch-icon.png` — hand-authored PNG sourced from `assets/logo.png`, `assets/icon-foreground.png`, and `assets/icon-background.png` via ImageMagick. The 512-maskable uses an 80% center safe zone (foreground at 410×410 centered on background at 512×512) so Android adaptive icon shapes don't clip the logo. **Do not run `npx capacitor-assets generate` against the PWA target** — earlier output produced a broken `manifest.webmanifest` (wrong MIME on `.webp` files, missing icon files, incorrect maskable safe-zone). `@capacitor/assets` is fine for native icons/splashes only.
+
+**No deep-linking (regression-prevention).** `track.navitag.com/*` links always open in the browser — never auto-route into the PWA or the native apps. Three things stay coordinated:
+
+1. `android/app/src/main/AndroidManifest.xml` MUST NOT contain an `<intent-filter>` for `https://track.navitag.com`.
+2. `public/.well-known/assetlinks.json` MUST NOT exist (or must not include this app's package + fingerprint).
+3. `public/manifest.webmanifest` MUST NOT include a `capture_links` field.
+4. No `apple-app-site-association` should be published to the web origin.
+
+If any of these change, links will silently start routing differently and users will be confused. Treat this as load-bearing project policy.
+
+**Vercel deploy / cache headers.** SW files (`sw.js`, `firebase-messaging-sw.js`) must be served with `Cache-Control: public, max-age=0, must-revalidate`. Vercel's default for non-hashed static files already does this — do not override in `vercel.json` without re-confirming SW headers. SW updates flow naturally on each deploy: the SW file's bytes change → browser detects on next navigation → autoUpdate activates → tabs reload silently. No manual intervention needed for routine updates; the kill-switch is only for the catastrophic case where a deployed SW won't let the next SW install.
+
+**Native regression smoke test.** After any PWA-touching change, run on a Capacitor build before merging:
+
+1. Native console at startup shows no SW registration messages.
+2. `navigator.serviceWorker.getRegistrations()` returns `[]` on native (after the defensive unregister loop in `pwa.js`).
+3. No "Install app" banner anywhere in the native app.
+4. FCM push received via native plugin (not web SW).
+5. QR scanner opens the native scanner UI, not the `getUserMedia` overlay.
+
+Full functional / install / regression test matrix lives in `PROPOSED_PWA.md` §7.1–§7.4 while it exists.
