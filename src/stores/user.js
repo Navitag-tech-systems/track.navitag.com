@@ -144,6 +144,15 @@ export const useUserStore = defineStore('user', () => {
   }
 
   async function retrieveAndPersistFcmToken() {
+    // Defense in depth. Project rule: notifications are never registered on
+    // browser tabs — only native or installed PWA. The notification card is
+    // already hidden on browser, but if any future code path reaches here
+    // unexpectedly, we still bail before registering an FCM SW or POSTing a
+    // token to the backend.
+    if (!Capacitor.isNativePlatform() && !isStandalonePwa()) {
+      console.log('FCM token registration skipped: browser-tab context');
+      return 'web-skipped';
+    }
     try {
       const options = {
         vapidKey: 'BNfYDc6R8T-d0Mbmv8Idhmu0Ufl5zqiK9GSty0XNKDkp38ETHDV74t2BwmjiEd4aN-GYobZbLq-r_I_ga25a--Q',
@@ -209,6 +218,20 @@ export const useUserStore = defineStore('user', () => {
       return 'unsupported';
     }
 
+    // Project rule: notifications never on web. In a regular browser tab,
+    // skip the entire init flow — no FCM SW registration, no token fetch,
+    // no backend POST. We still record current OS-level permission for any
+    // UI that wants it, but no further side effects.
+    if (!Capacitor.isNativePlatform() && !isStandalonePwa()) {
+      try {
+        const status = await FirebaseMessaging.checkPermissions();
+        pushPermission.value = status.receive;
+      } catch {
+        pushPermission.value = 'unknown';
+      }
+      return pushPermission.value;
+    }
+
     // User explicitly disabled push on this device. Track current OS-level
     // permission for UI accuracy but don't auto-resubscribe. Re-enable goes
     // through the toggle / toast which calls enablePushFromGesture().
@@ -244,6 +267,12 @@ export const useUserStore = defineStore('user', () => {
   }
 
   async function enablePushFromGesture() {
+    // Defense in depth — toast and toggle that call this are already hidden
+    // on browser tabs, but block here too so a stray invocation can't drive
+    // the OS permission prompt or persist a token from a non-PWA context.
+    if (!Capacitor.isNativePlatform() && !isStandalonePwa()) {
+      return 'web-skipped';
+    }
     // Must run synchronously inside a user-gesture event handler so Safari
     // accepts the permission request. Called from the App.vue toast Enable
     // button and from the account-page push toggle.
