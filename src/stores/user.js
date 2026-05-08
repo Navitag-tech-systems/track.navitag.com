@@ -110,14 +110,21 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  function isStandalonePwa() {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(display-mode: standalone)').matches ||
+      window.navigator.standalone === true;
+  }
+
   function describeWebDevice() {
     if (Capacitor.isNativePlatform()) return undefined;
     const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
-    if (/iPad|iPhone|iPod/.test(ua)) return 'Safari (iOS web)';
-    if (/Android/.test(ua))          return 'Chrome (Android web)';
-    if (/Mac/.test(ua))              return 'Safari (macOS web)';
-    if (/Windows/.test(ua))          return 'Chrome (Windows web)';
-    return 'Web';
+    const ctx = isStandalonePwa() ? 'PWA' : 'web';
+    if (/iPad|iPhone|iPod/.test(ua)) return `Safari (iOS ${ctx})`;
+    if (/Android/.test(ua))          return `Chrome (Android ${ctx})`;
+    if (/Mac/.test(ua))              return `Safari (macOS ${ctx})`;
+    if (/Windows/.test(ua))          return `Chrome (Windows ${ctx})`;
+    return `Web (${ctx})`;
   }
 
   async function checkPushPermission() {
@@ -159,7 +166,15 @@ export const useUserStore = defineStore('user', () => {
 
       if (result.token) {
         try {
-          const platform = Capacitor.getPlatform(); // 'web' | 'android' | 'ios'
+          // platform values:
+          //   'android' | 'ios'  — native Capacitor app
+          //   'pwa'              — installed web PWA (any OS; OS in device_label)
+          //   'web'              — browser tab (any OS; OS in device_label)
+          // Distinguishing PWA from web matters for backend analytics and any
+          // future fan-out logic that wants to target only installed surfaces.
+          const platform = Capacitor.isNativePlatform()
+            ? Capacitor.getPlatform()
+            : (isStandalonePwa() ? 'pwa' : 'web');
           const deviceLabel = describeWebDevice();
           await request.send({
             url: `${baseUrl}/user/fcm-token`,
