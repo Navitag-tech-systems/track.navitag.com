@@ -14,9 +14,15 @@ Last updated: 2026-05-07
 
   **The web notification toast is explicitly NOT affected by this suppression.** It continues to render per its existing rules (logged-in + web + permission state in `{prompt, default}` + 7-day dismiss cooldown). Notifications are the load-bearing PWA-only feature for this stopgap; suppressing them too would defeat the point.
 
-  **Chrome's built-in mini-infobar is preserved on mobile during suppression.** Per Phase 4, the `beforeinstallprompt` listener captures and stashes the event but does **not** call `e.preventDefault()` while suppression is active. This lets motivated mobile users on Android/Chromium self-install via Chrome's native mini-infobar (same path desktop already takes). iOS users still have only the manual Safari Share → Add to Home Screen path — Apple does not surface any equivalent prompt. Net install-rate expectation at launch: very low (~internal testers + a handful of motivated users), which is the intended quietly-shipping behavior.
+  **What users actually see on each platform during suppression** (verified against Chrome 121+ and current iOS Safari):
 
-  Reviewers: do not flag missing install toast or missing iOS coachmark as bugs — they are intentionally suppressed for the initial release. The notification toast must continue to function. Chrome's mini-infobar appearing on mobile during suppression is **intended**, not a leak.
+  - **Android Chrome (Xiaomi/HyperOS, Pixel, Samsung, etc.):** **no automatic install UI surfaces.** Chrome 76+ removed the bottom mini-infobar; the modern affordance is the three-dots menu → "Install app" / "Add to Home screen." Chrome may also show a small ambient install icon in the URL bar at its own discretion (driven by Site Engagement Score). With `preventDefault()` not called, Chrome decides whether to show any of this — typically nothing automatic appears for a brand-new visit.
+  - **Desktop Chrome / Edge:** small install icon appears in the URL bar once installability is detected. User clicks it to install. This is the only "automatic" surface across any platform during suppression.
+  - **iOS Safari:** **no install UI of any kind.** Apple does not expose a `beforeinstallprompt` equivalent. Users must manually use Share → Add to Home Screen.
+
+  **Net install-rate expectation at launch: very low (~internal testers + URL-bar-icon noticers).** This matches the intended quietly-shipping behavior. The previously documented "mini-infobar surfaces on mobile" was based on outdated Chrome behavior and has been corrected.
+
+  Reviewers: do not flag missing install UI on mobile as a bug — Chrome's modern behavior is no-auto-prompt unless the page calls `.prompt()`, which the suppression flag prevents. The install path during suppression is the browser's three-dots menu, not any in-page UI.
 
 **Landed pre-Phase-1 (already in main):**
 - **No deep-linking from `https://track.navitag.com/*`.** Resolved policy: links to `track.navitag.com` always open in the browser, never auto-route into the PWA or native app. Concrete repo changes:
