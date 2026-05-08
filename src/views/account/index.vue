@@ -408,28 +408,30 @@ const handleLogout = async () => {
             <p class="text-xs text-gray-500 mt-1 leading-snug">{{ pushHelpText }}</p>
           </div>
 
-          <button
-            type="button"
-            :disabled="pushBusy || pushUnsupported"
-            @click="togglePush"
-            :aria-pressed="pushEnabled"
-            :class="[
-              'relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0',
-              pushEnabled ? 'bg-brand' : 'bg-gray-300',
-              (pushBusy || pushUnsupported) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
-            ]"
-          >
-            <span
-              :class="[
-                'inline-block h-4 w-4 transform rounded-full bg-white transition shadow',
-                pushEnabled ? 'translate-x-6' : 'translate-x-1'
-              ]"
-            />
+          <div class="flex items-center gap-2 shrink-0">
             <i
               v-if="pushBusy"
-              class="fa-solid fa-circle-notch fa-spin absolute -right-6 text-gray-400 text-sm"
+              class="fa-solid fa-circle-notch fa-spin text-gray-400 text-sm"
             ></i>
-          </button>
+            <button
+              type="button"
+              :disabled="pushBusy || pushUnsupported"
+              @click="togglePush"
+              :aria-pressed="pushEnabled"
+              :class="[
+                'relative inline-flex h-6 w-11 items-center rounded-full transition',
+                pushEnabled ? 'bg-brand' : 'bg-gray-300',
+                (pushBusy || pushUnsupported) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+              ]"
+            >
+              <span
+                :class="[
+                  'inline-block h-4 w-4 transform rounded-full bg-white transition shadow',
+                  pushEnabled ? 'translate-x-6' : 'translate-x-1'
+                ]"
+              />
+            </button>
+          </div>
         </div>
 
         <p v-if="pushMessage" class="text-green-600 text-sm mt-3"><i class="fa-solid fa-check mr-1"></i>{{ pushMessage }}</p>
