@@ -1,7 +1,6 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref } from 'vue';
 import { useUserStore } from '@/stores/user.js';
-import { useInstallStore } from '@/stores/install.js';
 import { RouterLink } from 'vue-router';
 import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
@@ -51,56 +50,6 @@ const handleLogin = async () => {
   }
 };
 
-// Install PWA — pre-login entry point. Letting iOS users install before
-// login avoids the "isolated PWA storage = re-login required" UX hit.
-const installStore = useInstallStore();
-const installNative = Capacitor.isNativePlatform();
-const installStandalone = (() => {
-  if (typeof window === 'undefined') return false;
-  return window.matchMedia('(display-mode: standalone)').matches ||
-    window.navigator.standalone === true;
-})();
-const installIsIOS = (() => {
-  if (typeof navigator === 'undefined') return false;
-  const ua = navigator.userAgent || '';
-  return /iPad|iPhone|iPod/.test(ua) ||
-    (ua.includes('Mac') && navigator.maxTouchPoints > 1);
-})();
-const installIsAndroid = (() => {
-  if (typeof navigator === 'undefined') return false;
-  return /Android/.test(navigator.userAgent || '');
-})();
-const showInstallLink = computed(() => !installNative && !installStandalone && !installStore.installed);
-const showIosInstructions = ref(false);
-const showManualInstructions = ref(false);
-
-async function clickLoginInstall() {
-  showIosInstructions.value = false;
-  showManualInstructions.value = false;
-
-  // iOS Safari has no programmatic install — show steps inline.
-  if (installIsIOS) {
-    showIosInstructions.value = true;
-    return;
-  }
-
-  // Programmatic install if Chrome has fired beforeinstallprompt for us.
-  if (installStore.deferred) {
-    try {
-      await installStore.deferred.prompt();
-      await installStore.deferred.userChoice;
-    } catch {}
-    installStore.setDeferred(null);
-    installStore.markResolved();
-    return;
-  }
-
-  // No deferred event captured yet (Chrome's engagement heuristic hasn't
-  // fired, browser doesn't support beforeinstallprompt, etc.). Show the
-  // canonical manual install path for the platform.
-  showManualInstructions.value = true;
-}
-
 // Provider Login (Google/Apple)
 const handleProviderLogin = async (providerHandler) => {
   loading.value = true;
@@ -146,41 +95,6 @@ const handleProviderLogin = async (providerHandler) => {
           <svg v-if="loading" class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
           {{ loading ? 'Signing in...' : 'Sign In' }}
         </button>
-
-        <div v-if="showInstallLink" class="text-center mt-3">
-          <a href="#" @click.prevent="clickLoginInstall" class="text-xs text-brand hover:underline">
-            <i class="fa-solid fa-mobile-screen mr-1"></i>Install App on Home Screen
-          </a>
-        </div>
-
-        <div v-if="installIsIOS && showIosInstructions" class="mt-3 p-3 bg-gray-50 rounded-lg text-xs text-gray-700 leading-relaxed border border-gray-200">
-          <p class="font-semibold mb-2">Install on iPhone / iPad:</p>
-          <ol class="list-decimal list-inside space-y-1">
-            <li>Tap the <i class="fa-solid fa-arrow-up-from-bracket"></i> Share button at the bottom of Safari.</li>
-            <li>Scroll down and tap <strong>Add to Home Screen</strong>.</li>
-            <li>Tap <strong>Add</strong> in the top-right corner.</li>
-          </ol>
-          <p class="mt-2 text-gray-500 italic">Only works in Safari on iOS — not Chrome or other browsers.</p>
-        </div>
-
-        <div v-if="showManualInstructions && installIsAndroid" class="mt-3 p-3 bg-gray-50 rounded-lg text-xs text-gray-700 leading-relaxed border border-gray-200">
-          <p class="font-semibold mb-2">Install on Android:</p>
-          <ol class="list-decimal list-inside space-y-1">
-            <li>Tap the <strong><i class="fa-solid fa-ellipsis-vertical"></i> three-dots menu</strong> in the top-right of Chrome.</li>
-            <li>Tap <strong>Install app</strong> (or <strong>Add to Home screen</strong>).</li>
-            <li>Confirm <strong>Install</strong> in the dialog.</li>
-          </ol>
-          <p class="mt-2 text-gray-500 italic">Doesn't work in private/incognito mode or in-app browsers (Facebook, Instagram, etc.).</p>
-        </div>
-
-        <div v-if="showManualInstructions && !installIsAndroid && !installIsIOS" class="mt-3 p-3 bg-gray-50 rounded-lg text-xs text-gray-700 leading-relaxed border border-gray-200">
-          <p class="font-semibold mb-2">Install on this device:</p>
-          <ol class="list-decimal list-inside space-y-1">
-            <li>Look for the <strong><i class="fa-solid fa-circle-down"></i> install icon</strong> in the URL bar.</li>
-            <li>Or open the browser menu and choose <strong>Install Navitag</strong>.</li>
-            <li>Confirm <strong>Install</strong> in the dialog.</li>
-          </ol>
-        </div>
       </form>
 
       <p v-if="feedbackMsg" :class="['mt-4 text-center text-sm', isError ? 'text-red-500' : 'text-gray-600']">{{ feedbackMsg }}</p>
