@@ -154,7 +154,7 @@ function dismissInstallToast() {
       class="fixed top-[calc(env(safe-area-inset-top)+12px)] left-4 right-4 z-50 bg-white shadow-lg rounded-lg p-4 flex items-center gap-3"
     >
       <span class="flex-1 text-sm text-slate-800">
-        Install Navitag for a faster, app-like experience.
+        Install Navitag App
       </span>
       <button
         class="px-3 py-1 bg-blue-600 text-white rounded text-sm"
@@ -162,8 +162,12 @@ function dismissInstallToast() {
       >
         Install
       </button>
-      <button class="text-slate-500 text-sm" @click="dismissInstallToast">
-        Dismiss
+      <button
+        class="text-slate-500 hover:text-slate-700 cursor-pointer"
+        aria-label="Dismiss"
+        @click="dismissInstallToast"
+      >
+        <i class="fa-solid fa-xmark text-lg"></i>
       </button>
     </div>
 
