@@ -175,6 +175,9 @@ const updatePassword = async () => {
 const pushBusy = ref(false);
 const pushMessage = ref('');
 const pushError = ref('');
+// "Disabled on this device" is neither success (green check) nor error
+// (red, no icon) — it's an intentional opt-out. Render in red with an X.
+const pushDisabledMessage = ref('');
 
 // "Enabled" requires both OS permission AND a registered token. After the
 // user disables push on this device we delete the token but the OS permission
@@ -198,11 +201,12 @@ const togglePush = async () => {
   pushBusy.value = true;
   pushMessage.value = '';
   pushError.value = '';
+  pushDisabledMessage.value = '';
 
   try {
     if (pushEnabled.value) {
       await userStore.disablePushOnThisDevice();
-      pushMessage.value = 'Notifications disabled on this device.';
+      pushDisabledMessage.value = 'Notifications disabled on this device.';
       return;
     }
 
@@ -238,9 +242,8 @@ onMounted(() => {
   userStore.checkPushPermission();
 });
 
-// Install PWA section — manual install entry point.
-// Hidden on: native app, already-installed PWA, and desktop (no install on
-// desktop per project rule — install promotion is mobile/tablet web only).
+// Platform detection — used by both Install card and Notifications card to
+// gate visibility. Both cards are restricted to Android/iOS mobile/tablet only.
 const installNative = Capacitor.isNativePlatform();
 const installStandalone = (() => {
   if (typeof window === 'undefined') return false;
@@ -261,15 +264,28 @@ const installIsAndroid = (() => {
   if (typeof navigator === 'undefined') return false;
   return /Android/.test(navigator.userAgent || '');
 })();
+const isMobileOS = installIsIOS || installIsAndroid;
 const showIosInstructions = ref(false);
 const showManualInstructions = ref(false);
 const installSuccessMessage = ref('');
 
+// Install card: Android/iOS mobile/tablet browsers only. Hidden on desktop,
+// non-Android/iOS UAs, native app, and once installed.
 const showInstallCard = computed(() =>
   !installNative &&
   !installStandalone &&
   !installStore.installed &&
-  installIsMobileTouch
+  installIsMobileTouch &&
+  isMobileOS
+);
+
+// Notifications card: only inside the installed PWA on Android/iOS mobile.
+// Hidden in any browser tab (per project rule: no notifications on web).
+const showNotificationsCard = computed(() =>
+  !installNative &&
+  installStandalone &&
+  installIsMobileTouch &&
+  isMobileOS
 );
 
 const installHelpText = computed(() => {
@@ -399,7 +415,7 @@ const handleLogout = async () => {
         </form>
       </div>
 
-      <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
+      <div v-if="showNotificationsCard" class="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
         <h2 class="text-lg font-bold text-gray-800 mb-4">Notifications</h2>
 
         <div class="flex items-center justify-between">
@@ -435,6 +451,7 @@ const handleLogout = async () => {
         </div>
 
         <p v-if="pushMessage" class="text-green-600 text-sm mt-3"><i class="fa-solid fa-check mr-1"></i>{{ pushMessage }}</p>
+        <p v-if="pushDisabledMessage" class="text-red-500 text-sm mt-3"><i class="fa-solid fa-xmark mr-1"></i>{{ pushDisabledMessage }}</p>
         <p v-if="pushError" class="text-red-500 text-sm mt-3">{{ pushError }}</p>
       </div>
 

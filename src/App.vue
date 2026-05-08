@@ -74,10 +74,10 @@ async function retryConnection() {
 }
 
 // Returns 'install' | 'notification' | null. Prompt matrix:
-//   Desktop web:        neither (pointer:coarse=false; not standalone)
-//   Mobile/tablet web:  install only (no notifications on web per project rule)
-//   Installed PWA:      notification only (already installed)
-//   Native (Capacitor): neither (early return; native handles push directly)
+//   Android/iOS browser (mobile/tablet): install toast only
+//   Android/iOS installed PWA:           notification toast only
+//   Anything else (desktop, other UAs):  neither
+//   Native (Capacitor):                  neither (handled natively)
 const currentToast = computed(() => {
   if (isInIframe()) return null;
   if (Capacitor.isNativePlatform()) return null;
@@ -87,8 +87,15 @@ const currentToast = computed(() => {
     window.matchMedia('(display-mode: standalone)').matches ||
     window.navigator.standalone === true;
   const isMobileTouch = window.matchMedia('(pointer: coarse)').matches;
+  const ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
+  const isIOS = /iPad|iPhone|iPod/.test(ua) ||
+    (ua.includes('Mac') && navigator.maxTouchPoints > 1);
+  const isAndroid = /Android/.test(ua);
+  const isMobileOS = isIOS || isAndroid;
 
-  if (INSTALL_TOAST_ENABLED && !isStandalone && isMobileTouch) {
+  if (!isMobileOS || !isMobileTouch) return null;
+
+  if (INSTALL_TOAST_ENABLED && !isStandalone) {
     const installDismissedAt = Number(
       localStorage.getItem('pwa_install_dismissed_at') || 0
     );
@@ -102,8 +109,8 @@ const currentToast = computed(() => {
     }
   }
 
-  // Notification toast only inside the installed PWA — not in any browser tab.
-  // Project rule: no web notifications, only PWA/native.
+  // Notification toast only inside the installed PWA on Android/iOS mobile.
+  // Project rule: notifications never on web (any browser context).
   if (!isStandalone) return null;
   if (!userStore.showPushEnableToast) return null;
   if (userStore.pushPermission !== 'prompt') return null;
