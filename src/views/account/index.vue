@@ -2,14 +2,17 @@
 import { ref, watch, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '@/stores/user.js';
+import { useInstallStore } from '@/stores/install.js';
 import { signOut } from '@/utils/auth';
-import { auth } from '@/firebase'; 
+import { auth } from '@/firebase';
 import { baseUrl } from '@/utils/variables';
 import { request } from '@/utils/http';
 import { countries } from '@/utils/countryList';
+import { Capacitor } from '@capacitor/core';
 
 const router = useRouter();
 const userStore = useUserStore();
+const installStore = useInstallStore();
 
 // Build dial code groups from countryList: { isos: ['US','CA',...], code: '+1', label: 'US/CA (+1)' }
 const countryCodes = (() => {
@@ -231,6 +234,71 @@ onMounted(() => {
   userStore.checkPushPermission();
 });
 
+// Install PWA section — manual install entry point for testing.
+// Hidden inside the native app and once the PWA is already installed.
+const installNative = Capacitor.isNativePlatform();
+const installStandalone = (() => {
+  if (typeof window === 'undefined') return false;
+  return window.matchMedia('(display-mode: standalone)').matches ||
+    window.navigator.standalone === true;
+})();
+const installIsIOS = (() => {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  return /iPad|iPhone|iPod/.test(ua) ||
+    (ua.includes('Mac') && navigator.maxTouchPoints > 1);
+})();
+const showIosInstructions = ref(false);
+const installFallbackMessage = ref('');
+const installSuccessMessage = ref('');
+
+const showInstallCard = computed(() => !installNative && !installStandalone && !installStore.installed);
+const canInstallProgrammatic = computed(() => !!installStore.deferred);
+
+const installHelpText = computed(() => {
+  if (installIsIOS) return 'Add Navitag to your home screen for an app-like experience.';
+  if (canInstallProgrammatic.value) return 'Install Navitag for a faster, app-like experience.';
+  return 'Install Navitag for a faster, app-like experience. If the button below does nothing, open your browser menu (three dots) and choose "Install app" or "Add to Home screen".';
+});
+
+const installButtonLabel = computed(() => {
+  if (installIsIOS) return showIosInstructions.value ? 'Hide instructions' : 'How to install on iOS';
+  return 'Install Navitag';
+});
+
+async function clickAccountInstall() {
+  installFallbackMessage.value = '';
+  installSuccessMessage.value = '';
+
+  if (installIsIOS) {
+    showIosInstructions.value = !showIosInstructions.value;
+    return;
+  }
+
+  if (installStore.deferred) {
+    try {
+      await installStore.deferred.prompt();
+      const choice = await installStore.deferred.userChoice;
+      if (choice?.outcome === 'accepted') {
+        installSuccessMessage.value = 'Install accepted. Look for the app on your home screen.';
+      } else {
+        installFallbackMessage.value = 'Install dismissed. You can try again from your browser menu later.';
+      }
+    } catch (err) {
+      installFallbackMessage.value = 'Install prompt unavailable. Open your browser menu and choose "Install app" or "Add to Home screen".';
+    }
+    installStore.setDeferred(null);
+    installStore.markResolved();
+    return;
+  }
+
+  // No deferred event captured. Either Chrome's engagement heuristic hasn't
+  // fired yet, the device isn't installable (in-app webview, unsupported
+  // browser), or the user reached this page without ever passing through
+  // the ?pwa=1 first-deploy gate.
+  installFallbackMessage.value = 'Your browser hasn\'t offered an install prompt yet. Open the browser menu (three dots) and choose "Install app" or "Add to Home screen". On Chrome desktop, look for the install icon in the URL bar.';
+}
+
 const handleLogout = async () => {
   try {
     await signOut();
@@ -350,6 +418,33 @@ const handleLogout = async () => {
 
         <p v-if="pushMessage" class="text-green-600 text-sm mt-3"><i class="fa-solid fa-check mr-1"></i>{{ pushMessage }}</p>
         <p v-if="pushError" class="text-red-500 text-sm mt-3">{{ pushError }}</p>
+      </div>
+
+      <div v-if="showInstallCard" class="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
+        <h2 class="text-lg font-bold text-gray-800 mb-4">Install App</h2>
+
+        <p class="text-xs text-gray-500 mb-4 leading-snug">{{ installHelpText }}</p>
+
+        <button
+          type="button"
+          @click="clickAccountInstall"
+          class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-3 px-4 rounded transition cursor-pointer text-sm shadow active:scale-[0.98]"
+        >
+          <i class="fa-solid fa-download mr-2"></i>{{ installButtonLabel }}
+        </button>
+
+        <div v-if="installIsIOS && showIosInstructions" class="mt-4 p-3 bg-gray-50 rounded-lg text-xs text-gray-700 leading-relaxed border border-gray-200">
+          <p class="font-semibold mb-2">Install on iPhone / iPad:</p>
+          <ol class="list-decimal list-inside space-y-1">
+            <li>Tap the <i class="fa-solid fa-arrow-up-from-bracket"></i> Share button at the bottom of Safari.</li>
+            <li>Scroll down and tap <strong>Add to Home Screen</strong>.</li>
+            <li>Tap <strong>Add</strong> in the top-right corner.</li>
+          </ol>
+          <p class="mt-2 text-gray-500 italic">Only works in Safari on iOS — not Chrome or other browsers.</p>
+        </div>
+
+        <p v-if="installSuccessMessage" class="text-green-600 text-sm mt-3"><i class="fa-solid fa-check mr-1"></i>{{ installSuccessMessage }}</p>
+        <p v-if="installFallbackMessage" class="text-amber-700 text-xs mt-3 leading-snug">{{ installFallbackMessage }}</p>
       </div>
 
       <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
