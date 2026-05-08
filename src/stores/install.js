@@ -29,6 +29,17 @@ export const useInstallStore = defineStore('install', () => {
     } catch {}
   }
 
+  // Called when a fresh beforeinstallprompt arrives — that event only fires
+  // for non-installed PWAs, so a stale "installed" flag (e.g., user uninstalled
+  // the PWA at the OS level, leaving our localStorage flag behind) must be
+  // cleared. Without this, the install toast would never show after reinstall.
+  function clearInstalled() {
+    installed.value = false;
+    try {
+      localStorage.removeItem('pwa_installed');
+    } catch {}
+  }
+
   function markResolved() {
     resolvedThisSession.value = true;
   }
@@ -39,6 +50,7 @@ export const useInstallStore = defineStore('install', () => {
     resolvedThisSession,
     setDeferred,
     markInstalled,
+    clearInstalled,
     markResolved,
   };
 });

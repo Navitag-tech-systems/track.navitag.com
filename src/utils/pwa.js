@@ -22,6 +22,12 @@ export async function registerPwa() {
     const installStore = useInstallStore();
 
     window.addEventListener('beforeinstallprompt', (e) => {
+      // A fresh prompt arriving means the PWA is NOT currently installed
+      // (Chrome suppresses this event for installed PWAs). Clear any stale
+      // "installed" flag left over from a previous install + OS-level
+      // uninstall — without this, the toast would stay hidden forever.
+      if (installStore.installed) installStore.clearInstalled();
+
       if (INSTALL_TOAST_ENABLED) {
         // Re-enabled state: suppress Chrome's mini-infobar so our toast
         // owns the install promotion.
