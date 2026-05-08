@@ -176,23 +176,21 @@ const pushBusy = ref(false);
 const pushMessage = ref('');
 const pushError = ref('');
 
-const pushEnabled = computed(() => userStore.pushPermission === 'granted');
+// "Enabled" requires both OS permission AND a registered token. After the
+// user disables push on this device we delete the token but the OS permission
+// stays 'granted'; without the token check the toggle would visually stick on.
+const pushEnabled = computed(() =>
+  userStore.pushPermission === 'granted' && userStore.fcmToken !== null
+);
 const pushUnsupported = computed(() => userStore.pushPermission === 'unsupported');
 
 const pushHelpText = computed(() => {
-  switch (userStore.pushPermission) {
-    case 'granted':
-      return 'Enabled. Tap to refresh the device token.';
-    case 'denied':
-      return 'Blocked at the system level. Open your device settings to allow notifications.';
-    case 'unsupported':
-      return 'Notifications are not supported on this platform.';
-    case 'prompt':
-    case 'prompt-with-rationale':
-      return 'Tap to enable push notifications on this device.';
-    default:
-      return 'Tap to enable push notifications on this device.';
+  if (pushUnsupported.value) return 'Notifications are not supported on this platform.';
+  if (userStore.pushPermission === 'denied') {
+    return 'Blocked at the system level. Open your device settings to allow notifications.';
   }
+  if (pushEnabled.value) return 'Enabled on this device. Tap to disable.';
+  return 'Tap to enable push notifications on this device.';
 });
 
 const togglePush = async () => {
@@ -202,6 +200,12 @@ const togglePush = async () => {
   pushError.value = '';
 
   try {
+    if (pushEnabled.value) {
+      await userStore.disablePushOnThisDevice();
+      pushMessage.value = 'Notifications disabled on this device.';
+      return;
+    }
+
     if (userStore.pushPermission === 'denied') {
       pushError.value = 'Notifications are blocked. Open your device settings to enable them, then come back.';
       return;

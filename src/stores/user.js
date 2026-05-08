@@ -16,6 +16,13 @@ export const useUserStore = defineStore('user', () => {
   const fcmToken = ref(null);
   const pushPermission = ref('unknown');
   const showPushEnableToast = ref(false);
+  // User explicitly turned off push on this device. Persisted because OS-level
+  // permission stays 'granted' after we delete the token, so we'd otherwise
+  // auto-resubscribe on the next initPushNotifications() call.
+  const pushDisabledLocally = ref(
+    typeof localStorage !== 'undefined' &&
+    localStorage.getItem('pwa_push_disabled') === 'true'
+  );
   const countryCode = ref(null);
   const ipLocation = ref(null);
   const name = ref(null);
@@ -187,6 +194,19 @@ export const useUserStore = defineStore('user', () => {
       return 'unsupported';
     }
 
+    // User explicitly disabled push on this device. Track current OS-level
+    // permission for UI accuracy but don't auto-resubscribe. Re-enable goes
+    // through the toggle / toast which calls enablePushFromGesture().
+    if (pushDisabledLocally.value) {
+      try {
+        const status = await FirebaseMessaging.checkPermissions();
+        pushPermission.value = status.receive;
+      } catch {
+        pushPermission.value = 'unknown';
+      }
+      return pushPermission.value;
+    }
+
     let status = await FirebaseMessaging.checkPermissions();
     if (status.receive !== 'granted') {
       if (!Capacitor.isNativePlatform()) {
@@ -216,9 +236,51 @@ export const useUserStore = defineStore('user', () => {
     pushPermission.value = status.receive;
     showPushEnableToast.value = false;
     if (status.receive === 'granted') {
+      // User just opted in — clear the local-disable flag so future inits
+      // can resubscribe normally if the token is ever lost.
+      if (pushDisabledLocally.value) {
+        pushDisabledLocally.value = false;
+        try { localStorage.removeItem('pwa_push_disabled'); } catch {}
+      }
       return await retrieveAndPersistFcmToken();
     }
     return status.receive;
+  }
+
+  async function disablePushOnThisDevice() {
+    const tokenToDelete = fcmToken.value;
+
+    // Set the local-disable flag first so any concurrent init can't race us
+    // into resubscribing.
+    pushDisabledLocally.value = true;
+    try { localStorage.setItem('pwa_push_disabled', 'true'); } catch {}
+
+    // Tell backend to forget this device's token. Empty token short-circuits
+    // server-side to "wipe all" — guard against that by only sending if we
+    // have a token.
+    if (tokenToDelete) {
+      try {
+        await request.send({
+          url: `${baseUrl}/user/logout`,
+          method: 'POST',
+          data: { fcm_token: tokenToDelete },
+          token: idToken.value
+        });
+      } catch (err) {
+        console.warn('Failed to delete FCM token from backend:', err);
+      }
+    }
+
+    // Best-effort revocation at FCM. If this fails the token still gets
+    // pruned server-side on the next failed send (PushService auto-prune).
+    try {
+      await FirebaseMessaging.deleteToken();
+    } catch (err) {
+      console.warn('FirebaseMessaging.deleteToken failed:', err);
+    }
+
+    fcmToken.value = null;
+    return 'disabled';
   }
 
   // Actions
@@ -480,8 +542,8 @@ export const useUserStore = defineStore('user', () => {
 
   return {
     user, idToken, countryCode, ipLocation, loading, isLoggedIn, internet, error,
-    setUser, clearUser, traccarLogout, serverConnect, connectSocket, fetchCountryCode, backendSync, disconnectSocket, getFreshToken, initPushNotifications, enablePushFromGesture, checkPushPermission,
+    setUser, clearUser, traccarLogout, serverConnect, connectSocket, fetchCountryCode, backendSync, disconnectSocket, getFreshToken, initPushNotifications, enablePushFromGesture, disablePushOnThisDevice, checkPushPermission,
     server_url, server_token, server_connect, notifications, socket, name, phone, email,
-    fcmToken, pushPermission, showPushEnableToast
+    fcmToken, pushPermission, showPushEnableToast, pushDisabledLocally
   };
 });
