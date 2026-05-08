@@ -135,10 +135,16 @@ export const useUserStore = defineStore('user', () => {
         vapidKey: 'BNfYDc6R8T-d0Mbmv8Idhmu0Ufl5zqiK9GSty0XNKDkp38ETHDV74t2BwmjiEd4aN-GYobZbLq-r_I_ga25a--Q',
       };
       if (Capacitor.getPlatform() === 'web') {
-        // Web requires the FCM SW registration to mint a token. Native plugin
+        // Web requires an FCM SW registration to mint a token. Native plugin
         // handles its own SW equivalent internally.
+        //
+        // EXPLICIT SCOPE is load-bearing: without it, default scope is `/`
+        // (the SW file is at root), which would replace the Workbox SW
+        // registered at the same scope. `/firebase-cloud-messaging-push-scope`
+        // is Firebase JS SDK's standard FCM scope and isolates the two SWs.
         options.serviceWorkerRegistration = await navigator.serviceWorker.register(
-          '/firebase-messaging-sw.js'
+          '/firebase-messaging-sw.js',
+          { scope: '/firebase-cloud-messaging-push-scope' }
         );
       }
       const result = await FirebaseMessaging.getToken(options);
