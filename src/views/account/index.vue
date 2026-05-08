@@ -331,11 +331,17 @@ async function clickAccountInstall() {
   showManualInstructions.value = true;
 }
 
+const logoutLoading = ref(false);
 const handleLogout = async () => {
+  if (logoutLoading.value) return;
+  logoutLoading.value = true;
   try {
     await signOut();
+    // Don't reset logoutLoading — auth-state listener will redirect to /login
+    // and unmount this view. Resetting would briefly flash the button back.
   } catch (error) {
     console.error('Logout error:', error);
+    logoutLoading.value = false;
   }
 };
 </script>
@@ -549,11 +555,13 @@ const handleLogout = async () => {
         </form>
       </div>
 
-      <button 
+      <button
         @click="handleLogout"
-        class="w-full bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-bold py-3 px-4 rounded transition cursor-pointer text-sm shadow-sm active:scale-[0.98]"
+        :disabled="logoutLoading"
+        class="w-full bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-bold py-3 px-4 rounded transition cursor-pointer text-sm shadow-sm active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
       >
-        <i class="fa-solid fa-right-from-bracket mr-2"></i> Log Out
+        <i :class="logoutLoading ? 'fa-solid fa-circle-notch fa-spin mr-2' : 'fa-solid fa-right-from-bracket mr-2'"></i>
+        {{ logoutLoading ? 'Logging out...' : 'Log Out' }}
       </button>
 
     </div>
