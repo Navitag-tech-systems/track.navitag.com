@@ -166,29 +166,38 @@ Delete a user from both Traccar and local DB. **Admin only.**
 
 ### `POST /user/fcm-token`
 
-Save or update the user's Firebase Cloud Messaging token.
+Register, refresh, or revoke FCM tokens for the calling user. The backend stores **multiple tokens per user** in `user_fcm_tokens` (one row per physical device), so this endpoint is safe to call from every device the user signs in on. Tokens are unique server-wide — if the same token already exists under a different `auth_uid` (e.g. a re-sold phone) ownership is silently transferred to the caller.
 
-**Request Body:**
+**Request Body — register/refresh:**
 ```json
 {
-  "fcm_token": "dXy7abc...",     // required
-  "platform":  "android|ios|pwa|web",  // optional; how the client is running
-  "device_label": "Chrome (Android PWA)"  // optional; human-readable hint
+  "fcm_token": "dXy7abc...",        // required (max 512 chars)
+  "platform": "ios",                // optional: "ios" | "android" | "web" (≤20 chars)
+  "device_label": "Burke's iPhone"  // optional, free text (≤100 chars)
 }
 ```
 
-`platform` values:
-- `android` / `ios` — native Capacitor app
-- `pwa` — installed web PWA (display-mode: standalone)
-- `web` — regular browser tab
+`platform` and `device_label` are sticky — if you omit them on a re-call, the previously stored values are kept.
 
-**Response `200`:**
+**Request Body — logout (wipe all of this user's tokens):**
 ```json
-{
-  "status": "success",
-  "message": "FCM token updated successfully"
-}
+{ "fcm_token": "" }
 ```
+
+**Response `200` (register/refresh):**
+```json
+{ "status": "success", "message": "FCM token saved" }
+```
+
+**Response `200` (logout):**
+```json
+{ "status": "success", "cleared": 2 }
+```
+
+**Errors:**
+- `400` — `fcm_token` longer than 512 chars
+- `401` — missing/invalid Firebase Bearer token
+- `409` — user has not run `/user/sync` yet (must sync before registering tokens)
 
 ---
 
@@ -220,7 +229,8 @@ Link an unassigned device to the authenticated user.
 ```json
 {
   "imei": "123456789012345",      // required
-  "name": "My Tracker"            // required, display name
+  "name": "My Tracker",           // required, display name
+  "odo":  12345.6                 // optional, meters — see Accumulators below
 }
 ```
 
@@ -232,6 +242,22 @@ Link an unassigned device to the authenticated user.
 **Validations:**
 - Device must exist and not already be assigned (`server_user_id` must be empty)
 - User and device must be on the same Traccar server
+
+**Accumulators (reset on link):**
+On every successful link the backend resets the device's Traccar accumulators via `PUT /api/devices/{id}/accumulators`:
+
+| Accumulator | Value |
+|---|---|
+| `totalDistance` | `odo` from the request body (assumed **meters**). Defaults to `0` if omitted, non-numeric, or negative. |
+| `hours` | Always reset to `0` regardless of input. |
+
+This is best-effort — a Traccar failure here is logged but does **not** fail the link. If the device's odometer needs to be set later, use the Traccar admin UI or a separate endpoint.
+
+**Side effects on link:**
+- Updates Traccar device `name`
+- Links the user to the device in Traccar (`POST /permissions`)
+- Sets `device_inventory.server_user_id` and `ref2 = name`
+- Auto-seeds `notification_settings` (master switch + emergency switch both ON) and creates default `notification_rules` rows for the linked IMEI
 
 ---
 
@@ -545,19 +571,34 @@ Persistent device-sharing permissions live in two stores:
 - **MySQL `device_permissions`** — record of granter intent. One row per `(device_imei, grantee_auth_uid)` pair. Each row carries a `scopes` `SET` column with one or more of: `position:live`, `history:read`, `notification:read`. Rows are permanent until an explicit revoke.
 - **posbroker** — authoritative for `position:live` at runtime. Stores a flat `permissions:{firebase_uid}` set of IMEIs allowed to subscribe to live position MQTT topics. The broker has no knowledge of granter or non-position scopes.
 
-Sync rules:
-- `/share/grant` and `/share/update` write MySQL first, then sync the broker if `position:live` is involved.
-- `/share/revoke` deletes the MySQL row and removes the IMEI from the broker.
-- `/share/tome` and `/share/byme` treat the broker as authoritative for `position:live`. A MySQL row whose `scopes` include `position:live` but whose IMEI is NOT in the broker's list for that grantee is **stale** and is deleted on read (self-healing cleanup).
-- A MySQL row WITHOUT `position:live` (e.g. history-only) is valid on its own — the broker is not consulted for these.
+**Floor-scope rule (important for frontend):**
 
-Valid `scopes` values: `position:live`, `history:read`, `notification:read`.
+`position:live` is the **minimum scope** for any active grant. It is implicit on every successful `grant` and `update` call, regardless of what the request `scopes` array contains. Concretely:
+
+- Every successful `grant` / `update` adds the IMEI to the broker's permission set for the grantee. The broker assertion is unconditional.
+- `history:read` and `notification:read` are **add-ons** on top of `position:live`, not standalone scopes. There is no way to grant history/notification access without also granting live position.
+- An `update` call that omits `position:live` from its `scopes` array (e.g. `["history:read"]`) only changes the MySQL `scopes` column. The broker entry stays — meaning the grantee still has live position access. Reading back via `/share/tome` will still show `position:live` in the scope list.
+- The only way to remove `position:live` for a `(device, grantee)` pair is `/share/revoke`, which drops the MySQL row AND removes the IMEI from the broker.
+
+This is intentional: live position is the baseline of the share. Users do not opt in to history-only or notification-only sharing.
+
+Sync rules (verified against current code):
+
+- `/share/grant` writes the broker first (adds the IMEIs for the grantee), then commits the MySQL upsert. On MySQL failure, the broker change is compensated (rolled back). Broker is called unconditionally.
+- `/share/update` re-asserts the broker (idempotent add), then updates the MySQL `scopes` column. Broker is called unconditionally even if `scopes` does not include `position:live` — see floor-scope rule above.
+- `/share/revoke` deletes the MySQL row first, then removes the IMEI from the broker.
+- `/share/tome` reads broker as authoritative for `position:live`, layers MySQL extra scopes on top, and lazily deletes any MySQL row whose IMEI is no longer in the broker (self-healing cleanup for out-of-band broker drift).
+- `/share/byme` reads MySQL only — relies on the write-path invariant (every MySQL row has a corresponding broker entry).
+
+Valid `scopes` values: `position:live`, `history:read`, `notification:read`. Callers SHOULD always include `position:live` in `scopes` to make intent explicit, even though the server enforces it as a floor.
 
 ---
 
 ### `POST /share/grant`
 
-Grant the same scope set on one or more devices to a single recipient (`target_firebase_uid`). For each listed device, upserts a row in `device_permissions`. If `position:live` is in the scope set, also adds the IMEIs to the broker's permission set for the grantee. Caller must currently own all listed devices.
+Grant the same scope set on one or more devices to a single recipient (`target_firebase_uid`). For each listed device, upserts a row in `device_permissions` and adds the IMEI to the broker's permission set for the grantee. Caller must currently own all listed devices.
+
+`position:live` is the floor scope and is asserted on the broker regardless of whether it appears in the request `scopes` array (see **Floor-scope rule** in the Permission model section above). Callers should still include it explicitly for clarity.
 
 **Request Body:**
 ```json
@@ -579,7 +620,7 @@ Grant the same scope set on one or more devices to a single recipient (`target_f
 }
 ```
 
-`broker_synced` is `true` when `position:live` was in `scopes` and the broker patch succeeded; `false` for non-position-only grants.
+`broker_synced` is always `true` on a `200` response (the broker is written before MySQL — see **Sync rules**). On a `502` response neither store has been written.
 
 **Error Responses:**
 
@@ -592,13 +633,15 @@ Grant the same scope set on one or more devices to a single recipient (`target_f
 | 400 | `{"error": "scopes must be a non-empty array of: position:live, history:read, notification:read"}` | Missing, empty, or unknown scope value |
 | 401 | `{"error": "Unauthorized"}` | No Firebase user on request |
 | 403 | `{"error": "One or more devices are not linked to this user", "unauthorized_devices": [...]}` | Caller does not own one or more submitted IMEIs |
-| 502 | `{"error": "Broker error", "details": "..."}` | posbroker admin API rejected the patch (MySQL writes have already landed) |
+| 502 | `{"error": "Broker error", "details": "..."}` | posbroker admin API rejected the patch — MySQL has NOT been written |
 
 ---
 
 ### `POST /share/update`
 
-Replace the scope set of a single existing grant. If `position:live` was added or removed by the change, the broker is synced accordingly. Caller must currently own the device.
+Replace the `scopes` column on a single existing grant. The broker entry for the IMEI is re-asserted (idempotent add) on every successful call. Caller must currently own the device.
+
+**Floor-scope behavior:** because `position:live` is the floor scope, an `update` call cannot remove live position access. A request with `scopes: ["history:read"]` only changes the MySQL `scopes` column to `history:read`; the broker still has the IMEI for the grantee, and `/share/tome` will still return `position:live` in the scope list. To fully remove live position access, use `/share/revoke`.
 
 **Request Body:**
 ```json
@@ -620,7 +663,7 @@ Replace the scope set of a single existing grant. If `position:live` was added o
 }
 ```
 
-`broker_synced` is `true` only when `position:live` toggled on or off (added or removed by the update).
+`broker_synced` is always `true` on a `200` response (the broker re-assert runs unconditionally before the MySQL update).
 
 **Error Responses:**
 
@@ -632,7 +675,7 @@ Replace the scope set of a single existing grant. If `position:live` was added o
 | 401 | `{"error": "Unauthorized"}` | No Firebase user on request |
 | 403 | `{"error": "Device not linked to this user", "unauthorized_devices": [...]}` | Caller does not own the device |
 | 404 | `{"error": "grant not found"}` | No existing `device_permissions` row for that `(imei, grantee)` |
-| 502 | `{"error": "Broker error", "details": "..."}` | Broker patch failed (the MySQL update has already landed) |
+| 502 | `{"error": "Broker error", "details": "..."}` | Broker re-assert failed — MySQL has NOT been updated |
 
 ---
 
@@ -692,22 +735,16 @@ See **Permission model** above for the broker-authoritative semantics.
     {
       "imei": "860123456789012",
       "scopes": ["position:live"]
-    },
-    {
-      "imei": "350987654321098",
-      "scopes": ["history:read"]
     }
   ]
 }
 ```
 
 `scopes` values:
-- `position:live` — present whenever the IMEI is in the caller's broker permission set (broker is authoritative). Also added when the broker returns a wildcard (`["*"]`) — emitted once as `{"imei": "*", "scopes": ["position:live"]}`.
-- `history:read`, `notification:read`, … — sourced from `device_permissions.scopes` for that IMEI/grantee pair.
+- `position:live` — always present per the floor-scope rule. Also added when the broker returns a wildcard (`["*"]`) — emitted once as `{"imei": "*", "scopes": ["position:live"]}`.
+- `history:read`, `notification:read` — sourced from `device_permissions.scopes` for that IMEI/grantee pair, layered on top of `position:live`.
 
-A history-only grant (MySQL row with no `position:live`) is returned even when the broker has no entry for that IMEI.
-
-When the caller has no broker permissions and no non-stale MySQL rows, `shared_devices` is `[]`.
+When the caller has no shared devices, `shared_devices` is `[]`.
 
 **Error Responses:**
 
@@ -720,7 +757,9 @@ When the caller has no broker permissions and no non-stale MySQL rows, `shared_d
 
 ### `POST /share/byme`
 
-Return all grants the caller has issued (where `granted_by_auth_uid` equals the caller). For each unique grantee, the broker's permission set is fetched once and used to validate any MySQL row whose `scopes` include `position:live`. Stale rows (position-bearing rows whose IMEI is missing from the broker's list for that grantee) are deleted on read. Rows without `position:live` are returned without consulting the broker. If the broker call fails for a particular grantee, that grantee's rows are returned as-is and no cleanup is performed.
+Return all grants the caller has issued (where `granted_by_auth_uid` equals the caller). MySQL-only — does not call the broker. Relies on the write-path invariant that every `device_permissions` row has a corresponding broker entry. If broker drift ever occurs via out-of-band admin edits, `/share/tome` is the read path that lazily reconciles it on the grantee's next read.
+
+Every returned `scopes` array includes `position:live` per the floor-scope rule.
 
 **Request Body:** *(none)*
 
@@ -743,13 +782,155 @@ Return all grants the caller has issued (where `granted_by_auth_uid` equals the 
 }
 ```
 
-When the caller has issued no grants (or all of theirs were stale and just got cleaned up), `granted` is `[]`.
+When the caller has issued no grants, `granted` is `[]`.
 
 **Error Responses:**
 
 | Status | Body | Cause |
 |--------|------|-------|
 | 401 | `{"error": "Unauthorized"}` | No Firebase user on request |
+
+---
+
+### Share by invite (account-status-agnostic)
+
+The `/share/grant` flow above requires the granter to know the recipient's Firebase uid. The invite flow lets a granter share with someone whose account status they don't know — including users who haven't installed the app yet, or users behind Apple "Hide My Email" private relay where email lookup is unreliable.
+
+**Product rules** (these constrain the API surface — do not assume endpoints that are not documented here):
+
+- **Fire-and-forget from the granter side.** Once an invite is sent, the granter has NO management visibility — there is no list-my-invites endpoint, no revoke endpoint, no resend endpoint. The frontend should surface a "sent" confirmation immediately from the mint response and move on.
+- **Email is the only delivery channel.** The invite URL is **never** echoed back to the granter from `POST /share/invite`. The URL only escapes via the Brevo email send. If Brevo fails, the entire mint fails (502) and nothing is persisted.
+- **No anonymous live-position preview.** The recipient must sign in or sign up before any device data is shown. The public lookup endpoint returns metadata only.
+- **TTL is fixed at 7 days.** Not configurable per-invite.
+
+After a successful claim, the resulting permission becomes a normal account-bound grant visible/manageable via the existing `/share/byme` and `/share/revoke` endpoints.
+
+---
+
+### `POST /share/invite`
+
+Mint an invite and send it to the recipient via Brevo. The invite URL is delivered exclusively through the email — it is NOT returned in the response.
+
+**Request Body:**
+```json
+{
+  "devices":      ["353456789012345"],
+  "scopes":       ["position:live", "history:read"],
+  "target_email": "friend@example.com",
+  "target_name":  "Alex"
+}
+```
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `devices` | yes | Non-empty IMEI array. Caller must own each. Wildcard `*` rejected. Max 100. |
+| `scopes` | yes | Non-empty subset of `position:live`, `history:read`, `notification:read`. **Must include `position:live`** (floor scope). |
+| `target_email` | yes | Valid email. The Brevo email is sent to this address. Apple Private Relay addresses are fine — they deliver to the user's real inbox. |
+| `target_name` | no | Used in the email greeting only. Defaults to "Friend". |
+
+**Response `200`:**
+```json
+{
+  "status":       "success",
+  "expires_at":   "2026-04-30T15:22:00+00:00",
+  "target_email": "friend@example.com"
+}
+```
+
+The response deliberately omits the invite URL and token — the granter is fire-and-forget; the URL escapes only via the email channel.
+
+**Error Responses:**
+
+| Status | Body | Cause |
+|--------|------|-------|
+| 400 | `{"error": "devices required"}` | Missing/empty `devices` |
+| 400 | `{"error": "wildcard not allowed"}` | `"*"` in `devices` |
+| 400 | `{"error": "scopes must be a non-empty array of: ..."}` | Missing/unknown scope value |
+| 400 | `{"error": "scopes must include position:live (floor scope)"}` | `position:live` omitted from scopes |
+| 400 | `{"error": "target_email required and must be a valid email address"}` | Missing or malformed email |
+| 401 | `{"error": "Unauthorized"}` | No Firebase user on request |
+| 403 | `{"error": "One or more devices are not linked to this user", "unauthorized_devices": [...]}` | Caller does not own one or more IMEIs |
+| 502 | `{"error": "Email delivery failed", "details": "..."}` | Brevo send failed; the MySQL row was rolled back, no invite exists |
+
+---
+
+### `GET /share/invite/{token}`
+
+PUBLIC endpoint — no Firebase auth required. Used by the recipient's landing page to display "X wants to share Y devices with you" before they sign in. Returns display-safe metadata only — never returns uids, the granter's email, or any live-position data.
+
+**Request Body:** *(none — GET; token in URL path)*
+
+**Response `200`:**
+```json
+{
+  "status":       "success",
+  "granter_name": "James Ong",
+  "device_count": 2,
+  "scopes":       ["position:live", "history:read"],
+  "expires_at":   "2026-04-30T15:22:00+00:00"
+}
+```
+
+`granter_name` falls back to `"A Navitag user"` if the granter's `users.name` is empty.
+
+**Error Responses:**
+
+| Status | Body | Cause |
+|--------|------|-------|
+| 404 | `{"error": "invite not found"}` | Token unknown, expired, or already claimed |
+
+---
+
+### `POST /share/claim`
+
+Signed-in recipient redeems an invite. Materialises a normal account-bound `device_permissions` row per IMEI and asserts the broker permission, reusing the same broker-first / MySQL-second sequence as `/share/grant`.
+
+**Request Body:**
+```json
+{ "token": "nvit_..." }
+```
+
+**Response `200`:**
+```json
+{
+  "status":          "success",
+  "granted_devices": ["860123456789012"],
+  "already_shared":  ["353456789012345"],
+  "scopes":          ["position:live", "history:read"],
+  "broker_synced":   true
+}
+```
+
+`granted_devices` are the IMEIs that were newly granted. `already_shared` are IMEIs the caller already had access to from a prior share — these are silently skipped (no broker call, no MySQL upsert, no error). `broker_synced` is `true` when at least one IMEI was newly granted.
+
+The invite is marked claimed regardless of whether `granted_devices` is non-empty — even a whole-invite no-op (every device already shared) consumes the invite.
+
+**Error Responses:**
+
+| Status | Body | Cause |
+|--------|------|-------|
+| 400 | `{"error": "cannot claim your own invite"}` | Caller is the granter |
+| 401 | `{"error": "Unauthorized"}` | No Firebase user on request |
+| 404 | `{"error": "invite not found"}` | Token unknown |
+| 409 | `{"error": "invite already claimed"}` | Invite was previously claimed |
+| 409 | `{"error": "granter no longer owns the invited devices", "devices": [...]}` | Granter has lost ownership of every device in the invite since it was minted |
+| 410 | `{"error": "invite expired"}` | Invite is past its `expires_at` |
+| 502 | `{"error": "Broker error", "details": "..."}` | posbroker rejected the patch — MySQL has NOT been written |
+
+---
+
+### Brevo template requirements
+
+`POST /share/invite` calls `Brevo::sendTransactionalEmail()` with template id `BREVO_TEMPLATE_SHARE_INVITE` (env). The template must exist in the Brevo dashboard with these variables available:
+
+| Variable | Type | Example |
+|----------|------|---------|
+| `GRANTER_NAME` | string | `James Ong` |
+| `DEVICE_COUNT` | int | `2` |
+| `INVITE_URL` | string | `https://navitag.com/invite/view/nvit_...` |
+| `EXPIRES_AT_HUMAN` | string | `2026-04-30 15:22 UTC` |
+
+If the env var is unset or `0`, mint requests will fail with 502.
 
 ---
 
@@ -908,6 +1089,82 @@ Receives digital order details from Medusa (shopapi.navitag.com), extends device
 
 ---
 
+### `POST /webhook/impact-detected`
+
+Called by posbroker when it correlates an impact event on a device (e.g. iStartek code 42 alongside a co-occurring harsh-brake/turn within a short window). Fans out an FCM push to the device owner **and** every registered emergency contact for that device.
+
+**Auth:** `Authorization: Bearer {POSBROKER_WEBHOOK_SECRET}`
+
+**Request Body:**
+```json
+{
+  "event":       "impact_detected",
+  "imei":        "865395073609115",
+  "device_name": "FUJI CBR1015",
+  "protocol":    "startek",
+  "detected_at": "2026-05-14T16:42:17.831Z",
+  "trigger_position": {
+    "fixTime":   "2026-05-14T16:42:17.000Z",
+    "latitude":  14.5995,
+    "longitude": 120.9842,
+    "speed":     38.4,
+    "course":    175,
+    "altitude":  12,
+    "ignition":  true,
+    "motion":    true,
+    "valid":     true
+  },
+  "codes_in_window": [
+    { "code": 42, "label": "Impact",        "fixTime": "2026-05-14T16:42:17.000Z" },
+    { "code": 40, "label": "Harsh Braking", "fixTime": "2026-05-14T16:42:15.200Z" }
+  ],
+  "window_seconds":        3,
+  "window_distinct_codes": 2
+}
+```
+
+Only `imei` is strictly required. `device_name`, `detected_at`, `trigger_position.latitude`, and `trigger_position.longitude` enhance the push payload when present.
+
+**Gate semantics:**
+- The **device owner** receives the push if the regular notification gate passes: `notifications_enabled = 1` AND a row exists in `notification_rules` for `(owner_auth_uid, imei, 'impact_detected')`. Owners who want this alert must add the rule via `PUT /notification/permissions/rule`.
+- **Each emergency contact** receives the push if their `emergency_notifications_enabled = 1`. The master switch and per-event rules do **not** apply.
+
+**FCM data payload sent to recipients:**
+```json
+{
+  "event":       "impact_detected",
+  "imei":        "865395073609115",
+  "device_name": "FUJI CBR1015",
+  "owner_name":  "James",
+  "owner_uid":   "<owner_firebase_uid>",
+  "detected_at": "2026-05-14T16:42:17.831Z",
+  "lat":         "14.5995",
+  "lon":         "120.9842"
+}
+```
+(All values are strings — FCM requires it.)
+
+**Response `200`:**
+```json
+{
+  "status":         "ok",
+  "recipients":     3,
+  "delivered":      5,
+  "pruned":         0,
+  "failed":         0,
+  "gated_owner":    0,
+  "gated_contacts": 1
+}
+```
+- `recipients`: number of users an FCM call was attempted for.
+- `delivered`/`pruned`/`failed`: FCM **token**-level counts (one user with 2 devices contributes 2).
+- `gated_owner`: 1 if the owner failed the gate, else 0.
+- `gated_contacts`: count of contacts whose emergency switch was off.
+
+Also returns `200` (no retry) when the IMEI has no owner: `{ "status": "ok", "noted": "no_owner" }`. Only auth (`401`) and missing-imei (`400`) are error codes.
+
+---
+
 ## Cron
 
 ### `GET /cron/php_fx_rate`
@@ -931,27 +1188,389 @@ Fetch and store the latest USD to PHP exchange rate.
 
 ## Notification
 
-### `POST /notification/send`
+The notification system has **four** layers the UI talks to:
 
-Send a push notification via FCM. **Superadmin only** (checks email = `superadmin@navitag.com`).
+1. **FCM token registration** — done via `POST /user/fcm-token` (documented under **User** above). Required before any push can land.
+2. **Master switch** — a single per-user boolean. When `false`, the backend drops **every** regular push regardless of any per-event rule.
+3. **Per-(device, event) rules** — fine-grained opt-ins. A rule only fires when the master switch is on. Absence of a rule means "don't notify me for this combination."
+4. **Emergency switch** — a second per-user boolean, independent of the master switch. Gates the impact-detected fan-out to emergency contacts only. The master switch and per-event rules do **not** affect this path; the emergency switch is the contact's sole consent surface.
+
+The delivery gate for regular pushes is:
+```
+notifications_enabled = 1  AND  a matching rule row exists for (device_imei, event_type)
+```
+
+The delivery gate for impact pushes sent **to an emergency contact** of the affected device is:
+```
+emergency_notifications_enabled = 1
+```
+(Impact pushes sent to the device **owner** still go through the regular gate, with `event_type = 'impact_detected'`.)
+
+On signup (`/user/sync` first call) and on every `/user/link-device`, the backend **auto-seeds** both switches to `1` and creates default rules for every owned device covering: `ignitionOn`, `ignitionOff`, `geofenceEnter`, `geofenceExit`, `deviceOverspeed`, `alarm:powerCut`, `activity_lock_breach`, `activity_lock_auto`. The UI can rely on these defaults existing — it doesn't have to bootstrap them.
+
+### Event-type vocabulary
+
+`event_type` is a string. Two shapes are accepted on write:
+
+| Shape | Examples |
+|---|---|
+| Plain event name | `ignitionOn`, `geofenceEnter`, `deviceOverspeed`, `deviceMoving` |
+| `alarm:<subtype>` | `alarm:powerCut`, `alarm:sos`, `alarm:hardAcceleration`, `alarm:hardBraking`, `alarm:hardCornering`, `alarm:accident` |
+
+The full canonical list of plain event names is returned by `GET /notification/permissions` in the `available_event_types` field — the UI should source from that response rather than hard-coding. The default-seeded subset is in `default_event_types`. Alarm subtypes are open-ended (any ASCII `[a-zA-Z][a-zA-Z0-9_-]{0,30}` after `alarm:`).
+
+---
+
+### `GET /notification/permissions`
+
+Returns everything the UI needs to render the notification preferences screen.
+
+**Auth:** Firebase Bearer token.
+
+**Response `200`:**
+```json
+{
+  "status": "ok",
+  "notifications_enabled": true,
+  "emergency_notifications_enabled": true,
+  "rules": [
+    { "device_imei": "865395075681633", "event_type": "ignitionOn" },
+    { "device_imei": "865395075681633", "event_type": "alarm:powerCut" },
+    { "device_imei": "865395075681633", "event_type": "alarm:hardBraking" }
+  ],
+  "owned_devices": [
+    { "imei": "865395075681633", "name": "EC CCR 2061" },
+    { "imei": "865395075692085", "name": "FUJI CCN2237" }
+  ],
+  "available_event_types": [
+    "ignitionOn", "ignitionOff",
+    "geofenceEnter", "geofenceExit",
+    "deviceOverspeed",
+    "alarm",
+    "deviceMoving", "deviceStopped",
+    "deviceOnline", "deviceOffline",
+    "deviceInactive", "deviceUnknown",
+    "deviceFuelDrop", "deviceFuelIncrease",
+    "deviceExpiration", "deviceExpirationReminder",
+    "driverChanged", "maintenance", "media",
+    "commandResult", "queuedCommandSent",
+    "activity_lock_breach", "activity_lock_auto"
+  ],
+  "default_event_types": [
+    "ignitionOn", "ignitionOff",
+    "geofenceEnter", "geofenceExit",
+    "deviceOverspeed",
+    "alarm:powerCut",
+    "activity_lock_breach",
+    "activity_lock_auto"
+  ]
+}
+```
+
+**UI rendering hint:** Build a grid of `owned_devices × available_event_types`. A cell is "on" iff the corresponding `(device_imei, event_type)` pair appears in `rules`. The master switch row is `notifications_enabled`.
+
+**Errors:**
+- `401` — missing/invalid Firebase Bearer token
+- `404` — user not found (call `/user/sync` first)
+
+---
+
+### `PUT /notification/permissions/master`
+
+Toggle the master switch. Idempotent — creates the row on first call, updates thereafter.
+
+**Auth:** Firebase Bearer token.
+
+**Request Body:**
+```json
+{ "enabled": true }
+```
+
+**Response `200`:**
+```json
+{ "status": "ok", "notifications_enabled": true }
+```
+
+**Errors:**
+- `400` — body missing or `enabled` is not a boolean
+- `401` — missing/invalid Firebase Bearer token
+- `500` — database error
+
+**UI behavior:** When the user flips master off, you do **not** need to clear per-event rules — they stay intact and will resume firing when master flips back on. The gate just denies everything while master is off.
+
+---
+
+### `PUT /notification/permissions/emergency`
+
+Toggle the emergency switch — controls whether the user receives impact-alert pushes for devices they are an **emergency contact** of. Independent of the master switch and of any per-event rules.
+
+**Auth:** Firebase Bearer token.
+
+**Request Body:**
+```json
+{ "enabled": true }
+```
+
+**Response `200`:**
+```json
+{ "status": "ok", "emergency_notifications_enabled": true }
+```
+
+**Errors:**
+- `400` — body missing or `enabled` is not a boolean
+- `401` — missing/invalid Firebase Bearer token
+- `500` — database error
+
+**UI behavior:** Render this as a second, top-level toggle on the notification preferences screen, separate from the master switch. Label suggestion: *"Allow Emergency Notifications"*. Explain to the user that turning this off means they will not receive impact alerts from people who have assigned them as an emergency contact, even if their device owner has set them as one.
+
+---
+
+### `PUT /notification/permissions/rule`
+
+Create or delete a single per-(device, event) opt-in row.
+
+**Auth:** Firebase Bearer token. **Ownership-checked** — caller must own the device.
 
 **Request Body:**
 ```json
 {
-  "token": "fcm_device_token",    // required
-  "title": "Hello",               // required
-  "body": "World",                // required
-  "data": { "key": "value" }      // optional
+  "device_imei": "865395075681633",
+  "event_type":  "alarm:hardBraking",
+  "enabled":     true
+}
+```
+
+- `enabled: true` → `INSERT IGNORE` (creates the row if missing; no-op if already present)
+- `enabled: false` → `DELETE` (removes the row if present; no-op otherwise)
+
+Both branches are fully idempotent — safe to call on every checkbox toggle without local debouncing.
+
+**Response `200`:**
+```json
+{
+  "status": "ok",
+  "device_imei": "865395075681633",
+  "event_type":  "alarm:hardBraking",
+  "enabled":     true
+}
+```
+
+**Errors:**
+- `400` — missing/invalid `device_imei`, `event_type` outside the allowed set / pattern, or `enabled` not a boolean
+- `401` — missing/invalid Firebase Bearer token
+- `403` — caller does not own this device
+- `500` — database error
+
+---
+
+### `POST /notification/send` *(admin)*
+
+Send a push to a single raw FCM token. **Admin only** (Firebase custom claim `admin: true` or `X-Admin-Key` bypass).
+
+**Request Body:**
+```json
+{
+  "token": "fcm_device_token",
+  "title": "Hello",
+  "body":  "World",
+  "data":  { "key": "value" }
+}
+```
+
+**Responses:**
+- `200` — `{ "status": "success" }`
+- `400` — missing `token`, `title`, or `body`
+- `403` — caller is not admin
+- `410` — token rejected by FCM (NotFound/Unregistered); the backend has already pruned it from `user_fcm_tokens`. The response is `{ "status": "pruned", "reason": "..." }`.
+- `500` — other FCM error
+
+---
+
+### `POST /notification/send-to-user` *(admin)*
+
+Fan-out push to every FCM token registered under a given Firebase uid. **Admin only.**
+
+**Request Body:**
+```json
+{
+  "auth_uid": "firebase_uid_here",
+  "title":    "Hello",
+  "body":     "World",
+  "data":     { "key": "value" }
 }
 ```
 
 **Response `200`:**
 ```json
 {
-  "status": "success",
-  "message": "Notification sent"
+  "status":  "ok",
+  "sent":    2,
+  "pruned":  1,
+  "failed":  0
 }
 ```
+Dead tokens encountered during the fan-out are auto-pruned from `user_fcm_tokens`.
+
+---
+
+## Contact
+
+The `/contact` path serves two unrelated features:
+
+1. **`POST /contact`** — public contact-us form (no auth). Forwards user-submitted messages to `info@navitag.com`.
+2. **`/contact/...` (everything else)** — Firebase-auth'd **emergency contact** management. A user designates other Navitag users as emergency contacts for specific devices; those contacts receive an FCM push when posbroker reports an impact event via `POST /webhook/impact-detected`.
+
+### Emergency-contact onboarding model
+
+User 2's app generates a QR code containing User 2's Firebase `auth_uid`. User 1's app scans the QR, extracts the uid, and POSTs it to `/contact/register` along with the IMEI of the device this person should be contact for. The backend persists the mapping and immediately emails User 2 (Brevo template id `13`) so they know they've been designated and can ensure push permissions are granted.
+
+Key design points:
+- **Identification is by uid**, not email — no email lookup is performed at registration, sidestepping Apple Private Relay edge cases.
+- **No consent/accept step.** Adding is unilateral; the email is informational only.
+- **Removal is owner-only.** The contact has no self-service exit.
+- **Gating on the alert side** is via the new `emergency_notifications_enabled` switch (see `PUT /notification/permissions/emergency`), independent of the master switch.
+
+---
+
+### `POST /contact` *(public — no auth)*
+
+Public contact form. Sends an HTML email to `info@navitag.com` with the submitter's email set as Reply-To.
+
+**Request Body:**
+```json
+{
+  "email":        "submitter@example.com",
+  "name":         "Jane Doe",
+  "message":      "Hi, my device stopped reporting.",
+  "country_code": "PH",
+  "subject":      "Optional subject override",
+  "source_url":   "https://navitag.com/contact"
+}
+```
+
+`email`, `name`, `message` required. `source_url` must be `http(s)://...` or it's silently dropped.
+
+**Response `200`:** `{ "status": "success" }`
+
+**Errors:**
+- `400` — missing/invalid `email`, missing `name` or `message`
+- `502` — Brevo send failed (`{ "status": "error", "message": "..." }`)
+
+---
+
+### `POST /contact/register`
+
+Designate a user as an emergency contact for a device the caller owns. Sends a Brevo email to the new contact on success.
+
+**Auth:** Firebase Bearer token.
+
+**Request Body:**
+```json
+{
+  "device_imei":      "865395075681633",
+  "contact_auth_uid": "<user2_firebase_uid>"
+}
+```
+
+**Response `200` (new registration):**
+```json
+{
+  "status":           "ok",
+  "device_imei":      "865395075681633",
+  "contact_auth_uid": "<user2_firebase_uid>"
+}
+```
+
+**Response `200` (already registered — idempotent re-call):**
+```json
+{
+  "status":             "ok",
+  "already_registered": true,
+  "device_imei":        "865395075681633",
+  "contact_auth_uid":   "<user2_firebase_uid>"
+}
+```
+No email is sent on `already_registered: true` — idempotent re-call must not spam the contact.
+
+**Errors:**
+- `400` — missing `device_imei`/`contact_auth_uid`, `cannot_be_self`, or `contact_no_email` (contact exists but has no email/alt_email on file)
+- `401` — missing/invalid Firebase Bearer token
+- `403` — caller does not own `device_imei`
+- `404` — `contact_not_synced` (no `users` row exists for `contact_auth_uid`; ask them to open the app once)
+- `502` — Brevo email delivery failed; the just-created DB row has been rolled back. The caller may safely retry.
+
+**Email behavior:** Uses Brevo template id from `BREVO_TEMPLATE_EMERGENCY_CONTACT_ASSIGNED` env var (default `13`). Template params: `GRANTER_NAME`, `DEVICE_NAME`, `CONTACT_NAME`. Outbound address prefers `users.alt_email` (opportunistic real address captured by share/claim) over `users.email`.
+
+---
+
+### `DELETE /contact/{imei}/{contact_auth_uid}`
+
+Owner-only revoke. Idempotent — succeeds whether the mapping existed or not.
+
+**Auth:** Firebase Bearer token.
+
+**Response `200`:**
+```json
+{ "status": "ok", "rows_affected": 1 }
+```
+`rows_affected: 0` means the mapping was already gone — still a success.
+
+**Errors:**
+- `400` — missing path params
+- `401` — missing/invalid Firebase Bearer token
+- `403` — caller does not own `imei`
+
+---
+
+### `GET /contact/byme`
+
+Lists every emergency-contact mapping the caller has assigned, grouped by device.
+
+**Auth:** Firebase Bearer token.
+
+**Response `200`:**
+```json
+{
+  "status": "ok",
+  "devices": [
+    {
+      "imei":        "865395075681633",
+      "device_name": "FUJI CBR1015",
+      "contacts": [
+        { "auth_uid": "u_abc...", "name": "Alice", "email_masked": "a****@example.com" },
+        { "auth_uid": "u_def...", "name": "Bob",   "email_masked": "b**@example.com" }
+      ]
+    }
+  ]
+}
+```
+
+`email_masked` shows only the first character of the local part plus the domain, since the owner identified the contact by QR/uid and doesn't necessarily need the full address — masking is enough for visual recognition. Returns an empty `devices: []` array if the caller has not registered any contacts.
+
+---
+
+### `GET /contact/device/{imei}`
+
+Same shape as a single `devices[]` element of `byme`. Convenience for the per-device settings screen.
+
+**Auth:** Firebase Bearer token. Ownership-checked.
+
+**Response `200`:**
+```json
+{
+  "status":      "ok",
+  "imei":        "865395075681633",
+  "device_name": "FUJI CBR1015",
+  "contacts": [
+    { "auth_uid": "u_abc...", "name": "Alice", "email_masked": "a****@example.com" }
+  ]
+}
+```
+
+**Errors:**
+- `400` — missing `imei` path param
+- `401` — missing/invalid Firebase Bearer token
+- `403` — caller does not own `imei`
 
 ---
 
