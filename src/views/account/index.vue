@@ -3,6 +3,8 @@ import { ref, watch, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '@/stores/user.js';
 import { useInstallStore } from '@/stores/install.js';
+import { useNotificationsStore } from '@/stores/notifications.js';
+import QrDisplayModal from '@/components/QrDisplayModal.vue';
 import { signOut } from '@/utils/auth';
 import { auth } from '@/firebase';
 import { baseUrl } from '@/utils/variables';
@@ -13,6 +15,7 @@ import { Capacitor } from '@capacitor/core';
 const router = useRouter();
 const userStore = useUserStore();
 const installStore = useInstallStore();
+const notifStore = useNotificationsStore();
 
 // Build dial code groups from countryList: { isos: ['US','CA',...], code: '+1', label: 'US/CA (+1)' }
 const countryCodes = (() => {
@@ -240,7 +243,75 @@ const togglePush = async () => {
 
 onMounted(() => {
   userStore.checkPushPermission();
+  notifStore.fetch().catch(() => {});
 });
+
+// Master + emergency toggle handlers
+const masterBusy = ref(false);
+const masterError = ref('');
+const emergencyBusy = ref(false);
+const emergencyError = ref('');
+
+// Display state for the master/emergency toggles is gated on device-level
+// push being fully active (OS permission + registered FCM token). Without
+// device push, no notification can land, so the account-level switches
+// render as OFF regardless of backend state.
+const masterToggleOn = computed(() => pushEnabled.value && notifStore.notifications_enabled);
+const emergencyToggleOn = computed(() => pushEnabled.value && notifStore.emergency_notifications_enabled);
+
+// First-grant flow shared by both toggles: prompt the OS for notification
+// permission, register the FCM token, then ensure both backend switches end
+// up true (mirror if already true, PUT if false).
+const enableViaPermission = async () => {
+  if (pushUnsupported.value) {
+    throw new Error('Notifications are not supported on this platform.');
+  }
+  if (userStore.pushPermission === 'denied') {
+    throw new Error('Notifications are blocked. Open device settings to enable them, then come back.');
+  }
+  const result = await userStore.enablePushFromGesture();
+  if (result !== 'granted') {
+    if (result === 'denied') throw new Error('Permission denied. Open device settings to enable notifications.');
+    if (result === 'token-error') throw new Error('Permission granted but failed to register with the server. Try again.');
+    throw new Error('Notifications are not supported on this platform.');
+  }
+  if (!notifStore.notifications_enabled) await notifStore.setMaster(true);
+  if (!notifStore.emergency_notifications_enabled) await notifStore.setEmergency(true);
+};
+
+const toggleMaster = async () => {
+  if (masterBusy.value || !notifStore.loaded) return;
+  masterBusy.value = true;
+  masterError.value = '';
+  try {
+    if (!pushEnabled.value) {
+      await enableViaPermission();
+    } else {
+      await notifStore.setMaster(!notifStore.notifications_enabled);
+    }
+  } catch (err) {
+    masterError.value = err?.message || 'Failed to update setting.';
+  } finally {
+    masterBusy.value = false;
+  }
+};
+
+const toggleEmergency = async () => {
+  if (emergencyBusy.value || !notifStore.loaded) return;
+  emergencyBusy.value = true;
+  emergencyError.value = '';
+  try {
+    if (!pushEnabled.value) {
+      await enableViaPermission();
+    } else {
+      await notifStore.setEmergency(!notifStore.emergency_notifications_enabled);
+    }
+  } catch (err) {
+    emergencyError.value = err?.message || 'Failed to update setting.';
+  } finally {
+    emergencyBusy.value = false;
+  }
+};
 
 // Platform detection — used by both Install card and Notifications card to
 // gate visibility. Both cards are restricted to Android/iOS mobile/tablet only.
@@ -331,6 +402,8 @@ async function clickAccountInstall() {
   showManualInstructions.value = true;
 }
 
+const showQrModal = ref(false);
+
 const logoutLoading = ref(false);
 const handleLogout = async () => {
   if (logoutLoading.value) return;
@@ -357,7 +430,21 @@ const handleLogout = async () => {
     </div>
 
     <div class="flex-1 p-4 overflow-y-auto space-y-6">
-      
+
+      <div class="flex justify-center">
+        <button
+          type="button"
+          @click="showQrModal = true"
+          :disabled="!userStore.user?.uid"
+          aria-label="Show my QR code"
+          class="w-16 h-16 rounded-full bg-white border border-gray-200 shadow-sm flex items-center justify-center text-brand hover:bg-brand-light transition cursor-pointer active:scale-[0.96] disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <i class="fa-solid fa-qrcode text-2xl"></i>
+        </button>
+      </div>
+
+      <QrDisplayModal v-model="showQrModal" :value="userStore.user?.uid || ''" />
+
       <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
         <h2 class="text-lg font-bold text-gray-800 mb-4">Profile Information</h2>
         
@@ -421,12 +508,78 @@ const handleLogout = async () => {
         </form>
       </div>
 
-      <div v-if="showNotificationsCard" class="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
+      <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
         <h2 class="text-lg font-bold text-gray-800 mb-4">Notifications</h2>
 
         <div class="flex items-center justify-between">
           <div class="flex-1 pr-4">
-            <p class="text-sm font-medium text-gray-800">Push notifications</p>
+            <p class="text-sm font-medium text-gray-800">Allow Notifications</p>
+            <p class="text-xs text-gray-500 mt-1 leading-snug">Master switch for all push notifications from your devices.</p>
+          </div>
+
+          <div class="flex items-center gap-2 shrink-0">
+            <i
+              v-if="masterBusy || (!notifStore.loaded && notifStore.loading)"
+              class="fa-solid fa-circle-notch fa-spin text-gray-400 text-sm"
+            ></i>
+            <button
+              type="button"
+              :disabled="masterBusy || !notifStore.loaded"
+              @click="toggleMaster"
+              :aria-pressed="masterToggleOn"
+              :class="[
+                'relative inline-flex h-6 w-11 items-center rounded-full transition',
+                masterToggleOn ? 'bg-brand' : 'bg-gray-300',
+                (masterBusy || !notifStore.loaded) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+              ]"
+            >
+              <span
+                :class="[
+                  'inline-block h-4 w-4 transform rounded-full bg-white transition shadow',
+                  masterToggleOn ? 'translate-x-6' : 'translate-x-1'
+                ]"
+              />
+            </button>
+          </div>
+        </div>
+        <p v-if="masterError" class="text-red-500 text-sm mt-3">{{ masterError }}</p>
+
+        <div class="flex items-center justify-between mt-5 pt-5 border-t border-gray-100">
+          <div class="flex-1 pr-4">
+            <p class="text-sm font-medium text-gray-800">Allow Emergency Notifications</p>
+            <p class="text-xs text-gray-500 mt-1 leading-snug">Receive impact alerts for devices where you are listed as an emergency contact.</p>
+          </div>
+
+          <div class="flex items-center gap-2 shrink-0">
+            <i
+              v-if="emergencyBusy"
+              class="fa-solid fa-circle-notch fa-spin text-gray-400 text-sm"
+            ></i>
+            <button
+              type="button"
+              :disabled="emergencyBusy || !notifStore.loaded"
+              @click="toggleEmergency"
+              :aria-pressed="emergencyToggleOn"
+              :class="[
+                'relative inline-flex h-6 w-11 items-center rounded-full transition',
+                emergencyToggleOn ? 'bg-brand' : 'bg-gray-300',
+                (emergencyBusy || !notifStore.loaded) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+              ]"
+            >
+              <span
+                :class="[
+                  'inline-block h-4 w-4 transform rounded-full bg-white transition shadow',
+                  emergencyToggleOn ? 'translate-x-6' : 'translate-x-1'
+                ]"
+              />
+            </button>
+          </div>
+        </div>
+        <p v-if="emergencyError" class="text-red-500 text-sm mt-3">{{ emergencyError }}</p>
+
+        <div v-if="showNotificationsCard" class="flex items-center justify-between mt-5 pt-5 border-t border-gray-100">
+          <div class="flex-1 pr-4">
+            <p class="text-sm font-medium text-gray-800">Push notifications on this device</p>
             <p class="text-xs text-gray-500 mt-1 leading-snug">{{ pushHelpText }}</p>
           </div>
 

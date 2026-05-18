@@ -2,14 +2,37 @@
 import { ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useDevicesStore } from '@/stores/devices.js';
+import { useToastStore } from '@/stores/toast.js';
 import ShareModal from '@/components/ShareModal.vue';
 
 const router = useRouter();
 const deviceStore = useDevicesStore();
+const toast = useToastStore();
 
 // --- Share Modal ---
 const showShareModal = ref(false);
 const shareTarget = ref({ imei: null, name: '' });
+
+// Per-device busy state for the lock button (so multiple devices in flight
+// don't share a single spinner).
+const lockBusyIds = ref(new Set());
+
+const toggleDeviceLock = async (device) => {
+  if (lockBusyIds.value.has(device.id)) return;
+  lockBusyIds.value = new Set(lockBusyIds.value).add(device.id);
+  try {
+    const next = !device.attributes?.activity_lock;
+    const res = await deviceStore.setActivityLock(device.id, next);
+    if (!res?.ok) {
+      const label = device.name || device.uniqueId;
+      toast.show(`Failed to ${next ? 'lock' : 'unlock'} ${label}.`, { variant: 'error' });
+    }
+  } finally {
+    const ns = new Set(lockBusyIds.value);
+    ns.delete(device.id);
+    lockBusyIds.value = ns;
+  }
+};
 
 const openShare = (device) => {
   shareTarget.value = { imei: device.uniqueId, name: device.name || '' };
@@ -339,6 +362,31 @@ const formatDate = (dateString) => {
             <button @click.stop="goToDetails(device.id)" class="flex-1 flex flex-col items-center justify-center bg-surface hover:bg-gray-100 py-2 rounded-lg transition-colors group">
               <i class="fa-solid fa-circle-info text-lg text-gray-500 group-hover:text-brand mb-1"></i>
               <span class="text-[10px] font-bold text-gray-600 group-hover:text-brand">Details</span>
+            </button>
+
+            <button
+              @click.stop="toggleDeviceLock(device)"
+              :disabled="lockBusyIds.has(device.id)"
+              :aria-label="device.attributes?.activity_lock ? 'Unlock device' : 'Lock device'"
+              class="flex-1 flex flex-col items-center justify-center bg-surface hover:bg-gray-100 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <i
+                v-if="lockBusyIds.has(device.id)"
+                class="fa-solid fa-circle-notch fa-spin text-lg text-gray-500 mb-1"
+              ></i>
+              <i
+                v-else
+                :class="[
+                  'text-lg mb-1',
+                  device.attributes?.activity_lock ? 'fa-solid fa-lock text-red-500' : 'fa-solid fa-lock-open text-green-600',
+                ]"
+              ></i>
+              <span
+                class="text-[10px] font-bold"
+                :class="device.attributes?.activity_lock ? 'text-red-500' : 'text-green-600'"
+              >
+                {{ device.attributes?.activity_lock ? 'Locked' : 'Unlocked' }}
+              </span>
             </button>
 
           </div>

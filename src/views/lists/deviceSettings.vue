@@ -1,17 +1,20 @@
 <script setup>
-import { ref, computed, onMounted, watch} from 'vue';
+import { ref, computed, onMounted, watch, useTemplateRef } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
 import { useDevicesStore } from '@/stores/devices.js';
 import { useUserStore } from '@/stores/user.js';
+import { useNotificationsStore } from '@/stores/notifications.js';
 import { request } from '@/utils/http.js';
 import { categoryMapping, baseUrl } from '@/utils/variables';
+import QrScanner from '@/components/QrScanner.vue';
 
 const route = useRoute();
 const router = useRouter();
 const deviceStore = useDevicesStore();
 const userStore = useUserStore();
+const notifStore = useNotificationsStore();
 
 const deviceId = route.params.id;
 
@@ -28,56 +31,188 @@ const successMsg = ref('');
 
 const isActive = ref(null);
 
-const linkedNotificationIds = ref(new Set());
-const notificationsLoading = ref(false);
-const notificationBusyIds = ref(new Set());
+// FCM per-device notification rules sourced from notifStore. Rule keys are
+// (device_imei, event_type) and are toggled idempotently via PUT
+// /notification/permissions/rule.
+const ruleBusy = ref(new Set());
+const ruleError = ref('');
 
-const availableNotifications = computed(() => userStore.notifications || []);
+const deviceImei = computed(() => device.value?.uniqueId || '');
 
-function notificationLabel(n) {
-  const raw = n?.attributes?.alarms || n?.type || 'Notification';
-  return raw
+// Source of truth: notifStore.events is the backend-curated list from
+// GET /notification/events. Preserves backend order. Any existing rules for
+// this device that aren't in the curated list are appended so we never
+// orphan a saved opt-in.
+const eventTypesForDevice = computed(() => {
+  const imei = deviceImei.value;
+  if (!imei) return [];
+  const curated = notifStore.events || [];
+  const result = [...curated];
+  const seen = new Set(curated);
+  for (const key of notifStore.rules) {
+    const [ruleImei, eventType] = key.split('::');
+    if (ruleImei === imei && eventType && !seen.has(eventType)) {
+      result.push(eventType);
+      seen.add(eventType);
+    }
+  }
+  return result;
+});
+
+function humanizeEvent(eventType) {
+  if (!eventType) return '';
+  if (eventType.startsWith('alarm:')) {
+    return humanizeEvent(eventType.slice('alarm:'.length));
+  }
+  if (eventType.includes(':')) {
+    const [prefix, subtype] = eventType.split(':');
+    return `${humanizeEvent(prefix)}: ${humanizeEvent(subtype)}`;
+  }
+  return eventType
+    .replace(/[_-]/g, ' ')
     .replace(/([A-Z])/g, ' $1')
-    .replace(/^./, c => c.toUpperCase())
+    .replace(/\s+/g, ' ')
+    .replace(/^./, (c) => c.toUpperCase())
     .trim();
 }
 
-async function loadLinkedNotifications() {
-  notificationsLoading.value = true;
+async function toggleRule(eventType) {
+  const imei = deviceImei.value;
+  if (!imei || ruleBusy.value.has(eventType)) return;
+
+  ruleBusy.value = new Set(ruleBusy.value).add(eventType);
+  ruleError.value = '';
+
+  const next = !notifStore.hasRule(imei, eventType);
   try {
-    const list = await deviceStore.fetchDeviceNotifications(deviceId);
-    linkedNotificationIds.value = new Set(list.map(n => n.id));
+    await notifStore.toggleRule(imei, eventType, next);
+  } catch (err) {
+    ruleError.value = `Failed to ${next ? 'enable' : 'disable'} ${humanizeEvent(eventType)}.`;
   } finally {
-    notificationsLoading.value = false;
+    const nextBusy = new Set(ruleBusy.value);
+    nextBusy.delete(eventType);
+    ruleBusy.value = nextBusy;
   }
 }
 
-async function toggleNotification(notif) {
-  const id = notif.id;
-  if (notificationBusyIds.value.has(id)) return;
+// Emergency contacts. Backend: GET /contact/device/{imei},
+// POST /contact/register, DELETE /contact/{imei}/{contact_auth_uid}.
+const contacts = ref([]);
+const contactsLoading = ref(false);
+const contactsError = ref('');
+const contactsExpanded = ref(false);
+const deletingUids = ref(new Set());
+const addingContact = ref(false);
+const contactScannerRef = useTemplateRef('contactScannerRef');
+const contactInfoOpen = ref(false);
+const activityLockInfoOpen = ref(false);
 
-  const wasLinked = linkedNotificationIds.value.has(id);
-  const next = new Set(linkedNotificationIds.value);
-  if (wasLinked) next.delete(id); else next.add(id);
-  linkedNotificationIds.value = next;
+// Activity Lock + Auto-Lock toggles. Backend endpoints take the full Traccar
+// device object; reconcile UI state from response.traccar after every write.
+const autoLockBusy = ref(false);
+const activityLockBusy = ref(false);
+const lockError = ref('');
 
-  notificationBusyIds.value = new Set(notificationBusyIds.value).add(id);
+const autoLock = computed(() => !!device.value?.attributes?.auto_lock);
+const activityLock = computed(() => !!device.value?.attributes?.activity_lock);
 
-  const ok = wasLinked
-    ? await deviceStore.unlinkDeviceNotification(deviceId, id)
-    : await deviceStore.linkDeviceNotification(deviceId, id);
-
-  if (!ok) {
-    const rollback = new Set(linkedNotificationIds.value);
-    if (wasLinked) rollback.add(id); else rollback.delete(id);
-    linkedNotificationIds.value = rollback;
-    errorMsg.value = `Failed to ${wasLinked ? 'disable' : 'enable'} ${notificationLabel(notif)}.`;
-  }
-
-  const nextBusy = new Set(notificationBusyIds.value);
-  nextBusy.delete(id);
-  notificationBusyIds.value = nextBusy;
+async function toggleAutoLock() {
+  if (autoLockBusy.value || !device.value) return;
+  autoLockBusy.value = true;
+  lockError.value = '';
+  const res = await deviceStore.setAutoLock(deviceId, !autoLock.value);
+  if (!res.ok) lockError.value = 'Auto-lock update failed. Please try again.';
+  autoLockBusy.value = false;
 }
+
+async function toggleActivityLock() {
+  if (activityLockBusy.value || !device.value) return;
+  activityLockBusy.value = true;
+  lockError.value = '';
+  const res = await deviceStore.setActivityLock(deviceId, !activityLock.value);
+  if (!res.ok) lockError.value = 'Activity lock update failed. Please try again.';
+  activityLockBusy.value = false;
+}
+
+async function fetchContacts() {
+  const imei = deviceImei.value;
+  if (!imei) return;
+  contactsLoading.value = true;
+  contactsError.value = '';
+  try {
+    const data = await request.send({
+      url: `${baseUrl}/contact/device/${imei}`,
+      token: userStore.idToken,
+    });
+    contacts.value = data?.contacts || [];
+  } catch (err) {
+    console.error('Failed to fetch contacts:', err);
+    contactsError.value = 'Failed to load contacts.';
+  } finally {
+    contactsLoading.value = false;
+  }
+}
+
+async function startAddContact() {
+  if (addingContact.value) return;
+  contactsError.value = '';
+  await contactScannerRef.value?.scan();
+}
+
+async function onContactScanned(scannedUid) {
+  const imei = deviceImei.value;
+  const uid = (scannedUid || '').trim();
+  if (!imei || !uid) return;
+  addingContact.value = true;
+  contactsError.value = '';
+  try {
+    await request.send({
+      url: `${baseUrl}/contact/register`,
+      method: 'POST',
+      data: { device_imei: imei, contact_auth_uid: uid },
+      token: userStore.idToken,
+    });
+    await fetchContacts();
+    contactsExpanded.value = true;
+  } catch (err) {
+    console.error('Failed to register contact:', err);
+    contactsError.value = err?.message || 'Failed to add contact.';
+  } finally {
+    addingContact.value = false;
+  }
+}
+
+function onContactScanError(err) {
+  console.error('QR scan error:', err);
+  contactsError.value = 'Failed to scan QR code.';
+}
+
+async function deleteContact(authUid) {
+  const imei = deviceImei.value;
+  if (!imei || !authUid || deletingUids.value.has(authUid)) return;
+  deletingUids.value = new Set(deletingUids.value).add(authUid);
+  contactsError.value = '';
+  try {
+    await request.send({
+      url: `${baseUrl}/contact/${imei}/${authUid}`,
+      method: 'DELETE',
+      token: userStore.idToken,
+    });
+    contacts.value = contacts.value.filter((c) => c.auth_uid !== authUid);
+    if (contacts.value.length === 0) contactsExpanded.value = false;
+  } catch (err) {
+    console.error('Failed to delete contact:', err);
+    contactsError.value = 'Failed to delete contact.';
+  } finally {
+    const next = new Set(deletingUids.value);
+    next.delete(authUid);
+    deletingUids.value = next;
+  }
+}
+
+watch(deviceImei, (imei) => {
+  if (imei) fetchContacts();
+}, { immediate: true });
 
 const KNOTS_PER_KPH = 1 / 1.852;
 const SPEED_LIMIT_MAX_KPH = 300;
@@ -115,6 +250,7 @@ function onSpeedLimitPaste(e) {
 
 
 onMounted(() => {
+  notifStore.fetch().catch(() => {});
   if (device.value) {
     name.value = device.value.name || '';
     category.value = device.value.category;
@@ -128,7 +264,6 @@ onMounted(() => {
       speedLimitKph.value = '';
     }
     deviceStore.fetchDeviceExpirations();
-    loadLinkedNotifications();
   } else {
     errorMsg.value = "Device not found.";
   }
@@ -344,45 +479,6 @@ watch(isActive, async (nv, ov) => {
       </div>
 
       <div v-if="device" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
-        <h2 class="text-lg font-bold text-gray-800">Notifications</h2>
-
-        <div v-if="notificationsLoading" class="flex items-center justify-center p-6 text-gray-400 text-sm">
-          <i class="fa-solid fa-circle-notch fa-spin mr-2"></i>
-          Loading notifications…
-        </div>
-
-        <div v-else-if="availableNotifications.length === 0" class="text-center text-gray-500 text-sm py-6">
-          No notifications available.
-        </div>
-
-        <div v-else class="space-y-2">
-          <div
-            v-for="notif in availableNotifications"
-            :key="notif.id"
-            class="p-4 border rounded-lg"
-          >
-            <label class="relative flex items-center justify-between w-full cursor-pointer">
-              <input
-                type="checkbox"
-                :checked="linkedNotificationIds.has(notif.id)"
-                :disabled="notificationBusyIds.has(notif.id)"
-                @change="toggleNotification(notif)"
-                class="sr-only peer"
-              >
-              <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-brand-light rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand"></div>
-              <span class="text-md font-medium text-gray-900 flex items-center gap-2">
-                {{ notificationLabel(notif) }}
-                <i
-                  v-if="notificationBusyIds.has(notif.id)"
-                  class="fa-solid fa-circle-notch fa-spin text-xs text-gray-400"
-                ></i>
-              </span>
-            </label>
-          </div>
-        </div>
-      </div>
-
-      <div v-if="device" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
         <h2 class="text-lg font-bold text-gray-800">Status</h2>
 
         <div class="p-4 border rounded-lg">
@@ -424,6 +520,194 @@ watch(isActive, async (nv, ov) => {
           <i class="fa-solid fa-bolt"></i>
           Top Up
         </button>
+      </div>
+
+      <div v-if="device" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
+        <div class="flex items-center gap-2">
+          <h2 class="text-lg font-bold text-gray-800">Activity Lock</h2>
+          <div class="relative">
+            <button
+              type="button"
+              tabindex="-1"
+              @mouseenter="activityLockInfoOpen = true"
+              @mouseleave="activityLockInfoOpen = false"
+              aria-label="More info"
+              class="w-3 h-3 flex items-center justify-center rounded-full bg-gray-200 text-gray-600 hover:bg-gray-300 transition-colors cursor-help"
+            >
+              <i class="fa-solid fa-info text-[7px]"></i>
+            </button>
+            <div
+              v-if="activityLockInfoOpen"
+              role="tooltip"
+              class="absolute top-full left-0 mt-2 w-max max-w-[260px] p-2 text-xs text-white bg-gray-900 rounded-md shadow-lg z-20 leading-snug pointer-events-none"
+            >
+              Auto activity lock will engage after we detect that device has stopped.
+              <div class="absolute -top-1 left-2 w-2 h-2 bg-gray-900 rotate-45"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="p-4 border rounded-lg">
+          <label class="relative flex items-center justify-between w-full cursor-pointer">
+            <input
+              type="checkbox"
+              :checked="autoLock"
+              :disabled="autoLockBusy"
+              @change="toggleAutoLock"
+              class="sr-only peer"
+            >
+            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-brand-light rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand"></div>
+            <span class="text-md font-medium text-gray-900 flex items-center gap-2">
+              Auto
+              <i v-if="autoLockBusy" class="fa-solid fa-circle-notch fa-spin text-xs text-gray-400"></i>
+            </span>
+          </label>
+        </div>
+
+        <button
+          type="button"
+          @click="toggleActivityLock"
+          :disabled="activityLockBusy"
+          :aria-label="activityLock ? 'Activity lock engaged. Tap to unlock.' : 'Activity lock disengaged. Tap to lock.'"
+          :aria-pressed="activityLock"
+          :class="[
+            'w-full py-8 rounded-xl text-white flex items-center justify-center transition-colors shadow-sm active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed',
+            activityLock ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600',
+          ]"
+        >
+          <i v-if="activityLockBusy" class="fa-solid fa-circle-notch fa-spin text-4xl"></i>
+          <i v-else :class="activityLock ? 'fa-solid fa-lock' : 'fa-solid fa-lock-open'" class="text-4xl"></i>
+        </button>
+
+        <p v-if="lockError" class="text-xs text-red-500">{{ lockError }}</p>
+      </div>
+
+      <div v-if="device" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <h2 class="text-lg font-bold text-gray-800">Emergency contact</h2>
+            <div class="relative">
+              <button
+                type="button"
+                tabindex="-1"
+                @mouseenter="contactInfoOpen = true"
+                @mouseleave="contactInfoOpen = false"
+                aria-label="More info"
+                class="w-3 h-3 flex items-center justify-center rounded-full bg-gray-200 text-gray-600 hover:bg-gray-300 transition-colors cursor-help"
+              >
+                <i class="fa-solid fa-info text-[7px]"></i>
+              </button>
+              <div
+                v-if="contactInfoOpen"
+                role="tooltip"
+                class="absolute top-full left-0 mt-2 w-max max-w-[260px] p-2 text-xs text-white bg-gray-900 rounded-md shadow-lg z-20 leading-snug pointer-events-none"
+              >
+                To add your emergency contact he/she must generate their QR code for scanning in their account page.
+                <div class="absolute -top-1 left-2 w-2 h-2 bg-gray-900 rotate-45"></div>
+              </div>
+            </div>
+          </div>
+          <button
+            @click="startAddContact"
+            :disabled="addingContact"
+            aria-label="Add emergency contact"
+            class="w-9 h-9 flex items-center justify-center rounded-full bg-brand text-white hover:bg-brand-dark transition-colors shadow-sm active:scale-[0.96] disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <i v-if="addingContact" class="fa-solid fa-circle-notch fa-spin text-sm"></i>
+            <i v-else class="fa-solid fa-plus text-sm"></i>
+          </button>
+        </div>
+
+        <QrScanner ref="contactScannerRef" @scanned="onContactScanned" @error="onContactScanError" />
+
+        <div v-if="contactsLoading" class="flex items-center justify-center p-3 text-gray-400 text-sm">
+          <i class="fa-solid fa-circle-notch fa-spin mr-2"></i>Loading…
+        </div>
+
+        <div v-else-if="contacts.length === 0" class="text-center text-sm text-gray-500 py-2 leading-snug">
+          Add another user's account here and they will be notified if this device registers an impact.
+        </div>
+
+        <div v-else>
+          <button
+            type="button"
+            @click="contactsExpanded = !contactsExpanded"
+            class="w-full flex items-center justify-between px-1 py-2 cursor-pointer"
+          >
+            <span class="text-sm font-medium text-gray-800">Total contacts: {{ contacts.length }}</span>
+            <i :class="contactsExpanded ? 'fa-chevron-up' : 'fa-chevron-down'" class="fa-solid text-gray-500 text-sm"></i>
+          </button>
+
+          <div v-if="contactsExpanded" class="space-y-2 mt-2">
+            <div
+              v-for="c in contacts"
+              :key="c.auth_uid"
+              class="flex items-center justify-between p-3 border rounded-lg"
+            >
+              <div class="flex-1 min-w-0 pr-3">
+                <p class="text-sm font-medium text-gray-800 truncate">{{ c.name || 'Unnamed contact' }}</p>
+                <p class="text-xs text-gray-500 truncate">{{ c.email_masked }}</p>
+              </div>
+              <button
+                @click="deleteContact(c.auth_uid)"
+                :disabled="deletingUids.has(c.auth_uid)"
+                aria-label="Delete contact"
+                class="w-9 h-9 flex items-center justify-center rounded-full text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <i v-if="deletingUids.has(c.auth_uid)" class="fa-solid fa-circle-notch fa-spin text-sm"></i>
+                <i v-else class="fa-solid fa-trash text-sm"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <p v-if="contactsError" class="text-xs text-red-500">{{ contactsError }}</p>
+      </div>
+
+      <div v-if="device" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 pb-8 mb-8 space-y-4">
+        <h2 class="text-lg font-bold text-gray-800">Notifications</h2>
+
+        <div v-if="!notifStore.loaded && notifStore.loading" class="flex items-center justify-center p-6 text-gray-400 text-sm">
+          <i class="fa-solid fa-circle-notch fa-spin mr-2"></i>
+          Loading notifications…
+        </div>
+
+        <div v-else-if="!eventTypesForDevice.length" class="text-center text-gray-500 text-sm py-6">
+          No notification types available.
+        </div>
+
+        <div v-else class="space-y-2">
+          <div
+            v-for="ev in eventTypesForDevice"
+            :key="ev"
+            class="p-4 border rounded-lg"
+          >
+            <label class="relative flex items-center justify-between w-full cursor-pointer">
+              <input
+                type="checkbox"
+                :checked="notifStore.hasRule(deviceImei, ev)"
+                :disabled="ruleBusy.has(ev)"
+                @change="toggleRule(ev)"
+                class="sr-only peer"
+              >
+              <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-brand-light rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand"></div>
+              <span class="text-md font-medium text-gray-900 flex items-center gap-2">
+                {{ humanizeEvent(ev) }}
+                <i
+                  v-if="ruleBusy.has(ev)"
+                  class="fa-solid fa-circle-notch fa-spin text-xs text-gray-400"
+                ></i>
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <p v-if="ruleError" class="text-xs text-red-500">{{ ruleError }}</p>
+
+        <p v-if="notifStore.loaded && !notifStore.notifications_enabled" class="text-xs text-gray-500 leading-snug">
+          Master notifications are off. Rules are saved but no pushes will be delivered until you turn on
+          <span class="font-medium">Allow Notifications</span> in account settings.
+        </p>
       </div>
 
     </div>

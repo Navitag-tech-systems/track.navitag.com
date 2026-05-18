@@ -1,5 +1,6 @@
 import { useUserStore } from '@/stores/user';
 import { useDevicesStore } from '@/stores/devices';
+import { useNotificationsStore } from '@/stores/notifications';
 import { request } from '@/utils/http';
 import { baseUrl } from '@/utils/variables';
 import router from '@/router';
@@ -105,6 +106,7 @@ export const session = {
     await userStore.traccarLogout();
     userStore.clearUser();
     deviceStore.clearData();
+    useNotificationsStore().reset();
     this.isReconnecting = false;
     this.isStartingSession = false;
     console.log('logout');

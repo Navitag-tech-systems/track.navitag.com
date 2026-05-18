@@ -4,6 +4,7 @@ import { useRoute, RouterView } from 'vue-router';
 import { useUserStore } from '@/stores/user.js';
 import { useDevicesStore } from '@/stores/devices.js';
 import { useInstallStore, INSTALL_TOAST_ENABLED } from '@/stores/install.js';
+import { useToastStore } from '@/stores/toast.js';
 import BottomNav from './components/bottomNav.vue';
 import Loading from '@/components/loading.vue';
 import Error from '@/components/error.vue';
@@ -19,6 +20,7 @@ const INSTALL_DISMISS_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000;
 const userStore = useUserStore();
 const deviceStore = useDevicesStore();
 const installStore = useInstallStore();
+const toastStore = useToastStore();
 const route = useRoute();
 
 function isInIframe() {
@@ -230,6 +232,27 @@ function dismissInstallToast() {
     </main>
 
     <BottomNav v-if="showNav" class="z-50" />
+
+    <div
+      v-if="toastStore.message"
+      class="fixed left-4 right-4 z-50 shadow-lg rounded-lg p-3 flex items-center gap-3"
+      :class="[
+        showNav ? 'bottom-[calc(48px+env(safe-area-inset-bottom)+12px)]' : 'bottom-[calc(env(safe-area-inset-bottom)+12px)]',
+        toastStore.variant === 'error' ? 'bg-red-600 text-white' :
+        toastStore.variant === 'success' ? 'bg-green-600 text-white' :
+        'bg-slate-800 text-white'
+      ]"
+      role="status"
+    >
+      <span class="flex-1 text-sm">{{ toastStore.message }}</span>
+      <button
+        class="text-white/80 hover:text-white cursor-pointer"
+        aria-label="Dismiss"
+        @click="toastStore.hide()"
+      >
+        <i class="fa-solid fa-xmark text-base"></i>
+      </button>
+    </div>
 
   </div>
 </template>

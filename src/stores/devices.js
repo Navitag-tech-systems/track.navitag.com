@@ -186,6 +186,55 @@ export const useDevicesStore = defineStore('devices', () => {
     }
   }
   
+  // Internal: read-patch-write a single attribute via one of the lock endpoints.
+  // Sends a clean Traccar device payload, reconciles the store from
+  // response.traccar (which includes any broker side-effects on other attrs).
+  async function _setLockAttribute(deviceId, attrKey, enabled, endpoint) {
+    const d = devices[deviceId];
+    if (!d) return { ok: false, error: 'Device not found' };
+
+    const payload = {
+      id: d.id,
+      uniqueId: d.uniqueId,
+      name: d.name,
+      disabled: d.disabled,
+      groupId: d.groupId,
+      phone: d.phone,
+      model: d.model,
+      contact: d.contact,
+      category: d.category,
+      attributes: {
+        ...(d.attributes || {}),
+        [attrKey]: enabled,
+      },
+    };
+
+    try {
+      const res = await request.send({
+        url: `${baseUrl}/device/${endpoint}`,
+        method: 'POST',
+        data: payload,
+        token: userStore.idToken,
+      });
+      if (res?.status === 'ok' && res.traccar && devices[deviceId]) {
+        Object.assign(devices[deviceId], res.traccar);
+        return { ok: true, traccar: res.traccar };
+      }
+      return { ok: false, status: res?.status };
+    } catch (err) {
+      console.error(`[Devices] _setLockAttribute(${attrKey}) failed:`, err);
+      return { ok: false, error: err };
+    }
+  }
+
+  function setActivityLock(deviceId, enabled) {
+    return _setLockAttribute(deviceId, 'activity_lock', enabled, 'update-activity-lock');
+  }
+
+  function setAutoLock(deviceId, enabled) {
+    return _setLockAttribute(deviceId, 'auto_lock', enabled, 'update-auto-lock');
+  }
+
   async function updateDevice(deviceId, payload) {
     if (!userStore.server_url) return null;
 
@@ -379,6 +428,7 @@ export const useDevicesStore = defineStore('devices', () => {
     hasProPlan, geofenceLimit, canCreateGeofence,
     processSocketData,
     fetchDevices, fetchGeofences, fetchDeviceExpirations, fetchAll, updateDevice,
+    setActivityLock, setAutoLock,
     fetchDeviceNotifications, linkDeviceNotification, unlinkDeviceNotification, linkAllNotificationsToDevice,
     linkDeviceGeofence, linkDefaultGeofencesToDevice, linkGeofenceToEligibleDevices,
     enforceGeofenceLimit, clearData
