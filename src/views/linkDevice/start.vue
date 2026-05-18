@@ -1,58 +1,55 @@
 <script setup>
-import { ref } from 'vue';
+import { ref, useTemplateRef } from 'vue';
 import { useRouter } from 'vue-router';
-import { CapacitorBarcodeScanner } from '@capacitor/barcode-scanner';
 import { Capacitor } from '@capacitor/core';
+import { Browser } from '@capacitor/browser';
+import QrScanner from '@/components/QrScanner.vue';
+
+const props = defineProps({
+  showBack: { type: Boolean, default: true },
+  showShopLink: { type: Boolean, default: false },
+  scanCopy: {
+    type: String,
+    default:
+      'To activate and link your new GPS tracker to your account, please locate and scan the QR code found on the device.',
+  },
+  manualCopy: {
+    type: String,
+    default: 'Please manually type the 15-digit IMEI found on your tracker to link it.',
+  },
+});
 
 const router = useRouter();
 const errorMsg = ref('');
 const isScanning = ref(false);
 const manualCode = ref('');
-
-// The official plugin supports both Web and Native natively, 
-// so we can default to showing the scanner button.
 const showCameraOption = ref(true);
+const qrScanner = useTemplateRef('qrScanner');
+
+const IMEI_REGEX = /^\d{15}$/;
 
 const startScan = async () => {
   errorMsg.value = '';
   isScanning.value = true;
-  
   try {
-    // --- Web Pre-Check for Camera Permissions ---
-    // The capacitor web implementation sometimes throws uncatchable errors 
-    // if permissions are denied. We pre-check here to catch the NotAllowedError safely.
-    if (Capacitor.getPlatform() === 'web') {
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        // Stop stream immediately so the scanner plugin can acquire it
-        stream.getTracks().forEach(track => track.stop());
-      } else {
-        throw new Error("Camera API not supported in this browser.");
-      }
-    }
-
-    // 2. Open the scanner
-    const result = await CapacitorBarcodeScanner.scanBarcode({
-      hint: 17, // 17 corresponds to 'ALL' barcode formats
-      cameraDirection: 1 // 1 corresponds to 'BACK' camera
-    });
-
-    // 3. Process the result
-    if (result && result.ScanResult) {
-      processDeviceCode(result.ScanResult);
-    } else {
-      // User closed the scanner without scanning
-      showCameraOption.value = false;
-    }
-  } catch (err) {
-    console.error("Scanner error:", err);
-
-    // Fallback to manual input view
-    showCameraOption.value = false;
-    errorMsg.value = "Camera access denied or scanner failed. Please enter the code manually.";
+    await qrScanner.value.scan();
   } finally {
     isScanning.value = false;
   }
+};
+
+const onScanned = (code) => {
+  processDeviceCode(code);
+};
+
+const onCancelled = () => {
+  showCameraOption.value = false;
+};
+
+const onError = (err) => {
+  console.error('Scanner error:', err);
+  showCameraOption.value = false;
+  errorMsg.value = 'Camera access denied or scanner failed. Please enter the code manually.';
 };
 
 const submitManualCode = () => {
@@ -64,25 +61,35 @@ const submitManualCode = () => {
   processDeviceCode(manualCode.value);
 };
 
-// Centralized processing function with IMEI Validation
 const processDeviceCode = (code) => {
   const cleanCode = code.trim();
-  const imeiRegex = /^\d{15}$/; // Validate standard 15-digit IMEI
-
-  if (!imeiRegex.test(cleanCode)) {
+  if (!IMEI_REGEX.test(cleanCode)) {
     errorMsg.value = 'Invalid code. Please enter a 15-digit numeric IMEI.';
     return;
   }
-
-  console.log('Successfully acquired IMEI/Code:', cleanCode);
   router.push(`/linkdevice/link/${cleanCode}`);
+};
+
+const openShop = async () => {
+  const url = 'https://www.navitag.com/shop';
+  if (Capacitor.isNativePlatform()) {
+    await Browser.open({ url });
+  } else {
+    window.open(url, '_blank');
+  }
 };
 </script>
 
 <template>
-  <div class="flex flex-col h-100 bg-surface ">
+  <div class="flex flex-col flex-1 bg-surface">
+    <QrScanner ref="qrScanner" @scanned="onScanned" @cancelled="onCancelled" @error="onError" />
+
     <div v-show="!isScanning" class="bg-white p-4 shadow-sm flex items-center">
-      <button @click="router.back()" class="text-gray-600 mr-4 cursor-pointer hover:text-gray-900">
+      <button
+        v-if="showBack"
+        @click="router.back()"
+        class="text-gray-600 mr-4 cursor-pointer hover:text-gray-900"
+      >
         <i class="fa-solid fa-arrow-left text-xl"></i>
       </button>
       <h1 class="text-xl font-bold text-gray-800">Link Device</h1>
@@ -97,59 +104,69 @@ const processDeviceCode = (code) => {
       </h2>
 
       <p class="text-gray-600 mb-6 max-w-sm text-sm leading-relaxed">
-        <span v-if="showCameraOption">
-          To activate and link your new GPS tracker to your account, please locate and scan the QR code found on the device.
-        </span>
-        <span v-else>
-          Please manually type the 15-digit IMEI found on your tracker to link it.
-        </span>
+        {{ showCameraOption ? scanCopy : manualCopy }}
       </p>
 
       <p v-if="errorMsg" class="text-sm mb-4 p-3 rounded w-full max-w-sm text-red-600 bg-red-50 border border-red-200">
         {{ errorMsg }}
       </p>
-      <div v-else :style="{minHeight: '50px'}">
-
-      </div>
+      <div v-else :style="{ minHeight: '50px' }"></div>
     </div>
 
     <div class="p-6 bg-white shadow-[0_-4px_10px_-2px_rgba(0,0,0,0.05)] m-3 rounded-xl">
-      
       <template v-if="showCameraOption">
-        <button 
-          @click="startScan" 
+        <button
+          @click="startScan"
           :disabled="isScanning"
           class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-4 px-4 rounded-xl flex items-center justify-center transition cursor-pointer text-lg shadow-md active:scale-[0.98] disabled:opacity-50"
         >
           <i v-if="isScanning" class="fa-solid fa-circle-notch fa-spin mr-3 text-xl"></i>
-          <i v-else class="fa-solid fa-camera mr-3 text-xl"></i> 
+          <i v-else class="fa-solid fa-camera mr-3 text-xl"></i>
           {{ isScanning ? 'Scanner Active...' : 'Start Camera' }}
         </button>
-        <button @click="showCameraOption = false; errorMsg = ''" class="w-full mt-4 text-sm text-accent hover:underline cursor-pointer">
+        <button
+          @click="showCameraOption = false; errorMsg = ''"
+          class="w-full mt-4 text-sm text-accent hover:underline cursor-pointer"
+        >
           Enter code manually instead
         </button>
       </template>
 
       <template v-else>
         <div class="w-full text-left">
-          <input 
-            v-model="manualCode" 
-            type="text" 
-            placeholder="e.g. 123456789012345" 
-            class="w-full border p-4 text-lg rounded-xl focus:ring-2 focus:ring-brand outline-none mb-3 tracking-widest text-center" 
+          <input
+            v-model="manualCode"
+            type="text"
+            placeholder="e.g. 123456789012345"
+            class="w-full border p-4 text-lg rounded-xl focus:ring-2 focus:ring-brand outline-none mb-3 tracking-widest text-center"
+            @keyup.enter="submitManualCode"
           />
-          <button 
-            @click="submitManualCode" 
+          <button
+            @click="submitManualCode"
             class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-4 px-4 rounded-xl transition cursor-pointer text-lg shadow-md active:scale-[0.98]"
           >
             Submit Code
           </button>
-          <button @click="showCameraOption = true; errorMsg = ''" class="w-full mt-4 text-sm text-accent hover:underline cursor-pointer flex justify-center">
+          <button
+            @click="showCameraOption = true; errorMsg = ''"
+            class="w-full mt-4 text-sm text-accent hover:underline cursor-pointer flex justify-center"
+          >
             Back to Scanner
           </button>
         </div>
       </template>
 
+      <div v-if="showShopLink" class="mt-4 pt-4 border-t border-gray-100 text-center">
+        <p class="text-xs text-gray-500 font-medium">
+          Need a new Navitag Device?
+          <button
+            @click="openShop"
+            class="text-accent hover:underline font-bold ml-1 cursor-pointer"
+          >
+            Shop Devices
+          </button>
+        </p>
+      </div>
     </div>
   </div>
 </template>

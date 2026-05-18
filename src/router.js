@@ -15,7 +15,6 @@ import LinkDeviceError from '@/views/linkDevice/error.vue'
 import LinkDeviceLink from '@/views/linkDevice/link.vue'
 import LinkDeviceEnable from '@/views/linkDevice/enable.vue'
 import LinkDeviceSuccess from '@/views/linkDevice/success.vue'
-import LinkDeviceTeaser from '@/views/linkDevice/addOrBuy.vue'
 
 import DeviceSettings from './views/lists/deviceSettings.vue'
 
@@ -60,6 +59,12 @@ const router = createRouter({
       path: '/linkdevice/start',
       name: 'linkdevice-start',
       component: LinkDeviceStart,
+      props: {
+        showBack: true,
+        showShopLink: false,
+        scanCopy: 'To activate and link your new GPS tracker to your account, please locate and scan the QR code found on the device.',
+        manualCopy: 'Please manually type the 15-digit IMEI found on your tracker to link it.',
+      },
       meta: { requiresAuth: true, activeTab: 'list' } // Requires login to link a device
     },
     {
@@ -131,7 +136,13 @@ const router = createRouter({
     {
       path: '/linkdevice/teaser',
       name: 'linkdevice-teaser',
-      component: LinkDeviceTeaser,
+      component: LinkDeviceStart,
+      props: {
+        showBack: false,
+        showShopLink: true,
+        scanCopy: 'Locate the QR code on your new device and scan it to link it to your account.',
+        manualCopy: 'Type the 15-digit IMEI found on the back of your device to link it.',
+      },
       meta: {requiresAuth:true, activeTab: 'lists'}
     },
     {

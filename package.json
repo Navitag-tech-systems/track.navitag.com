@@ -31,11 +31,11 @@
     "@geoman-io/leaflet-geoman-free": "^2.19.2",
     "@tailwindcss/vite": "^4.1.18",
     "firebase": "^12.8.0",
-    "html5-qrcode": "^2.3.8",
     "ky": "^1.14.3",
     "leaflet": "^1.9.4",
     "leaflet-rotate": "^0.2.8",
     "pinia": "^3.0.4",
+    "qrcode": "^1.5.4",
     "vue": "^3.5.27",
     "vue-router": "^4.6.4"
   },
