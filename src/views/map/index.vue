@@ -4,6 +4,8 @@ import { useRouter } from 'vue-router';
 import { useUserStore } from '@/stores/user.js';
 import { useDevicesStore } from '@/stores/devices.js';
 import ShareModal from '@/components/ShareModal.vue';
+import SharedBadge from '@/components/SharedBadge.vue';
+import { hasScope } from '@/utils/scopes';
 
 const router = useRouter();
 const deviceStore = useDevicesStore();
@@ -160,9 +162,22 @@ const getGpsQuality = (device) => {
       class="pointer-events-auto mt-auto bg-white rounded-t-2xl shadow-[0_-5px_20px_rgba(0,0,0,0.1)] p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] animate-slide-up"
     >
       <div class="flex justify-between items-center mb-1">
-        <h2 class="text-sm font-bold text-gray-800 truncate pr-4">{{ deviceStore.deviceSelectedObject.name }}</h2>
+        <div class="flex items-center gap-1.5 min-w-0 pr-4">
+          <h2 class="text-sm font-bold text-gray-800 truncate">{{ deviceStore.deviceSelectedObject.name }}</h2>
+          <SharedBadge :device="deviceStore.deviceSelectedObject" />
+          <i
+            :class="[
+              'fa-solid text-xs shrink-0',
+              deviceStore.deviceSelectedObject.attributes?.activity_lock
+                ? 'fa-lock text-red-500'
+                : 'fa-lock-open text-gray-400',
+            ]"
+            :aria-label="deviceStore.deviceSelectedObject.attributes?.activity_lock ? 'Activity lock engaged' : 'Activity lock off'"
+          ></i>
+        </div>
         <div class="flex items-center gap-1.5 shrink-0">
           <button
+            v-if="hasScope(deviceStore.deviceSelectedObject, 'share:public')"
             @click="openShareModal"
             class="w-6 h-6 flex items-center justify-center bg-gray-100 text-gray-500 rounded-full hover:bg-gray-200 transition-colors"
             aria-label="Share tracking link"
@@ -216,12 +231,22 @@ const getGpsQuality = (device) => {
           </div>
         </div>
 
-        <button 
-          @click="router.push(`/devices/${deviceStore.deviceSelectedObject.id}`)"
-          class="text-[10px] font-bold text-brand bg-brand-light hover:bg-brand-light px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1"
-        >
-          Details <i class="fa-solid fa-chevron-right text-[8px]"></i>
-        </button>
+        <div class="flex items-center gap-1.5">
+          <button
+            v-if="hasScope(deviceStore.deviceSelectedObject, 'energy:read')"
+            @click="router.push(`/device/settings/${deviceStore.deviceSelectedObject.id}`)"
+            class="text-brand bg-brand-light hover:bg-brand-light w-6 h-6 rounded-lg transition-colors flex items-center justify-center"
+            aria-label="Device settings"
+          >
+            <i class="fa-solid fa-gear text-[11px]"></i>
+          </button>
+          <button
+            @click="router.push(`/devices/${deviceStore.deviceSelectedObject.id}`)"
+            class="text-[10px] font-bold text-brand bg-brand-light hover:bg-brand-light px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1"
+          >
+            Details <i class="fa-solid fa-chevron-right text-[8px]"></i>
+          </button>
+        </div>
 
       </div>
 

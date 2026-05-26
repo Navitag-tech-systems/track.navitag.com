@@ -4,6 +4,8 @@ import { useRouter } from 'vue-router';
 import { useDevicesStore } from '@/stores/devices.js';
 import { useToastStore } from '@/stores/toast.js';
 import ShareModal from '@/components/ShareModal.vue';
+import SharedBadge from '@/components/SharedBadge.vue';
+import { hasScope } from '@/utils/scopes';
 
 const router = useRouter();
 const deviceStore = useDevicesStore();
@@ -263,7 +265,9 @@ const formatDate = (dateString) => {
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-2">
                 <h2 class="text-lg font-bold text-gray-800 leading-tight truncate">{{ device.name || 'Unnamed Tracker' }}</h2>
+                <SharedBadge :device="device" />
                 <button
+                  v-if="hasScope(device, 'share:public')"
                   @click.stop="openShare(device)"
                   class="w-6 h-6 flex items-center justify-center bg-gray-100 text-gray-500 rounded-full hover:bg-gray-200 transition-colors shrink-0"
                   aria-label="Share tracking link"
@@ -349,12 +353,22 @@ const formatDate = (dateString) => {
 
           <div v-if="deviceStore.deviceSelected === device.id" class="mt-4 pt-3 border-t border-gray-100 flex justify-between items-center animate-fade-in gap-2">
             
-            <button @click.stop="goToSettings(device.id)" class="flex-1 flex flex-col items-center justify-center bg-surface hover:bg-gray-100 py-2 rounded-lg transition-colors group">
+            <button
+              @click.stop="goToSettings(device.id)"
+              :disabled="!hasScope(device, 'energy:read')"
+              :title="hasScope(device, 'energy:read') ? '' : 'Settings not available for this share'"
+              class="flex-1 flex flex-col items-center justify-center bg-surface hover:bg-gray-100 py-2 rounded-lg transition-colors group disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-surface"
+            >
               <i class="fa-solid fa-gear text-lg text-gray-500 group-hover:text-brand mb-1"></i>
               <span class="text-[10px] font-bold text-gray-600 group-hover:text-brand">Settings</span>
             </button>
 
-            <button @click.stop="goToHistory(device.uniqueId)" class="flex-1 flex flex-col items-center justify-center bg-surface hover:bg-gray-100 py-2 rounded-lg transition-colors group">
+            <button
+              @click.stop="goToHistory(device.uniqueId)"
+              :disabled="!hasScope(device, 'history:read')"
+              :title="hasScope(device, 'history:read') ? '' : 'History access not granted'"
+              class="flex-1 flex flex-col items-center justify-center bg-surface hover:bg-gray-100 py-2 rounded-lg transition-colors group disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-surface"
+            >
               <i class="fa-solid fa-clock-rotate-left text-lg text-gray-500 group-hover:text-brand mb-1"></i>
               <span class="text-[10px] font-bold text-gray-600 group-hover:text-brand">History</span>
             </button>
@@ -366,9 +380,10 @@ const formatDate = (dateString) => {
 
             <button
               @click.stop="toggleDeviceLock(device)"
-              :disabled="lockBusyIds.has(device.id)"
+              :disabled="device.shared || lockBusyIds.has(device.id)"
               :aria-label="device.attributes?.activity_lock ? 'Unlock device' : 'Lock device'"
-              class="flex-1 flex flex-col items-center justify-center bg-surface hover:bg-gray-100 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              :title="device.shared ? 'Activity lock can only be controlled by the device owner' : ''"
+              class="flex-1 flex flex-col items-center justify-center bg-surface hover:bg-gray-100 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-surface"
             >
               <i
                 v-if="lockBusyIds.has(device.id)"

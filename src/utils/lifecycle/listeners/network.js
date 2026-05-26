@@ -13,6 +13,11 @@ export function registerNetworkListener(session) {
     userStore.internet = status.connected;
 
     if (status.connected && userStore.isLoggedIn) {
+      // Clear any error left over from a failed reconnect attempt that
+      // ran while we were briefly offline — otherwise <NoNet /> hides on
+      // recovery but <Error /> takes its place because userStore.error
+      // was never reset.
+      userStore.error = false;
       await session.checkConnectionAndReconnect();
     }
   });

@@ -25,6 +25,33 @@ const nextStep = () => {
   step.value = 2; // Proceed to map drawing
 };
 
+// Link the newly created geofence to the user's 1:1 Traccar group so it
+// applies to every device they own (including future ones). Retried with
+// backoff because the geofence already exists at this point — a transient
+// failure should not leave an orphan. Best-effort: returns false on full
+// exhaustion; caller still navigates so the user isn't trapped.
+const linkGeofenceToUserGroup = async (geofenceId, attempts = 3) => {
+  const groupId = userStore.server_group;
+  if (!groupId) return false;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      await request.send({
+        url: `https://${userStore.server_url}/api/permissions`,
+        method: 'POST',
+        data: { groupId: Number(groupId), geofenceId: Number(geofenceId) },
+        isTraccar: true,
+      });
+      return true;
+    } catch (err) {
+      console.warn(`[Geofence] link attempt ${i + 1}/${attempts} failed:`, err?.message || err);
+      if (i < attempts - 1) {
+        await new Promise(r => setTimeout(r, 500 * (i + 1)));
+      }
+    }
+  }
+  return false;
+};
+
 const saveToTraccar = async (latLngs) => {
   if (isSaving.value) return;
   isSaving.value = true;
@@ -39,7 +66,7 @@ const saveToTraccar = async (latLngs) => {
     // Original code was sending "LAT LON", which flips coordinates.
     let points = pointsArray.map(p => `${p.lat} ${p.lng}`);
     // --- CORRECTION END ---
-    
+
     // Traccar WKT requires the polygon to be closed (first point == last point)
     // Leaflet often gives an open array, so we close it manually if needed.
     const first = points[0];
@@ -47,22 +74,27 @@ const saveToTraccar = async (latLngs) => {
     if (first !== last) {
       points.push(first);
     }
-    
+
     const areaString = `POLYGON ((${points.join(', ')}))`;
 
     const newGeofence = await request.send({
       url: `https://${userStore.server_url}/api/geofences`,
-      method: 'POST', 
+      method: 'POST',
       data: {
         name: geofenceName.value.trim(),
         area: areaString,
       },
-      isTraccar: true,     
+      isTraccar: true,
     })
 
     if(!newGeofence) userStore.error = true
 
-    await deviceStore.linkGeofenceToEligibleDevices(newGeofence.id);
+    // Link the geofence to the user's 1:1 Traccar group so it auto-applies to
+    // every owned device. Without this, geofenceEnter/Exit rules never fire.
+    const linked = await linkGeofenceToUserGroup(newGeofence.id);
+    if (!linked) {
+      console.error('[Geofence] Failed to link geofence to user group after retries:', newGeofence.id);
+    }
 
     // Update local Pinia store immediately to reflect changes on the map
     // Note: Store keeps [lat, lon] format for Leaflet, while Server gets WKT [lon, lat]
@@ -75,7 +107,7 @@ const saveToTraccar = async (latLngs) => {
 
     LifecycleService.startSession()
 
-    // Success! Update local Pinia store  
+    // Success! Update local Pinia store
     router.replace('/')
 
 

@@ -2,16 +2,27 @@
 import { ref, computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useDevicesStore } from '@/stores/devices.js';
+import { hasScope } from '@/utils/scopes';
 import DatePicker from '@/components/datePicker.vue'; // Importing your component
+import SharedBadge from '@/components/SharedBadge.vue';
 
 const route = useRoute();
 const router = useRouter();
 const deviceStore = useDevicesStore();
 
+// Local-date helper: native <input type="date"> and the backend's per-user-tz
+// "today" check both interpret the YYYY-MM-DD string in the user's local zone.
+// toISOString() returns UTC, so before ~08:00 in Manila (UTC+8) it lags a day
+// and the backend rejects a picker pick of "today (Manila)" as in the future.
+const toLocalDateString = (d = new Date()) =>
+  d.getFullYear() + '-' +
+  String(d.getMonth() + 1).padStart(2, '0') + '-' +
+  String(d.getDate()).padStart(2, '0');
+
 // --- State ---
 const selectedDeviceId = ref(null);
-const selectedDate = ref(new Date().toISOString().split('T')[0]); // Default today
-const today = ref(new Date().toISOString().split('T')[0]); // Max date limit
+const selectedDate = ref(toLocalDateString()); // Default today (local)
+const today = ref(toLocalDateString());         // Max date limit (local)
 
 // Plan-based min date
 const minDate = computed(() => {
@@ -20,16 +31,21 @@ const minDate = computed(() => {
   const maxDays = plan === 'pro' ? 90 : 31;
   const d = new Date();
   d.setDate(d.getDate() - maxDays);
-  return d.toISOString().split('T')[0];
+  return toLocalDateString(d);
 });
 
 const searchQuery = ref('');
 const isDropdownOpen = ref(false);
 
 // --- Computed ---
-// 1. Filter store for devices that actually have position data
+// 1. Filter store for devices that actually have position data and that
+//    the viewer has history:read access to. Owners pass via OWNER_SENTINEL.
 const devicesWithPositions = computed(() => {
-  return Object.values(deviceStore.devices).filter(d => d.latlon && d.latlon.length === 2);
+  return Object.values(deviceStore.devices).filter(d => {
+    if (!d.latlon || d.latlon.length !== 2) return false;
+    if (!hasScope(d, 'history:read')) return false;
+    return true;
+  });
 });
 
 // 2. Filter the dropdown list based on the search input
@@ -47,6 +63,12 @@ const selectedDevice = computed(() => {
   if (!selectedDeviceId.value) return null;
   return devicesWithPositions.value.find(d => d.id === selectedDeviceId.value);
 });
+
+// Generate-Report gate: must have a selection that the viewer can read
+// history on. Owners pass via OWNER_SENTINEL; shared devices need
+// history:read in their /share/tome scope list. Belt-and-braces — the
+// devicesWithPositions filter already excludes inaccessible devices.
+const canGenerate = computed(() => hasScope(selectedDevice.value, 'history:read'));
 
 // --- Auto-Select Logic ---
 watch(
@@ -169,7 +191,10 @@ const generateReport = () => {
                 :class="{ 'bg-brand-light': selectedDeviceId === device.id }"
               >
                 <div>
-                  <p class="text-sm font-bold text-gray-800">{{ device.name || 'Unnamed' }}</p>
+                  <div class="flex items-center gap-1.5">
+                    <p class="text-sm font-bold text-gray-800">{{ device.name || 'Unnamed' }}</p>
+                    <SharedBadge :device="device" />
+                  </div>
                   <p class="text-[10px] text-gray-400 font-mono">{{ device.uniqueId }}</p>
                 </div>
                 <i v-if="selectedDeviceId === device.id" class="fa-solid fa-check text-brand"></i>
@@ -188,9 +213,16 @@ const generateReport = () => {
           class="mb-8"
         />
 
-        <button 
+        <button
           @click="generateReport"
-          class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-3.5 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 active:scale-[0.98]"
+          :disabled="!canGenerate"
+          :title="canGenerate ? '' : 'History access not granted for this device'"
+          :class="[
+            'w-full font-bold py-3.5 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 active:scale-[0.98]',
+            canGenerate
+              ? 'bg-brand hover:bg-brand-dark text-white'
+              : 'bg-gray-200 text-gray-400 cursor-not-allowed',
+          ]"
         >
           Generate Report
           <i class="fa-solid fa-arrow-right"></i>

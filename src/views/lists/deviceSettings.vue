@@ -8,7 +8,9 @@ import { useUserStore } from '@/stores/user.js';
 import { useNotificationsStore } from '@/stores/notifications.js';
 import { request } from '@/utils/http.js';
 import { categoryMapping, baseUrl } from '@/utils/variables';
+import { hasScope } from '@/utils/scopes';
 import QrScanner from '@/components/QrScanner.vue';
+import SharedBadge from '@/components/SharedBadge.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -30,6 +32,30 @@ const errorMsg = ref('');
 const successMsg = ref('');
 
 const isActive = ref(null);
+
+// Owners pass both gates via OWNER_SENTINEL; shared devices need explicit
+// energy:read / energy:write in their /share/tome scope list.
+const canReadEnergy = computed(() => hasScope(device.value, 'energy:read'));
+const canWriteEnergy = computed(() => hasScope(device.value, 'energy:write'));
+// Logging an energy event (refuel / charge / odometer / tank) needs BOTH:
+// energy:write to POST, and energy:read so the user can see the resulting
+// metrics. Without read access, an entry-button click is half-blind.
+const canLogEnergy = computed(() => canReadEnergy.value && canWriteEnergy.value);
+
+const isProfileDirty = computed(() => {
+  if (!device.value) return false;
+  if (name.value.trim() !== (device.value.name || '')) return true;
+  if (category.value !== device.value.category) return true;
+  const existingKnots = device.value.attributes?.speedLimit;
+  const existingHasLimit = !!(existingKnots && existingKnots > 0);
+  if (noSpeedLimit.value === existingHasLimit) return true; // mismatch
+  if (!noSpeedLimit.value) {
+    const currentKph = String(speedLimitKph.value).trim();
+    const savedKph = existingHasLimit ? String(Math.round(existingKnots * 1.852)) : '';
+    if (currentKph !== savedKph) return true;
+  }
+  return false;
+});
 
 // FCM per-device notification rules sourced from notifStore. Rule keys are
 // (device_imei, event_type) and are toggled idempotently via PUT
@@ -101,6 +127,7 @@ const contacts = ref([]);
 const contactsLoading = ref(false);
 const contactsError = ref('');
 const contactsExpanded = ref(false);
+const notificationsExpanded = ref(false);
 const deletingUids = ref(new Set());
 const addingContact = ref(false);
 const contactScannerRef = useTemplateRef('contactScannerRef');
@@ -379,7 +406,10 @@ watch(isActive, async (nv, ov) => {
       >
         <i class="fa-solid fa-arrow-left text-lg"></i>
       </button>
-      <h1 class="text-lg font-bold text-gray-800">Edit Device</h1>
+      <div class="flex items-center gap-2 min-w-0">
+        <h1 class="text-lg font-bold text-gray-800 truncate">{{ device?.name ? 'Settings · ' + device.name : 'Device Settings' }}</h1>
+        <SharedBadge :device="device" />
+      </div>
     </div>
 
     <div class="p-4 space-y-6 max-w-md mx-auto w-full pb-safe-bottom">
@@ -388,7 +418,11 @@ watch(isActive, async (nv, ov) => {
         <p>Loading device data...</p>
       </div>
 
-      <div v-else class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+      <div v-else-if="device.shared" class="text-center text-xs text-gray-500 leading-snug px-6 py-2">
+        Only Usage Metrics are available for shared devices. Other settings are reserved for the device owner.
+      </div>
+
+      <div v-if="device && !device.shared" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
         <form @submit.prevent="saveDevice" class="space-y-5">
 
           <h2 class="text-lg font-bold text-gray-800">Profile</h2>
@@ -467,10 +501,10 @@ watch(isActive, async (nv, ov) => {
             {{ successMsg }}
           </div>
 
-          <button 
-            type="submit" 
-            :disabled="loading"
-            class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-4 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 outline-none mt-4"
+          <button
+            type="submit"
+            :disabled="loading || !isProfileDirty"
+            class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-4 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed outline-none mt-4"
           >
             <i v-if="loading" class="fa-solid fa-circle-notch fa-spin"></i>
             {{ loading ? 'Saving...' : 'Save Changes' }}
@@ -479,6 +513,52 @@ watch(isActive, async (nv, ov) => {
       </div>
 
       <div v-if="device" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
+        <h2 class="text-lg font-bold text-gray-800">Usage Metrics</h2>
+        <div class="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            @click="router.push(`/energy/forms/refuel/${deviceId}`)"
+            :disabled="!canLogEnergy"
+            class="flex items-center justify-center gap-2 bg-brand-light text-brand py-3 rounded-xl text-sm font-bold hover:bg-brand-light transition-colors active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-brand-light"
+          >
+            <i class="fa-solid fa-gas-pump"></i> Log refuel
+          </button>
+          <button
+            type="button"
+            @click="router.push(`/energy/forms/recharge/${deviceId}`)"
+            :disabled="!canLogEnergy"
+            class="flex items-center justify-center gap-2 bg-brand-light text-brand py-3 rounded-xl text-sm font-bold hover:bg-brand-light transition-colors active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-brand-light"
+          >
+            <i class="fa-solid fa-bolt"></i> Log charge
+          </button>
+          <button
+            type="button"
+            @click="router.push(`/energy/forms/odometer/${deviceId}`)"
+            :disabled="!canLogEnergy"
+            class="flex items-center justify-center gap-2 bg-surface text-gray-600 py-3 rounded-xl text-sm font-bold hover:bg-gray-100 transition-colors active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-surface"
+          >
+            <i class="fa-solid fa-gauge"></i> Odometer
+          </button>
+          <button
+            type="button"
+            @click="router.push(`/energy/forms/tank-capacity/${deviceId}`)"
+            :disabled="!canLogEnergy"
+            class="flex items-center justify-center gap-2 bg-surface text-gray-600 py-3 rounded-xl text-sm font-bold hover:bg-gray-100 transition-colors active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-surface"
+          >
+            <i class="fa-solid fa-oil-can"></i> Tank size
+          </button>
+        </div>
+        <button
+          type="button"
+          @click="router.push(`/energy/logs/${deviceId}`)"
+          :disabled="!canReadEnergy"
+          class="w-full flex items-center justify-center gap-2 bg-surface text-gray-600 py-3 rounded-xl text-sm font-bold hover:bg-gray-100 transition-colors active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-surface"
+        >
+          <i class="fa-solid fa-clock-rotate-left"></i> View log history
+        </button>
+      </div>
+
+      <div v-if="device && !device.shared" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
         <h2 class="text-lg font-bold text-gray-800">Status</h2>
 
         <div class="p-4 border rounded-lg">
@@ -522,7 +602,7 @@ watch(isActive, async (nv, ov) => {
         </button>
       </div>
 
-      <div v-if="device" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
+      <div v-if="device && !device.shared" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
         <div class="flex items-center gap-2">
           <h2 class="text-lg font-bold text-gray-800">Activity Lock</h2>
           <div class="relative">
@@ -572,7 +652,7 @@ watch(isActive, async (nv, ov) => {
           :aria-pressed="activityLock"
           :class="[
             'w-full py-8 rounded-xl text-white flex items-center justify-center transition-colors shadow-sm active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed',
-            activityLock ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600',
+            activityLock ? 'bg-red-500 hover:bg-red-600' : 'bg-gray-400 hover:bg-gray-500',
           ]"
         >
           <i v-if="activityLockBusy" class="fa-solid fa-circle-notch fa-spin text-4xl"></i>
@@ -582,7 +662,7 @@ watch(isActive, async (nv, ov) => {
         <p v-if="lockError" class="text-xs text-red-500">{{ lockError }}</p>
       </div>
 
-      <div v-if="device" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
+      <div v-if="device && !device.shared" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2">
             <h2 class="text-lg font-bold text-gray-800">Emergency contact</h2>
@@ -664,50 +744,60 @@ watch(isActive, async (nv, ov) => {
         <p v-if="contactsError" class="text-xs text-red-500">{{ contactsError }}</p>
       </div>
 
-      <div v-if="device" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 pb-8 mb-8 space-y-4">
-        <h2 class="text-lg font-bold text-gray-800">Notifications</h2>
+      <div v-if="device && !device.shared" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 pb-8 mb-8 space-y-4">
+        <button
+          type="button"
+          @click="notificationsExpanded = !notificationsExpanded"
+          class="w-full flex items-center justify-between cursor-pointer"
+          :aria-expanded="notificationsExpanded"
+        >
+          <h2 class="text-lg font-bold text-gray-800">Notifications</h2>
+          <i :class="notificationsExpanded ? 'fa-chevron-up' : 'fa-chevron-down'" class="fa-solid text-gray-500 text-sm"></i>
+        </button>
 
-        <div v-if="!notifStore.loaded && notifStore.loading" class="flex items-center justify-center p-6 text-gray-400 text-sm">
-          <i class="fa-solid fa-circle-notch fa-spin mr-2"></i>
-          Loading notifications…
-        </div>
-
-        <div v-else-if="!eventTypesForDevice.length" class="text-center text-gray-500 text-sm py-6">
-          No notification types available.
-        </div>
-
-        <div v-else class="space-y-2">
-          <div
-            v-for="ev in eventTypesForDevice"
-            :key="ev"
-            class="p-4 border rounded-lg"
-          >
-            <label class="relative flex items-center justify-between w-full cursor-pointer">
-              <input
-                type="checkbox"
-                :checked="notifStore.hasRule(deviceImei, ev)"
-                :disabled="ruleBusy.has(ev)"
-                @change="toggleRule(ev)"
-                class="sr-only peer"
-              >
-              <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-brand-light rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand"></div>
-              <span class="text-md font-medium text-gray-900 flex items-center gap-2">
-                {{ humanizeEvent(ev) }}
-                <i
-                  v-if="ruleBusy.has(ev)"
-                  class="fa-solid fa-circle-notch fa-spin text-xs text-gray-400"
-                ></i>
-              </span>
-            </label>
+        <template v-if="notificationsExpanded">
+          <div v-if="!notifStore.loaded && notifStore.loading" class="flex items-center justify-center p-6 text-gray-400 text-sm">
+            <i class="fa-solid fa-circle-notch fa-spin mr-2"></i>
+            Loading notifications…
           </div>
-        </div>
 
-        <p v-if="ruleError" class="text-xs text-red-500">{{ ruleError }}</p>
+          <div v-else-if="!eventTypesForDevice.length" class="text-center text-gray-500 text-sm py-6">
+            No notification types available.
+          </div>
 
-        <p v-if="notifStore.loaded && !notifStore.notifications_enabled" class="text-xs text-gray-500 leading-snug">
-          Master notifications are off. Rules are saved but no pushes will be delivered until you turn on
-          <span class="font-medium">Allow Notifications</span> in account settings.
-        </p>
+          <div v-else class="space-y-2">
+            <div
+              v-for="ev in eventTypesForDevice"
+              :key="ev"
+              class="p-4 border rounded-lg"
+            >
+              <label class="relative flex items-center justify-between w-full cursor-pointer">
+                <input
+                  type="checkbox"
+                  :checked="notifStore.hasRule(deviceImei, ev)"
+                  :disabled="ruleBusy.has(ev)"
+                  @change="toggleRule(ev)"
+                  class="sr-only peer"
+                >
+                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-brand-light rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand"></div>
+                <span class="text-md font-medium text-gray-900 flex items-center gap-2">
+                  {{ humanizeEvent(ev) }}
+                  <i
+                    v-if="ruleBusy.has(ev)"
+                    class="fa-solid fa-circle-notch fa-spin text-xs text-gray-400"
+                  ></i>
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <p v-if="ruleError" class="text-xs text-red-500">{{ ruleError }}</p>
+
+          <p v-if="notifStore.loaded && !notifStore.notifications_enabled" class="text-xs text-gray-500 leading-snug">
+            Master notifications are off. Rules are saved but no pushes will be delivered until you turn on
+            <span class="font-medium">Allow Notifications</span> in account settings.
+          </p>
+        </template>
       </div>
 
     </div>

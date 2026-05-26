@@ -1,8 +1,10 @@
 <script setup>
-import { ref, watch } from 'vue';
+import { ref, computed, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import { Capacitor } from '@capacitor/core';
 import { Share } from '@capacitor/share';
 import { useShareStore } from '@/stores/share.js';
+import { useDevicesStore } from '@/stores/devices.js';
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -20,6 +22,24 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue']);
 
 const shareStore = useShareStore();
+const deviceStore = useDevicesStore();
+const router = useRouter();
+
+// Share Settings lives at /device/share/:id keyed by the Traccar device id,
+// while this modal is keyed by imei — resolve the id from the device list.
+const deviceId = computed(() => {
+  if (props.imei == null) return null;
+  const match = Object.values(deviceStore.devices).find(
+    (d) => String(d.uniqueId) === String(props.imei)
+  );
+  return match?.id ?? null;
+});
+
+const openShareSettings = () => {
+  if (deviceId.value == null) return;
+  close();
+  router.push(`/device/share/${deviceId.value}`);
+};
 
 const hours = ref(props.defaultHours);
 const shareUrl = ref('');
@@ -165,6 +185,15 @@ watch(
         >
           <i v-if="loading" class="fa-solid fa-spinner fa-spin mr-1"></i>
           {{ loading ? 'Generating...' : 'Generate Link' }}
+        </button>
+
+        <button
+          v-if="deviceId != null"
+          @click="openShareSettings"
+          class="w-full py-2 bg-accent text-white rounded-lg text-sm font-bold hover:bg-accent-dark transition-colors flex items-center justify-center gap-1.5"
+        >
+          <i class="fa-solid fa-user-group text-xs"></i>
+          Open Share Settings
         </button>
       </div>
 

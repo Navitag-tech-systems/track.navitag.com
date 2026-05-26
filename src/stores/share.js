@@ -12,6 +12,7 @@ export const useShareStore = defineStore('share', () => {
 
   // --- Actions ---
 
+
   /**
    * Mint a public share-link token for one or more of the caller's devices.
    * See: POST /share/public — api.navitag.net/v1/API_DOCUMENTATION.md

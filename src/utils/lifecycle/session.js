@@ -1,6 +1,7 @@
 import { useUserStore } from '@/stores/user';
 import { useDevicesStore } from '@/stores/devices';
 import { useNotificationsStore } from '@/stores/notifications';
+import { useBrokerStore } from '@/stores/broker';
 import { request } from '@/utils/http';
 import { baseUrl } from '@/utils/variables';
 import router from '@/router';
@@ -59,30 +60,19 @@ export const session = {
         () => this.handleSocketDisconnect()
       );
 
-      deviceStore.enforceGeofenceLimit();
+      // Broker carries live positions for shared-to-me devices. Connect
+      // after fetchAll so the mergeSharedToMeIntoDevices step has already
+      // placed the device rows (with shared:true + scopes) — a PUBLISH that
+      // arrives before the row exists would create a scope-less ghost in
+      // processSocketData's "create new device" branch.
+      useBrokerStore().connect();
 
-      this.fetchUserNotifications();
+      deviceStore.enforceGeofenceLimit();
 
       return true;
     } finally {
       this.isStartingSession = false;
     }
-  },
-
-  fetchUserNotifications() {
-    const userStore = useUserStore();
-    if (!userStore.server_url) return;
-    request.send({
-      url: `https://${userStore.server_url}/api/notifications`,
-      method: 'GET',
-      isTraccar: true,
-    })
-      .then(res => {
-        const list = Array.isArray(res) ? res : [];
-        userStore.notifications = list;
-        console.log('🔔 Notifications loaded:', list.length);
-      })
-      .catch(err => console.warn('⚠️ Notifications fetch failed:', err?.message || err));
   },
 
   async stopSession() {
@@ -92,6 +82,7 @@ export const session = {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
 
     userStore.disconnectSocket();
+    useBrokerStore().disconnect();
 
     try {
       await request.send({
@@ -118,6 +109,10 @@ export const session = {
 
     const userStore = useUserStore();
     if (!userStore.server_url) return;
+    // Don't even try while offline — serverConnect would just fail and
+    // set userStore.error, which (since the user is looking at <NoNet />)
+    // would surface <Error /> the moment network came back.
+    if (!userStore.internet) return;
 
     this.isReconnecting = true;
     const deviceStore = useDevicesStore();
@@ -141,9 +136,11 @@ export const session = {
           () => this.handleSocketDisconnect()
         );
 
-        deviceStore.enforceGeofenceLimit();
+        const broker = useBrokerStore();
+        broker.disconnect();
+        broker.connect();
 
-        this.fetchUserNotifications();
+        deviceStore.enforceGeofenceLimit();
       } else {
         userStore.error = true;
       }
@@ -171,6 +168,7 @@ export const session = {
         console.log('🔌 Disconnecting current socket...');
         userStore.disconnectSocket();
       }
+      useBrokerStore().disconnect();
 
       console.log('📥 Fetching latest devices and geofences...');
       const fetched = await deviceStore.fetchAll();
@@ -186,10 +184,9 @@ export const session = {
         deviceStore.processSocketData,
         () => this.handleSocketDisconnect()
       );
+      useBrokerStore().connect();
 
       deviceStore.enforceGeofenceLimit();
-
-      this.fetchUserNotifications();
 
       console.log('✅ Data reloaded and socket reconnected successfully!');
     } catch (error) {
@@ -210,6 +207,17 @@ export const session = {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
 
     this.reconnectTimer = setTimeout(async () => {
+      // Re-check on fire: airplane mode ON can race so that the WS close
+      // event reaches us *before* networkStatusChange flips
+      // userStore.internet to false. The entry gate above sees online,
+      // queues this timer, and 5 s later we'd otherwise try (and fail) a
+      // reconnect while still offline — setting userStore.error and
+      // making <Error /> show up the moment network returned.
+      const u = useUserStore();
+      if (!u.isLoggedIn || !u.internet) {
+        console.log('⏸️ Skipping queued reconnect — offline or logged out.');
+        return;
+      }
       console.log('🔄 Firing auto-reconnect sequence...');
       await this.checkConnectionAndReconnect();
     }, 5000);

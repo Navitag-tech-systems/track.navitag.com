@@ -14,13 +14,10 @@ Vue 3 + Capacitor 8 mobile app for GPS device tracking. Connects to `api.navitag
 - [ ] Logout → sockets close, stores clear, redirected to `/login`
 - [ ] Cold boot while logged in (persisted session) → silent reconnect
 - [ ] Native: background the app → socket disconnects; foreground → `checkConnectionAndReconnect` fires
-- [ ] Toggle airplane mode while logged in → `networkStatusChange` triggers reconnect on recovery
-  - **Known bug (low priority):** Disabling airplane mode shows the Error page instead of recovering cleanly. Root cause: when airplane mode turns ON, the WS close handler fires before `networkStatusChange` flips `userStore.internet` to `false`, so `handleSocketDisconnect` schedules a 5s reconnect timer. That timer then fires while still offline, `serverConnect()` fails, and sets `userStore.error = true`. When network returns, `<NoNet />` hides but `error` was never cleared, so `<Error />` shows.
-  - **Fix sketch (3 small changes in `src/utils/lifecycle/`):**
-    1. `session.js` — `checkConnectionAndReconnect`: bail out early if `!userStore.internet`.
-    2. `session.js` — `handleSocketDisconnect` timer callback: re-check `userStore.internet` before firing reconnect.
-    3. `listeners/network.js` — on recovery (`status.connected === true`), clear `userStore.error = false` before calling `checkConnectionAndReconnect`.
+- [ ] Toggle airplane mode while logged in → `networkStatusChange` triggers reconnect on recovery (no `<Error />` flash on recovery)
 - [ ] Simulate socket drop (kill server / drop WS) → 5s auto-reconnect via `handleSocketDisconnect`
+- [ ] Simulate posbroker drop (close the broker WS from devtools) → 5s broker reconnect with token refresh; shared-to-me positions resume
+- [ ] Leave the app open > 1 hour, then force a broker drop → token-refresh-then-reconnect lands a valid CONNACK
 - [ ] `linkDevice/success` flow → `reloadAndReconnect` refetches devices and reconnects socket
 - [ ] Concurrent trigger (foreground + network recover same moment) → only one reconnect runs (lock works)
 - [ ] 401 during `startSession` → token refresh retry succeeds on second attempt
@@ -46,7 +43,6 @@ src/utils/lifecycle/
 
 - Singleton state (`isStartingSession`, `isReconnecting`, `reconnectTimer`, `countryCodePromise`) lives on the `session` object in `session.js` — single owner for all lock mutations.
 - Each listener file registers one Capacitor/Firebase listener and delegates to `session`.
-- **Post-lifecycle fetch:** `fetchUserNotifications()` fires non-blocking at the end of every successful lifecycle path (`startSession`, `checkConnectionAndReconnect`, `reloadAndReconnect`). Hits Traccar `GET /api/notifications` directly and stores the array into `userStore.notifications` for the Device Settings notifications card.
 - **Logout:** `stopSession` calls `POST ${baseUrl}/user/logout` with the user's `idToken` before `traccarLogout()`. Wrapped in try/catch — a failure warns but never blocks Traccar teardown, store cleanup, or `/login` redirect.
 
 ### Auth / SSO
@@ -76,7 +72,7 @@ Shop, cart, and payment flows have been removed from the app. Deleted: `src/view
 
 - **Profile card**: Device name, map icon category, and speed limit.
   - **Speed limit**: input in km/h with "No speed limit" toggle. Traccar stores `device.attributes.speedLimit` in knots, so the view converts at the boundary (`KNOTS_PER_KPH = 1 / 1.852`). Toggle ON → `speedLimit` key deleted from attributes on save; toggle OFF → requires 1–300 km/h. Input is `type="text"` with `inputmode="numeric"` (no native spinners) and three-layer input guards (`keydown`/`input`/`paste`) that block non-digits, strip leading zeros, and clamp at 300.
-- **Notifications card** (between Profile and Status): lists every notification from `userStore.notifications` as a toggle row. On load, `deviceStore.fetchDeviceNotifications(deviceId)` hits Traccar `GET /api/notifications?deviceId=<id>` to determine which are linked. Toggles are optimistic — UI flips immediately, then `POST`/`DELETE /api/permissions { deviceId, notificationId }` runs; failure rolls back the toggle and shows an error banner. Per-row `busy` state prevents double-clicks.
+- **Notifications card** (between Profile and Status): per-device notification rules sourced from the navitag backend via `notifStore` (`src/stores/notifications.js`). The curated event-type list comes from `GET /notification/events`; each row toggles a `(device_imei, event_type)` rule idempotently via `PUT /notification/permissions/rule`. Per-row `busy` state prevents double-clicks and a failure surfaces an inline error. No Traccar endpoints are involved.
 - **Status card**: Active/disabled toggle, plan level display, expiration date, and Top Up button linking to `https://www.navitag.com/top-up/:imei`
 - Plan level and expiration data fetched from `GET /user/device-expiration` and mapped onto device objects in the Pinia store
 
@@ -85,28 +81,22 @@ Shop, cart, and payment flows have been removed from the app. Deleted: `src/view
 - **Plan-based limits** (centralized in `src/stores/devices.js` as `geofenceLimit` / `canCreateGeofence` / `hasProPlan` computeds): non-Pro users get **2** geofences, Pro users get **10**.
 - Entry-point gating: all "create geofence" buttons (`geofences.vue` × 3, `linkDevice/select.vue` × 1) check `canCreateGeofence` and pop `components/geofenceLimitModal.vue` instead of routing to `/addgeo` when over limit.
 - Background reconciliation: `enforceGeofenceLimit()` runs fire-and-forget at every lifecycle complete (`startSession` / `checkConnectionAndReconnect` / `reloadAndReconnect` in `utils/lifecycle/session.js`). Sorts geofences by Traccar ID descending (highest = newest) and `DELETE`s the excess so server state always matches the user's tier.
-- **Conditional auto-link on geofence create** (`deviceStore.linkGeofenceToEligibleDevices`): when the new geofence is the 1st or 2nd for the account (pre-create count `< 2`) it links to **every device**. When it's the 3rd or beyond it links **only to devices with `plan_level === 'Pro'`**. Called from `views/map/geofence.vue` right after `POST /api/geofences` succeeds.
+- **Geofence creation** (`views/map/geofence.vue`): `POST /api/geofences` sends only `name` and `area` (WKT) — Traccar's `Geofence` model has no `groupId` field (Jackson rejects extras as unknown properties). After the create succeeds, the view fires `POST /api/permissions { groupId: userStore.server_group, geofenceId }` so the geofence applies to every device in the user's 1:1 Traccar group (current and future). The link call is retried up to 3× with 500/1000 ms backoff. Best-effort: a final-attempt failure logs via `console.error` and **does not** roll back the geofence — the view still navigates to `/` so the user isn't trapped, but `geofenceEnter` / `geofenceExit` won't fire on their devices until that permission is created.
 
 > **⚠️ Edit this if a higher tier than Pro is added.** The 2/10 split lives in one place — `geofenceLimit` in `src/stores/devices.js`. Update that computed to a tier→limit map (e.g. `{ Basic: 2, Pro: 10, Enterprise: 50 }`) and the gating + background cleanup will follow automatically. Also revisit `hasProPlan` — it's currently used as a binary "any Pro device?" check; new tiers may need a `highestPlanTier` computed instead.
 
-### Link Device — auto-link on success (`src/views/linkDevice/link.vue`)
+### Shared Devices / Posbroker (`src/stores/broker.js`)
 
-After `POST ${baseUrl}/user/link-device` succeeds, `autoLinkNewDevice(imei)` runs in the background before the view routes on:
+- **Two device sources.** Owned devices come from Traccar via `GET /api/devices` and the Traccar WebSocket. Shared-to-me devices come from `GET /share/tome` and live position updates arrive over a separate MQTT-3.1.1-over-WSS channel at `wss://posbroker.navitag.com`. Both streams write through `deviceStore.processSocketData()`, which `Object.assign`s onto the existing device row so `shared:true` and the `scopes` array are preserved across every position update.
+- **Scope model.** Every row carries a `scopes` array. Owned devices get the sentinel `['owner:all']` injected in `fetchDevices`; shared rows get the exact grant scopes from the backend. UI gates go through `hasScope(device, scope)` in `src/utils/scopes.js`, which treats `owner:all` as matching anything. Floor scope for shared devices is `position:live`. Grantable scopes are `history:read`, `share:public`, `energy:read`, `energy:write` (notification:read is intentionally hidden — backend unsupported).
+- **MQTT codec.** Hand-rolled in `broker.js` (~80 lines). No `mqtt` or `mqtt-packet` dependency — the Buffer polyfill chain costs more than the codec saves. Surface used: CONNECT, CONNACK, PUBLISH parse, PINGREQ on a 55s timer, DISCONNECT. The broker auto-subscribes us so no client-side SUBSCRIBE is ever sent.
+- **Auth.** `username = Firebase uid`, `password = Firebase ID token`, set once at CONNECT time. The token is *not* a per-frame bearer.
+- **Resilience.** `ws.onclose` triggers a 5s reconnect when it's not an intentional teardown. Each reconnect first calls `userStore.getFreshToken()` because the ID token (= MQTT password) expires after ~1 hour. CONNACK refusal codes 4/5 (auth) get a single refresh-and-retry; a second auth refusal stops the loop. `userStore.internet` is honored. Intentional `disconnect()` cancels any pending reconnect timer and nulls all WS listeners before `close()` so the auto-reconnect path can't be tripped by deliberate teardowns.
+- **Lifecycle wiring** (`src/utils/lifecycle/session.js`): `useBrokerStore().connect()` after `fetchAll()` in `startSession`; `disconnect()` in `stopSession` ahead of HTTP logout; cycled in both `checkConnectionAndReconnect` and `reloadAndReconnect`. The outer cycle paths remain authoritative — broker's internal loop only covers WS-only drops where the rest of the session is still healthy.
 
-1. `deviceStore.fetchDevices()` — refresh the Traccar device list so the new record appears.
-2. Find the new device by `uniqueId === imei`.
-3. `deviceStore.fetchDeviceExpirations()` — hydrate `plan_level` from the navitag backend.
-4. In parallel:
-   - `deviceStore.linkAllNotificationsToDevice(id)` — one `POST /api/permissions { deviceId, notificationId }` per entry in `userStore.notifications`.
-   - `deviceStore.linkDefaultGeofencesToDevice(id)` — picks the first N existing geofence IDs (ascending) and links them. N = `10` if the device is Pro, else `2`.
+### Link Device (`src/views/linkDevice/link.vue`)
 
-Wrapped in try/catch with non-blocking navigation, so link failures log a warning but never trap the user on the link screen.
-
-### User Notifications (`userStore.notifications`)
-
-- Loaded from **Traccar** `GET /api/notifications` at every successful lifecycle completion (no `api.navitag.net` involvement).
-- Reset to `[]` in `clearUser()` on logout.
-- Consumed by Device Settings' Notifications card and by `link.vue`'s auto-link flow.
+After `POST ${baseUrl}/user/link-device` succeeds, the view routes straight to `/linkdevice/enable/:imei`. The device list and expirations are refreshed by the subsequent enable flow / `startSession`.
 
 ### History / Daily Route (`src/views/history/dailyRoute.vue`)
 

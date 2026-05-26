@@ -2,8 +2,18 @@ import { defineStore } from 'pinia';
 import { ref, computed, reactive } from 'vue';
 import { useUserStore } from '@/stores/user.js';
 import { useRouter } from 'vue-router';
-import { request } from '@/utils/http'; 
+import { request } from '@/utils/http';
 import { baseUrl, categoryMapping } from '@/utils/variables';
+import { OWNER_SENTINEL } from '@/utils/scopes';
+
+// Backend now emits plan_level lowercase ('pro', 'basic'); older shapes
+// shipped 'Pro' / 'Basic'. Normalize on ingestion so the UI can render
+// the field directly and downstream comparisons are stable. Comparison
+// sites still use toLowerCase() defensively in case a new path skips this.
+function normalizePlanLevel(value) {
+  if (typeof value !== 'string' || value.length === 0) return value;
+  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+}
 
 export const useDevicesStore = defineStore('devices', () => {
   const userStore = useUserStore();
@@ -11,14 +21,19 @@ export const useDevicesStore = defineStore('devices', () => {
 
   // --- State ---
   const devices = reactive({});
-  const geofences = reactive({}); 
+  const geofences = reactive({});
   const loading = ref(false);
   const error = ref(null);
   const deviceSelected = ref(null);
   const mapUpdate = ref(null);
-  const draftPolygon = ref(null); 
+  const draftPolygon = ref(null);
   const deviceMarkers = reactive({});
   const activeRoute = ref({ line: [], markers: {} });
+
+  // Devices shared TO this user by other accounts (from POST /share/tome).
+  // Hydrated on every lifecycle entry in parallel with fetchDevices +
+  // fetchGeofences. Each entry: { imei, scopes: ['position:live', ...] }.
+  const sharedToMe = ref([]);
 
   // --- Socket Data Handler ---
   function processSocketData(data) {
@@ -108,7 +123,11 @@ export const useDevicesStore = defineStore('devices', () => {
         }
 
         retArr.forEach(device => {
-          devices[device.id] = device;
+          // Owned devices carry the sentinel scope rather than an enumerated
+          // list — see src/utils/scopes.js. shared:false makes the
+          // ownership flag explicit for hasScope consumers and any UI that
+          // wants to render an owned-vs-shared affordance.
+          devices[device.id] = { ...device, shared: false, scopes: [OWNER_SENTINEL] };
         });
       }
       await fetchDeviceExpirations();
@@ -128,7 +147,7 @@ export const useDevicesStore = defineStore('devices', () => {
       exps.message.forEach((el) => {
         if (devices[el.server_ref]) {
           devices[el.server_ref].expiration = el.expiration;
-          devices[el.server_ref].plan_level = el.plan_level;
+          devices[el.server_ref].plan_level = normalizePlanLevel(el.plan_level);
           devices[el.server_ref].actionable = el.actionable;
         }
       });
@@ -169,11 +188,61 @@ export const useDevicesStore = defineStore('devices', () => {
     }
   }
 
+  // Best-effort: never throws, populates sharedToMe in place. Failure leaves
+  // the prior value intact so a /share/tome outage doesn't drop a working
+  // list of shared devices from a previous lifecycle tick.
+  async function fetchSharedToMe() {
+    if (!userStore.idToken) {
+      sharedToMe.value = [];
+      return [];
+    }
+    try {
+      const res = await request.send({
+        url: `${baseUrl}/share/tome`,
+        method: 'POST',
+        token: userStore.idToken,
+      });
+      const list = Array.isArray(res?.shared_devices) ? res.shared_devices : [];
+      sharedToMe.value = list;
+      return list;
+    } catch (err) {
+      console.warn('[Devices] /share/tome fetch failed:', err?.message || err);
+      return sharedToMe.value;
+    }
+  }
+
+  // Merges /share/tome entries into the devices reactive map so shared
+  // devices show up in lists/map alongside owned ones. Runs after the three
+  // parallel fetches resolve, so fetchDevices' bulk-assignment can't
+  // clobber the `shared` flag. Skips wildcard ("*") and entries whose
+  // Traccar lookup failed (device === null). Device ids come from the
+  // granter's Traccar server — collisions with owned-device ids are
+  // theoretically possible across servers but very unlikely in practice.
+  function mergeSharedToMeIntoDevices() {
+    for (const entry of sharedToMe.value) {
+      if (!entry || entry.imei === '*' || !entry.device || entry.device.id == null) continue;
+      const merged = {
+        ...entry.device,
+        shared: true,
+        scopes: Array.isArray(entry.scopes) ? entry.scopes : [],
+      };
+      if (devices[entry.device.id]) {
+        Object.assign(devices[entry.device.id], merged);
+      } else {
+        devices[entry.device.id] = merged;
+      }
+    }
+  }
+
   async function fetchAll() {
     loading.value = true;
     error.value = null;
     try {
-      await Promise.all([fetchDevices(), fetchGeofences()]);
+      // fetchSharedToMe is best-effort and never throws, so an outage there
+      // cannot poison Promise.all and turn a successful device fetch into a
+      // false return.
+      await Promise.all([fetchDevices(), fetchGeofences(), fetchSharedToMe()]);
+      mergeSharedToMeIntoDevices();
       return true; // Successfully fetched
     } catch (err) {
       if (err.message === 'NO_DEVICES') {
@@ -277,116 +346,6 @@ export const useDevicesStore = defineStore('devices', () => {
     }
   }
 
-  async function fetchDeviceNotifications(deviceId) {
-    if (!userStore.server_url) return [];
-    try {
-      const list = await request.send({
-        url: `https://${userStore.server_url}/api/notifications?deviceId=${deviceId}`,
-        isTraccar: true,
-      });
-      return Array.isArray(list) ? list : [];
-    } catch (err) {
-      console.error('[Devices] fetchDeviceNotifications failed:', err);
-      return [];
-    }
-  }
-
-  async function linkDeviceNotification(deviceId, notificationId) {
-    if (!userStore.server_url) return false;
-    try {
-      await request.send({
-        url: `https://${userStore.server_url}/api/permissions`,
-        method: 'POST',
-        isTraccar: true,
-        data: { deviceId: Number(deviceId), notificationId: Number(notificationId) },
-      });
-      return true;
-    } catch (err) {
-      console.error('[Devices] linkDeviceNotification failed:', err);
-      return false;
-    }
-  }
-
-  async function unlinkDeviceNotification(deviceId, notificationId) {
-    if (!userStore.server_url) return false;
-    try {
-      await request.send({
-        url: `https://${userStore.server_url}/api/permissions`,
-        method: 'DELETE',
-        isTraccar: true,
-        data: { deviceId: Number(deviceId), notificationId: Number(notificationId) },
-      });
-      return true;
-    } catch (err) {
-      console.error('[Devices] unlinkDeviceNotification failed:', err);
-      return false;
-    }
-  }
-
-  async function linkDeviceGeofence(deviceId, geofenceId) {
-    if (!userStore.server_url) return false;
-    try {
-      await request.send({
-        url: `https://${userStore.server_url}/api/permissions`,
-        method: 'POST',
-        isTraccar: true,
-        data: { deviceId: Number(deviceId), geofenceId: Number(geofenceId) },
-      });
-      return true;
-    } catch (err) {
-      console.error('[Devices] linkDeviceGeofence failed:', err);
-      return false;
-    }
-  }
-
-  async function linkGeofenceToEligibleDevices(geofenceId) {
-    const priorCount = Object.keys(geofences).length;
-    const linkAll = priorCount < 2;
-
-    const targets = Object.values(devices).filter(d =>
-      linkAll ? true : d.plan_level === 'Pro'
-    );
-
-    if (!targets.length) return true;
-
-    const results = await Promise.all(
-      targets.map(d => linkDeviceGeofence(d.id, geofenceId))
-    );
-    const ok = results.every(Boolean);
-    if (!ok) console.warn('[Devices] Some devices failed to link to geofence', geofenceId);
-    return ok;
-  }
-
-  async function linkDefaultGeofencesToDevice(deviceId) {
-    const device = devices[deviceId];
-    const limit = device?.plan_level === 'Pro' ? 10 : 2;
-
-    const ids = Object.keys(geofences)
-      .map(Number)
-      .sort((a, b) => a - b)
-      .slice(0, limit);
-
-    if (!ids.length) return true;
-
-    const results = await Promise.all(
-      ids.map(gid => linkDeviceGeofence(deviceId, gid))
-    );
-    const ok = results.every(Boolean);
-    if (!ok) console.warn('[Devices] Some geofences failed to link to device', deviceId);
-    return ok;
-  }
-
-  async function linkAllNotificationsToDevice(deviceId) {
-    const notifs = userStore.notifications || [];
-    if (!notifs.length) return true;
-    const results = await Promise.all(
-      notifs.map(n => linkDeviceNotification(deviceId, n.id))
-    );
-    const ok = results.every(Boolean);
-    if (!ok) console.warn('[Devices] Some notifications failed to link to device', deviceId);
-    return ok;
-  }
-
   async function enforceGeofenceLimit() {
     if (!userStore.server_url) return;
     const limit = geofenceLimit.value;
@@ -410,7 +369,8 @@ export const useDevicesStore = defineStore('devices', () => {
   function clearData() {
     Object.keys(devices).forEach(key => delete devices[key]);
     Object.keys(deviceMarkers).forEach(key => delete deviceMarkers[key]);
-    Object.keys(geofences).forEach(key => delete geofences[key]); 
+    Object.keys(geofences).forEach(key => delete geofences[key]);
+    sharedToMe.value = [];
     error.value = null;
     mapUpdate.value = null;
   }
@@ -418,19 +378,18 @@ export const useDevicesStore = defineStore('devices', () => {
   // --- Getters ---
   const deviceMarkerKeys = computed(() => Object.keys(deviceMarkers));
   const deviceSelectedObject = computed(() => (deviceSelected.value && devices[deviceSelected.value]) || null);
-  const hasProPlan = computed(() => Object.values(devices).some(d => d.plan_level === 'Pro'));
+  const hasProPlan = computed(() => Object.values(devices).some(d => d.plan_level?.toLowerCase() === 'pro'));
   const geofenceLimit = computed(() => hasProPlan.value ? 10 : 2);
   const canCreateGeofence = computed(() => Object.keys(geofences).length < geofenceLimit.value);
 
   return {
     devices, geofences, loading, error, deviceMarkers, deviceMarkerKeys,
     deviceSelectedObject, deviceSelected, mapUpdate, draftPolygon, activeRoute,
+    sharedToMe,
     hasProPlan, geofenceLimit, canCreateGeofence,
     processSocketData,
-    fetchDevices, fetchGeofences, fetchDeviceExpirations, fetchAll, updateDevice,
+    fetchDevices, fetchGeofences, fetchDeviceExpirations, fetchSharedToMe, fetchAll, updateDevice,
     setActivityLock, setAutoLock,
-    fetchDeviceNotifications, linkDeviceNotification, unlinkDeviceNotification, linkAllNotificationsToDevice,
-    linkDeviceGeofence, linkDefaultGeofencesToDevice, linkGeofenceToEligibleDevices,
     enforceGeofenceLimit, clearData
   };
 });

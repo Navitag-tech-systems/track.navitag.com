@@ -31,7 +31,7 @@ export const useUserStore = defineStore('user', () => {
   const server_url = ref(null);
   const server_token = ref(null);
   const server_connect = ref(false);
-  const notifications = ref([]);
+  const server_group = ref(null);
   
   // 2. THIS IS THE CRITICAL FIX: Declare as a shallowRef
   const socket = shallowRef(null);
@@ -386,6 +386,7 @@ export const useUserStore = defineStore('user', () => {
 
       server_url.value = syncRes.server_url || false;
       server_token.value = syncRes.server_token || false;
+      server_group.value = syncRes.server_group || null;
       if (server_url.value && !Capacitor.isNativePlatform()) {
         localStorage.setItem('server_url', server_url.value);
       }
@@ -579,7 +580,7 @@ export const useUserStore = defineStore('user', () => {
     server_url.value = null;
     server_token.value = null;
     server_connect.value = false;
-    notifications.value = [];
+    server_group.value = null;
     email.value = null;
     error.value = false;
   }
@@ -587,7 +588,7 @@ export const useUserStore = defineStore('user', () => {
   return {
     user, idToken, countryCode, ipLocation, loading, isLoggedIn, internet, error,
     setUser, clearUser, traccarLogout, serverConnect, connectSocket, fetchCountryCode, backendSync, disconnectSocket, getFreshToken, initPushNotifications, enablePushFromGesture, disablePushOnThisDevice, checkPushPermission,
-    server_url, server_token, server_connect, notifications, socket, name, phone, email,
+    server_url, server_token, server_connect, server_group, socket, name, phone, email,
     fcmToken, pushPermission, showPushEnableToast, pushDisabledLocally
   };
 });

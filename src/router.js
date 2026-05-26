@@ -17,6 +17,13 @@ import LinkDeviceEnable from '@/views/linkDevice/enable.vue'
 import LinkDeviceSuccess from '@/views/linkDevice/success.vue'
 
 import DeviceSettings from './views/lists/deviceSettings.vue'
+import DeviceShare from './views/lists/deviceShare.vue'
+
+import EnergyRefuel from '@/views/energy/forms/refuel.vue'
+import EnergyRecharge from '@/views/energy/forms/recharge.vue'
+import EnergyOdometer from '@/views/energy/forms/odometer.vue'
+import EnergyTankCapacity from '@/views/energy/forms/tankCapacity.vue'
+import EnergyLogs from '@/views/energy/logs.vue'
 
 import ListDevices from '@/views/lists/devices.vue'
 import ListGeofences from '@/views/lists/geofences.vue'
@@ -131,6 +138,42 @@ const router = createRouter({
       path: '/device/settings/:id',
       name: 'device-settings',
       component: DeviceSettings,
+      meta: {requiresAuth: true, activeTab: 'list'}
+    },
+    {
+      path: '/device/share/:id',
+      name: 'device-share',
+      component: DeviceShare,
+      meta: {requiresAuth: true, activeTab: 'list'}
+    },
+    {
+      path: '/energy/forms/refuel/:id',
+      name: 'energy-refuel',
+      component: EnergyRefuel,
+      meta: {requiresAuth: true, activeTab: 'list'}
+    },
+    {
+      path: '/energy/forms/recharge/:id',
+      name: 'energy-recharge',
+      component: EnergyRecharge,
+      meta: {requiresAuth: true, activeTab: 'list'}
+    },
+    {
+      path: '/energy/forms/odometer/:id',
+      name: 'energy-odometer',
+      component: EnergyOdometer,
+      meta: {requiresAuth: true, activeTab: 'list'}
+    },
+    {
+      path: '/energy/forms/tank-capacity/:id',
+      name: 'energy-tank-capacity',
+      component: EnergyTankCapacity,
+      meta: {requiresAuth: true, activeTab: 'list'}
+    },
+    {
+      path: '/energy/logs/:id',
+      name: 'energy-logs',
+      component: EnergyLogs,
       meta: {requiresAuth: true, activeTab: 'list'}
     },
     {

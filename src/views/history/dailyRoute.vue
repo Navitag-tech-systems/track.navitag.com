@@ -5,6 +5,7 @@ import { useUserStore } from '@/stores/user.js';
 import { useDevicesStore } from '@/stores/devices.js';
 import { baseUrl } from '@/utils/variables';
 import { request } from '@/utils/http';
+import { hasScope } from '@/utils/scopes';
 
 import VT100MapProcessor from '@/utils/reportProcessor.js';
 
@@ -31,6 +32,10 @@ const currentDate = ref(route.params.date);
 const device = computed(() => Object.values(deviceStore.devices).find(d => String(d.uniqueId) === String(imei)));
 const planLevel = computed(() => (device.value?.plan_level || 'basic').toLowerCase());
 const maxDays = computed(() => planLevel.value === 'pro' ? 90 : 31);
+
+// Owners pass via OWNER_SENTINEL; shared devices need an explicit
+// history:read grant in their /share/tome scope list.
+const hasHistoryAccess = computed(() => hasScope(device.value, 'history:read'));
 
 // --- DATE HELPER LOGIC ---
 const getTodayString = () => {
@@ -61,11 +66,29 @@ const fetchHistory = async () => {
   loading.value = true;
   errorMsg.value = '';
 
+  if (!hasHistoryAccess.value) {
+    loading.value = false;
+    errorMsg.value = 'This device was shared without history access. Ask the owner to grant the History scope.';
+    positions.value = [];
+    timelineItems.value = [];
+    Object.assign(deviceStore.activeRoute, { line: [], markers: {} });
+    return;
+  }
+
   try {
+    // Send the user's IANA timezone so the backend resolves "today" against
+    // their actual local zone instead of UTC. Without this, a Manila morning
+    // (before UTC midnight rolls over) gets a "Future dates are not allowed"
+    // error when picking today.
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const response = await request.send({
-      url: `${baseUrl}/history/positions`, 
+      url: `${baseUrl}/history/positions`,
       method: 'POST',
-      data: { date: currentDate.value, imei: Number(imei) },
+      data: {
+        date: currentDate.value,
+        imei: Number(imei),
+        ...(tz ? { timezone: tz } : {}),
+      },
       token: userStore.idToken
     });
 
