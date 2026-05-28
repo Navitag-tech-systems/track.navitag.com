@@ -202,7 +202,7 @@ export const session = {
 
     if (!userStore.isLoggedIn || !userStore.internet) return;
 
-    console.log('🔄 Socket dropped. Attempting to reconnect in 5 seconds...');
+    console.log('🔄 Socket dropped. Attempting to reconnect in 500ms...');
 
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
 
@@ -210,7 +210,7 @@ export const session = {
       // Re-check on fire: airplane mode ON can race so that the WS close
       // event reaches us *before* networkStatusChange flips
       // userStore.internet to false. The entry gate above sees online,
-      // queues this timer, and 5 s later we'd otherwise try (and fail) a
+      // queues this timer, and we'd otherwise try (and fail) a
       // reconnect while still offline — setting userStore.error and
       // making <Error /> show up the moment network returned.
       const u = useUserStore();
@@ -218,8 +218,16 @@ export const session = {
         console.log('⏸️ Skipping queued reconnect — offline or logged out.');
         return;
       }
+      // Skip while the page is hidden — fetch + WS work are throttled in
+      // suspended tabs, and a failure here would set userStore.error true,
+      // flashing <Error /> the moment the app foregrounds. The
+      // appStateChange foreground handler self-heals on resume.
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        console.log('⏸️ Skipping queued reconnect — page hidden, foreground will self-heal.');
+        return;
+      }
       console.log('🔄 Firing auto-reconnect sequence...');
       await this.checkConnectionAndReconnect();
-    }, 5000);
+    }, 500);
   }
 };

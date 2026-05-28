@@ -40,7 +40,7 @@ import { useDevicesStore } from '@/stores/devices';
 const BROKER_URL = 'wss://posbroker.navitag.com';
 const KEEPALIVE_SEC = 60;
 const PING_INTERVAL_MS = (KEEPALIVE_SEC - 5) * 1000; // send PINGREQ a bit before the broker's idle cut-off
-const RECONNECT_DELAY_MS = 5000;                     // matches Traccar's session.handleSocketDisconnect cadence
+const RECONNECT_DELAY_MS = 500;                      // matches Traccar's session.handleSocketDisconnect cadence
 
 const PKT = {
   CONNECT:     1,
@@ -218,6 +218,14 @@ export const useBrokerStore = defineStore('broker', () => {
       const userStore = useUserStore();
       if (!userStore.isLoggedIn || !userStore.internet) {
         console.log('[Broker] reconnect aborted — logged out or offline');
+        return;
+      }
+      // Defer while the page is hidden — the WS handshake + CONNECT under
+      // a throttled tab tends to either fail or eat the once-only auth
+      // refresh budget for nothing. The appStateChange foreground handler
+      // will self-heal when the page wakes up.
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        console.log('[Broker] reconnect deferred — page hidden, foreground will self-heal');
         return;
       }
       // Force-refresh before reconnect. The Firebase ID token is the MQTT

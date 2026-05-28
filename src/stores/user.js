@@ -510,9 +510,16 @@ export const useUserStore = defineStore('user', () => {
 
       // Now we know for a fact we are dealing with the real object
       if (activeSocket) {
+        // Null all four handlers, not just close/error. A socket in the
+        // CLOSING state can still deliver onmessage frames between close()
+        // and the actual close event; without this, those would land in
+        // processSocketData against whatever store state exists now —
+        // including state belonging to a freshly-connected next socket.
         activeSocket.onclose = null;
         activeSocket.onerror = null;
-        
+        activeSocket.onmessage = null;
+        activeSocket.onopen = null;
+
         if (typeof activeSocket.close === 'function') {
           activeSocket.close();
         }
