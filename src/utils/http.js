@@ -1,5 +1,49 @@
 import { CapacitorHttp, Capacitor, CapacitorCookies } from '@capacitor/core';
+import { Preferences } from '@capacitor/preferences';
 import ky from 'ky';
+
+// --- Traccar session id (JSESSIONID) cache ---
+// Native WebSocket auth needs the literal JSESSIONID value to pass as
+// ?session_id= (the tserver1 Caddy config turns that param back into a
+// Cookie header). On Android, CapacitorCookies.getCookies() can't read the
+// value back — it returns same-origin, non-HttpOnly document.cookie, while
+// the Traccar cookie is cross-domain + HttpOnly. So we capture the value
+// from the Traccar Set-Cookie response (which already passes through send())
+// and keep it in memory. @capacitor/preferences persists it across launches
+// on both Android and iOS (iOS uses UserDefaults — declared in the app's
+// PrivacyInfo.xcprivacy with required-reason CA92.1).
+const SESSION_STORAGE_KEY = 'traccar_jsessionid';
+let cachedSessionId = null;
+
+// Warm the in-memory cache from native storage at startup so a value
+// persisted by a previous launch is usable before the first login.
+Preferences.get({ key: SESSION_STORAGE_KEY })
+  .then(({ value }) => { if (value && !cachedSessionId) cachedSessionId = value; })
+  .catch(() => { /* preferences unavailable */ });
+
+async function rememberSessionId(value) {
+  if (!value) return;
+  cachedSessionId = value; // set synchronously so connectSocket sees it immediately
+  try {
+    await Preferences.set({ key: SESSION_STORAGE_KEY, value });
+  } catch { /* ignore */ }
+}
+
+async function forgetSessionId() {
+  cachedSessionId = null;
+  try {
+    await Preferences.remove({ key: SESSION_STORAGE_KEY });
+  } catch { /* ignore */ }
+}
+
+async function loadSessionId() {
+  if (cachedSessionId) return cachedSessionId;
+  try {
+    const { value } = await Preferences.get({ key: SESSION_STORAGE_KEY });
+    if (value) cachedSessionId = value;
+  } catch { /* ignore */ }
+  return cachedSessionId;
+}
 
 /**
  * Centralized Request Maker
@@ -42,6 +86,12 @@ export const request = {
       } else {
         return false
       }
+  },
+
+  // Drop the cached Traccar session id (e.g. on logout) so a stale value
+  // is never reused for a new session.
+  async clearSession() {
+    await forgetSessionId();
   },
 
   async send(options, _isRetry = false) {
@@ -92,11 +142,16 @@ export const request = {
                 const match = raw.match(/^([^=]+)=([^;]*)/);
                 if (match) {
                   const cookieUrl = url.startsWith('http') ? url : `https://${url}`;
+                  const cookieKey = match[1].trim();
+                  const cookieValue = match[2].trim();
                   await CapacitorCookies.setCookie({
                     url: cookieUrl,
-                    key: match[1].trim(),
-                    value: match[2].trim(),
+                    key: cookieKey,
+                    value: cookieValue,
                   });
+                  // Capture the session id for native WebSocket auth — this is
+                  // the reliable source on Android (getCookies can't read it back).
+                  if (cookieKey === 'JSESSIONID') await rememberSessionId(cookieValue);
                 }
               }
             }
@@ -161,7 +216,10 @@ export const request = {
     let wsUrl = `wss://${url}/api/socket`;
 
     if (isNative) {
-      const seshCookie = await this.getNativeCookie(url)
+      // Prefer the value captured from the Traccar Set-Cookie response, then
+      // the value persisted by a previous launch, then getCookies (iOS/web
+      // fallback — it can't read the cross-domain/HttpOnly cookie on Android).
+      const seshCookie = cachedSessionId || await loadSessionId() || await this.getNativeCookie(url);
       if(!seshCookie){
         console.error('❌ WebSocket Failure: No Session ID provided for Native Auth.');
         return null;

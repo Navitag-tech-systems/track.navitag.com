@@ -95,6 +95,7 @@ export const session = {
     }
 
     await userStore.traccarLogout();
+    await request.clearSession();
     userStore.clearUser();
     deviceStore.clearData();
     useNotificationsStore().reset();
