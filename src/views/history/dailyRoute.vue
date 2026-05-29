@@ -17,7 +17,8 @@ const deviceStore = useDevicesStore();
 const mapProcessor = new VT100MapProcessor();
 
 const loading = ref(true);
-const errorMsg = ref('');
+const errorMsg = ref('');          // retryable failure (network / 400 / 404 / 5xx)
+const unauthorizedMsg = ref('');   // non-retryable auth failure (401 / 403)
 const positions = ref([]);
 const timelineItems = ref([]);
 
@@ -65,10 +66,11 @@ const isPrevDisabled = computed(() => {
 const fetchHistory = async () => {
   loading.value = true;
   errorMsg.value = '';
+  unauthorizedMsg.value = '';
 
   if (!hasHistoryAccess.value) {
     loading.value = false;
-    errorMsg.value = 'This device was shared without history access. Ask the owner to grant the History scope.';
+    unauthorizedMsg.value = 'This device was shared without history access. Ask the owner to grant the History scope.';
     positions.value = [];
     timelineItems.value = [];
     Object.assign(deviceStore.activeRoute, { line: [], markers: {} });
@@ -128,7 +130,16 @@ const fetchHistory = async () => {
 
   } catch (err) {
     console.error('Error fetching history:', err);
-    errorMsg.value = 'Failed to load history data. Please check your connection or try again.';
+    // http.js throws Error('HTTP <status>'); pull the status so we can tell an
+    // authorization failure (no retry) apart from a transient error (retryable).
+    const status = Number(String(err?.message || '').match(/\b(401|403)\b/)?.[1]);
+    if (status === 401) {
+      unauthorizedMsg.value = 'Your session is no longer authorized. Please sign in again.';
+    } else if (status === 403) {
+      unauthorizedMsg.value = "You don't have permission to view this device's history.";
+    } else {
+      errorMsg.value = 'Failed to load history data. Please check your connection or try again.';
+    }
   } finally {
     loading.value = false;
   }
@@ -239,6 +250,12 @@ onUnmounted(() => {
         <div v-if="loading" class="flex flex-col items-center justify-center py-10 text-gray-400">
           <i class="fa-solid fa-circle-notch fa-spin text-3xl mb-3 text-brand"></i>
           <p class="text-sm font-semibold">Generating report...</p>
+        </div>
+
+        <div v-else-if="unauthorizedMsg" class="bg-amber-50 border border-amber-200 rounded-xl p-5 text-center">
+          <i class="fa-solid fa-lock text-3xl text-amber-500 mb-3"></i>
+          <h3 class="font-bold text-amber-800 mb-1">Unauthorized</h3>
+          <p class="text-sm text-amber-700">{{ unauthorizedMsg }}</p>
         </div>
 
         <div v-else-if="errorMsg" class="bg-red-50 border border-red-200 rounded-xl p-5 text-center">
