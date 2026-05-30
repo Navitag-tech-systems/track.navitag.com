@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Naitag Track</string>
-    <string name="title_activity_main">Naitag Track</string>
+    <string name="app_name">Navitag Track</string>
+    <string name="title_activity_main">Navitag Track</string>
     <string name="package_name">com.navitag.track</string>
     <string name="custom_url_scheme">com.navitag.track</string>
     <string name="facebook_app_id">2081300759284546</string>

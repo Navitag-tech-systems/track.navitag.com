@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>Naitag Track</string>
+	<string>Navitag Track</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -30,7 +30,7 @@
 	<key>FacebookClientToken</key>
 	<string>84e97664182a33412a5001d650cb261d</string>
 	<key>FacebookDisplayName</key>
-	<string>Naitag Track</string>
+	<string>Navitag Track</string>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>fbapi</string>

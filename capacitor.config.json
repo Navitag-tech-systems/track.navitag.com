@@ -1,6 +1,6 @@
 {
   "appId": "com.navitag.track",
-  "appName": "Naitag Track",
+  "appName": "Navitag Track",
   "webDir": "dist",
   "server": {
     "androidScheme": "https",

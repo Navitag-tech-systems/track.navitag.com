@@ -7,7 +7,7 @@ android {
         applicationId "com.navitag.track"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
+        versionCode System.getenv("BUILD_NUMBER") ? System.getenv("BUILD_NUMBER").toInteger() : 1
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
@@ -16,8 +16,31 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            // CI (Codemagic): env vars are injected when an Android keystore is referenced in codemagic.yaml.
+            if (System.getenv("CM_KEYSTORE_PATH")) {
+                storeFile file(System.getenv("CM_KEYSTORE_PATH"))
+                storePassword System.getenv("CM_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("CM_KEY_ALIAS")
+                keyPassword System.getenv("CM_KEY_PASSWORD")
+            } else {
+                // Local signing via keystore.properties (gitignored). Safe no-op if the file is absent.
+                def kPropsFile = rootProject.file("keystore.properties")
+                if (kPropsFile.exists()) {
+                    def kProps = new Properties()
+                    kProps.load(new FileInputStream(kPropsFile))
+                    storeFile file(kProps['storeFile'])
+                    storePassword kProps['storePassword']
+                    keyAlias kProps['keyAlias']
+                    keyPassword kProps['keyPassword']
+                }
+            }
+        }
+    }
     buildTypes {
         release {
+            signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }

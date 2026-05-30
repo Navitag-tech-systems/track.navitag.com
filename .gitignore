@@ -28,6 +28,12 @@ coverage
 
 .eslintcache
 
+# Signing & CI/CD secrets
+*.jks
+*.keystore
+keystore.properties
+/secrets/
+
 # Cypress
 /cypress/videos/
 /cypress/screenshots/

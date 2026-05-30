@@ -1,0 +1,115 @@
+# Codemagic CI/CD  —  track.navitag.com (Capacitor 8 / Vue 3 / Vite)
+# Docs: https://docs.codemagic.io/yaml-basic-configuration/yaml-getting-started/
+#
+# IMPORTANT: Codemagic does NOT read this repo's .env file. Every secret below
+# comes from Codemagic variable GROUPS / INTEGRATIONS / CODE SIGNING configured
+# in the Codemagic web UI. The .env file is only your local staging vault.
+#
+# One-time UI setup these workflows depend on:
+#   - Code signing identities -> Android keystores: upload your .jks
+#         reference name MUST be:  navitag_upload_keystore
+#   - Integrations -> App Store Connect: add your API key (.p8)
+#         integration name MUST be: Navitag_ASC_API_Key
+#   - Environment variables (create these groups):
+#         github_packages :  GITHUB_PACKAGES_TOKEN
+#         google_play     :  GCLOUD_SERVICE_ACCOUNT_CREDENTIALS  (paste the JSON contents, secret)
+
+workflows:
+
+  # ==========================================================================
+  # ANDROID  ->  Google Play (internal testing track)
+  # ==========================================================================
+  android-google-play:
+    name: Android -> Google Play (internal)
+    instance_type: mac_mini_m2          # free-tier minutes are macOS M2; swap to linux_x2 if you have Linux minutes
+    max_build_duration: 60
+    environment:
+      node: 20.19.0
+      android_signing:
+        - navitag_upload_keystore       # must match the keystore reference name in Codemagic UI
+      groups:
+        - github_packages               # GITHUB_PACKAGES_TOKEN
+        - google_play                   # GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+      vars:
+        PACKAGE_NAME: "com.navitag.track"
+    scripts:
+      - name: Authenticate to GitHub Packages and install deps
+        script: |
+          echo "//npm.pkg.github.com/:_authToken=$GITHUB_PACKAGES_TOKEN" > .npmrc.local
+          npm ci
+      - name: Build web assets (Vite)
+        script: npm run build
+      - name: Sync Capacitor (Android)
+        script: npx cap sync android
+      - name: Point Gradle at the Codemagic Android SDK
+        script: echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
+      - name: Build signed release AAB
+        script: |
+          cd android
+          ./gradlew bundleRelease
+    artifacts:
+      - android/app/build/outputs/**/*.aab
+    publishing:
+      google_play:
+        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+        track: internal                 # internal -> closed -> beta -> production (promote in Play Console)
+        submit_as_draft: true           # NOTE: the very first release of a brand-new app usually must be
+                                         # uploaded/finalized manually in Play Console before the API will accept it.
+
+  # ==========================================================================
+  # iOS  ->  TestFlight   (flip the flags at the bottom to also submit to App Store)
+  # ==========================================================================
+  ios-testflight:
+    name: iOS -> TestFlight
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    integrations:
+      app_store_connect: Navitag_ASC_API_Key   # must match the API key name in Codemagic UI -> Integrations
+    environment:
+      node: 20.19.0
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.navitag.track
+      groups:
+        - github_packages
+      vars:
+        XCODE_PROJECT: "ios/App/App.xcodeproj"   # SPM-based Capacitor project: no .xcworkspace / CocoaPods
+        XCODE_SCHEME: "App"
+        APP_STORE_APP_ID: ""                      # numeric Apple ID (App Store Connect -> App Information).
+                                                  # App already exists w/ prior TestFlight builds -> set this so
+                                                  # build numbers auto-increment above what's already uploaded.
+    scripts:
+      - name: Authenticate to GitHub Packages and install deps
+        script: |
+          echo "//npm.pkg.github.com/:_authToken=$GITHUB_PACKAGES_TOKEN" > .npmrc.local
+          npm ci
+      - name: Build web assets (Vite)
+        script: npm run build
+      - name: Sync Capacitor (iOS)
+        script: npx cap sync ios
+      - name: Set iOS build number (above the latest already in App Store Connect)
+        script: |
+          set -e
+          if [ -n "$APP_STORE_APP_ID" ]; then
+            LATEST=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APP_ID" || echo 0)
+          else
+            LATEST=$BUILD_NUMBER
+          fi
+          cd ios/App
+          agvtool new-version -all $(($LATEST + 1))
+      - name: Apply signing profiles to the Xcode project
+        script: xcode-project use-profiles
+      - name: Build signed IPA
+        script: |
+          xcode-project build-ipa \
+            --project "$XCODE_PROJECT" \
+            --scheme "$XCODE_SCHEME"
+    artifacts:
+      - build/ios/ipa/*.ipa
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        # ---- After the TestFlight build is validated, uncomment to push to App Store review ----
+        # submit_to_app_store: true
+        # release_type: MANUAL          # you press "Release" in App Store Connect after approval
