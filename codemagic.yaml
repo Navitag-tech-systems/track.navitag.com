@@ -24,7 +24,7 @@ workflows:
     instance_type: mac_mini_m2          # free-tier minutes are macOS M2; swap to linux_x2 if you have Linux minutes
     max_build_duration: 60
     environment:
-      node: 20.19.0
+      node: 22.17.0
       android_signing:
         - navitag_upload_keystore       # must match the keystore reference name in Codemagic UI
       groups:
@@ -66,7 +66,7 @@ workflows:
     integrations:
       app_store_connect: Navitag_ASC_API_Key   # must match the API key name in Codemagic UI -> Integrations
     environment:
-      node: 20.19.0
+      node: 22.17.0
       groups:
         - github_packages
       vars:
