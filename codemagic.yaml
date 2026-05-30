@@ -67,9 +67,6 @@ workflows:
       app_store_connect: Navitag_ASC_API_Key   # must match the API key name in Codemagic UI -> Integrations
     environment:
       node: 20.19.0
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.navitag.track
       groups:
         - github_packages
       vars:
@@ -96,8 +93,14 @@ workflows:
           fi
           cd ios/App
           agvtool new-version -all $(($LATEST + 1))
-      - name: Apply signing profiles to the Xcode project
-        script: xcode-project use-profiles
+      - name: Set up code signing (creates the cert + App Store profile if missing)
+        script: |
+          keychain initialize
+          app-store-connect fetch-signing-files "com.navitag.track" \
+            --type IOS_APP_STORE \
+            --create
+          keychain add-certificates
+          xcode-project use-profiles
       - name: Build signed IPA
         script: |
           xcode-project build-ipa \
