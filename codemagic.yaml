@@ -25,6 +25,7 @@ workflows:
     max_build_duration: 60
     environment:
       node: 22.17.0
+      java: 21
       android_signing:
         - navitag_upload_keystore       # must match the keystore reference name in Codemagic UI
       groups:
@@ -132,6 +133,7 @@ workflows:
       app_store_connect: Navitag_ASC_API_Key
     environment:
       node: 22.17.0
+      java: 21
       android_signing:
         - navitag_upload_keystore
       groups:
