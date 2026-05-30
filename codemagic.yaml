@@ -46,6 +46,7 @@ workflows:
       - name: Build signed release AAB
         script: |
           cd android
+          chmod +x ./gradlew
           ./gradlew bundleRelease
     artifacts:
       - android/app/build/outputs/**/*.aab
@@ -167,6 +168,7 @@ workflows:
       - name: Build signed Android AAB
         script: |
           cd android
+          chmod +x ./gradlew
           ./gradlew bundleRelease
       - name: Set iOS marketing version + build number
         script: |
