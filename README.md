@@ -26,6 +26,18 @@ Vue 3 + Capacitor 8 mobile app for GPS device tracking. Connects to `api.navitag
 
 ## Project Status
 
+### Deployment (CI/CD via Codemagic)
+
+App-store releases run through **Codemagic** (`codemagic.yaml`, free tier, macOS M2) — no Mac required. Workflows:
+- **`release`** — combined, **all-or-nothing**: builds the Android AAB + iOS IPA, stamps them with one aligned version (from `package.json`) and one aligned build number (`max(latest Play versionCode, latest TestFlight build) + 1`), then uploads to TestFlight and publishes to Google Play (internal track). The iOS upload **gates** the Play publish, so either both ship or neither does.
+- **`ios-testflight`** / **`android-google-play`** — single-platform variants.
+
+**First joint release: v5.0.0 (build 2)** is live on both Google Play (internal testing) and TestFlight.
+
+Requirements baked into the workflows (do not regress): **Node 22** (Capacitor 8 CLI), **JDK 21** (Capacitor 8 compiles to source release 21), an **executable `gradlew`**, and an iOS distribution **certificate private key** passed to `fetch-signing-files --create`. Trigger a release locally with `node secrets/cm-run.mjs release main`. All signing material lives in gitignored `secrets/` + `.env`.
+
+> **Follow-up:** the iOS `CERTIFICATE_PRIVATE_KEY` is injected at API trigger time, so iOS builds started from the **Codemagic UI** will fail signing until that key is also added as a persistent Codemagic environment variable.
+
 ### Native Splash Screen
 
 - **Android 12+ system splash** (`android/app/src/main/res/values/styles.xml` → `AppTheme.NoActionBarLaunch`): the OS `SplashScreen` API paints a solid background + a centered icon and **ignores** the legacy full-screen `@drawable/splash` bitmap. Left unset it falls back to white/grey + the upscaled (pixelated) launcher icon. Now configured explicitly with `windowSplashScreenBackground` = `@color/splash_background` (navitag beige `#F7F4EF`, defined in `values/colors.xml`, matches the `color-surface` token in `src/style.css`) and `windowSplashScreenAnimatedIcon` = `@drawable/splash_icon` — a high-res transparent logo at `drawable-nodpi/splash_icon.png`. The logo is sized to ~58% diameter so it renders crisply (downscale-only) **and** clears Android 12's circular icon mask (no top-right clipping). Pre-12 still uses the full-screen `@drawable/splash` (already beige).
