@@ -116,3 +116,94 @@ workflows:
         # ---- After the TestFlight build is validated, uncomment to push to App Store review ----
         # submit_to_app_store: true
         # release_type: MANUAL          # you press "Release" in App Store Connect after approval
+
+  # ==========================================================================
+  # RELEASE  ->  Android + iOS together. ONE aligned version (from package.json)
+  #              + ONE aligned build number. All-or-nothing: both binaries are
+  #              built before anything publishes, and the iOS TestFlight upload
+  #              gates the Google Play publish (Android only publishes if iOS did).
+  # ==========================================================================
+  release:
+    name: Release (Android + iOS, aligned)
+    instance_type: mac_mini_m2
+    max_build_duration: 90
+    integrations:
+      app_store_connect: Navitag_ASC_API_Key
+    environment:
+      node: 22.17.0
+      android_signing:
+        - navitag_upload_keystore
+      groups:
+        - github_packages
+        - google_play
+      vars:
+        BUNDLE_ID: "com.navitag.track"
+        XCODE_PROJECT: "ios/App/App.xcodeproj"
+        XCODE_SCHEME: "App"
+        APP_STORE_APP_ID: "6758300749"
+    scripts:
+      - name: Authenticate to GitHub Packages and install deps
+        script: |
+          echo "//npm.pkg.github.com/:_authToken=$GITHUB_PACKAGES_TOKEN" > .npmrc.local
+          npm ci
+      - name: Build web assets (Vite)
+        script: npm run build
+      - name: Compute aligned version + build number
+        script: |
+          set -e
+          VERSION=$(node -p "require('./package.json').version")
+          PLAY=$(google-play get-latest-build-number --package-name "$BUNDLE_ID" --credentials @env:GCLOUD_SERVICE_ACCOUNT_CREDENTIALS 2>/dev/null || echo 0)
+          TF=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APP_ID" 2>/dev/null || echo 0)
+          NEXT=$(( (PLAY > TF ? PLAY : TF) + 1 ))
+          echo "APP_VERSION=$VERSION" >> $CM_ENV
+          echo "BUILD_NUMBER=$NEXT" >> $CM_ENV
+          echo "Aligned -> version=$VERSION  build=$NEXT  (play=$PLAY testflight=$TF)"
+      - name: Sync Capacitor (both platforms)
+        script: |
+          npx cap sync android
+          npx cap sync ios
+      - name: Point Gradle at the Codemagic Android SDK
+        script: echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
+      - name: Build signed Android AAB
+        script: |
+          cd android
+          ./gradlew bundleRelease
+      - name: Set iOS marketing version + build number
+        script: |
+          cd ios/App
+          agvtool new-marketing-version "$APP_VERSION"
+          agvtool new-version -all "$BUILD_NUMBER"
+      - name: Set up iOS code signing
+        script: |
+          keychain initialize
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --certificate-key @env:CERTIFICATE_PRIVATE_KEY \
+            --create
+          keychain add-certificates
+          xcode-project use-profiles
+      - name: Build signed iOS IPA
+        script: |
+          xcode-project build-ipa \
+            --project "$XCODE_PROJECT" \
+            --scheme "$XCODE_SCHEME"
+      - name: Publish IPA to TestFlight (gates release; retries transient ASC 500s)
+        script: |
+          IPA=$(ls build/ios/ipa/*.ipa | head -1)
+          echo "Publishing $IPA"
+          for i in 1 2 3; do
+            if app-store-connect publish --path "$IPA" --max-build-processing-wait 0; then
+              echo "iOS upload OK"; exit 0
+            fi
+            echo "attempt $i failed (likely transient App Store Connect 500); waiting 90s"; sleep 90
+          done
+          echo "iOS publish failed after 3 attempts"; exit 1
+    artifacts:
+      - android/app/build/outputs/**/*.aab
+      - build/ios/ipa/*.ipa
+    publishing:
+      # Runs only after ALL scripts succeed (including the iOS upload) -> Android
+      # publishes only if iOS already uploaded. This is the all-or-nothing gate.
+      google_play:
+        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+        track: internal
