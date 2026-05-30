@@ -75,9 +75,8 @@ workflows:
       vars:
         XCODE_PROJECT: "ios/App/App.xcodeproj"   # SPM-based Capacitor project: no .xcworkspace / CocoaPods
         XCODE_SCHEME: "App"
-        APP_STORE_APP_ID: ""                      # numeric Apple ID (App Store Connect -> App Information).
-                                                  # App already exists w/ prior TestFlight builds -> set this so
-                                                  # build numbers auto-increment above what's already uploaded.
+        APP_STORE_APP_ID: "6758300749"            # numeric Apple ID (App Store Connect -> App Information)
+                                                  # -> build numbers auto-increment above existing TestFlight builds.
     scripts:
       - name: Authenticate to GitHub Packages and install deps
         script: |
