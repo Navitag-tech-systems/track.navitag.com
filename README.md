@@ -43,6 +43,14 @@ Requirements baked into the workflows (do not regress): **Node 22** (Capacitor 8
 - **Android 12+ system splash** (`android/app/src/main/res/values/styles.xml` → `AppTheme.NoActionBarLaunch`): the OS `SplashScreen` API paints a solid background + a centered icon and **ignores** the legacy full-screen `@drawable/splash` bitmap. Left unset it falls back to white/grey + the upscaled (pixelated) launcher icon. Now configured explicitly with `windowSplashScreenBackground` = `@color/splash_background` (navitag beige `#F7F4EF`, defined in `values/colors.xml`, matches the `color-surface` token in `src/style.css`) and `windowSplashScreenAnimatedIcon` = `@drawable/splash_icon` — a high-res transparent logo at `drawable-nodpi/splash_icon.png`. The logo is sized to ~58% diameter so it renders crisply (downscale-only) **and** clears Android 12's circular icon mask (no top-right clipping). Pre-12 still uses the full-screen `@drawable/splash` (already beige).
 - **iOS** (`ios/App/App/Base.lproj/LaunchScreen.storyboard`): the `Splash` image fills the screen via `scaleAspectFill`; the view background is also set to beige as a safeguard. (Not Mac-verified.)
 
+### Launcher Icon (Android adaptive)
+
+- Adaptive icon XML (`mipmap-anydpi-v26/ic_launcher.xml` + `ic_launcher_round.xml`): the **background** layer fills the full 108dp canvas (no inset) so it reaches every edge of the launcher's mask; the **foreground** logo keeps a `16.7%` inset to stay inside the safe zone. Previously the background was *also* inset 16.7%, so the masked shape's edges had no fill and showed the home-screen through as dark lines on the right/bottom.
+
+### Manifest / Play data safety
+
+- `android/app/src/main/AndroidManifest.xml` strips the advertising-ID permissions auto-merged by Firebase Analytics (`com.google.android.gms.permission.AD_ID` and `android.permission.ACCESS_ADSERVICES_AD_ID`) via `tools:node="remove"`. We don't use the advertising ID, so the Play Console advertising-ID declaration is answered **"No"** (verified gone from the merged release manifest).
+
 ### Lifecycle Service
 
 `src/utils/lifecycle/` — split into focused modules:
@@ -76,9 +84,9 @@ Shop, cart, and payment flows have been removed from the app. Deleted: `src/view
 ### Account Settings
 
 - Email field is read-only in the account page (`src/views/account/index.vue`)
-- Users can update name and phone number
-- Phone input uses shared country dial code list from `countryList.js`
+- Users can update their name (phone number field removed)
 - Password change available for email/password users
+- **Delete Data and Account** card (before Log Out): two-step confirm button (grey "Delete" → red "Confirm Delete") that `POST`s to `/user/delete-account` (no body; identity from the Firebase token), then `signOut()`s. The backend wipes local records + the Firebase user; the auth-state listener runs the normal `stopSession` teardown and redirects to `/login`.
 
 ### Signup
 
