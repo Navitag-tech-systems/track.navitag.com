@@ -9,7 +9,6 @@ import { signOut } from '@/utils/auth';
 import { auth } from '@/firebase';
 import { baseUrl } from '@/utils/variables';
 import { request } from '@/utils/http';
-import { countries } from '@/utils/countryList';
 import { Capacitor } from '@capacitor/core';
 
 const router = useRouter();
@@ -17,22 +16,8 @@ const userStore = useUserStore();
 const installStore = useInstallStore();
 const notifStore = useNotificationsStore();
 
-// Build dial code groups from countryList: { isos: ['US','CA',...], code: '+1', label: 'US/CA (+1)' }
-const countryCodes = (() => {
-  const grouped = {};
-  for (const c of countries) {
-    if (!grouped[c.dial]) grouped[c.dial] = [];
-    grouped[c.dial].push(c.code);
-  }
-  return Object.entries(grouped)
-    .map(([dial, isos]) => ({ isos, code: dial, label: `${isos.join('/')} (${dial})` }))
-    .sort((a, b) => parseInt(a.code.replace('+', '')) - parseInt(b.code.replace('+', '')));
-})();
-
 // State for Profile Update
 const name = ref('');
-const phoneCountryCode = ref('+1');
-const phoneNumber = ref('');
 const profileLoading = ref(false);
 const profileMessage = ref('');
 const profileError = ref('');
@@ -50,60 +35,12 @@ watch(() => userStore.name, (newName) => {
   if (newName) name.value = newName;
 }, { immediate: true });
 
-// Watch for changes to the user's phone
-watch(() => userStore.phone, (newPhone) => {
-  if (newPhone) {
-    const match = countryCodes.find(c => newPhone.startsWith(c.code));
-    if (match) {
-      phoneCountryCode.value = match.code;
-      // Strip out the hyphen if it was saved with one
-      if (newPhone.charAt(match.code.length) === '-') {
-        phoneNumber.value = newPhone.slice(match.code.length + 1);
-      } else {
-        phoneNumber.value = newPhone.slice(match.code.length);
-      }
-    } else {
-      phoneNumber.value = newPhone;
-    }
-  }
-}, { immediate: true });
-
-// Prefill country code based on IP location if no phone number is set
-watch(() => userStore.countryCode, (newIso) => {
-  // Only auto-fill if the user doesn't already have a phone number saved
-  if (!userStore.phone && newIso) {
-    const defaultCountry = countryCodes.find(c => c.isos.includes(newIso));
-    if (defaultCountry) {
-      phoneCountryCode.value = defaultCountry.code;
-    }
-  }
-}, { immediate: true });
-
 const updateProfile = async () => {
   profileLoading.value = true;
   profileMessage.value = '';
   profileError.value = '';
 
-  // Format with a hyphen: +[code]-[number]
-  const fullPhone = phoneNumber.value.trim() 
-    ? `${phoneCountryCode.value}-${phoneNumber.value.trim()}` 
-    : '';
-  
-  const payload = {};
-
-  let hasChanges = false;
-  if (name.value.trim() !== userStore.name) {
-    payload.name = name.value.trim();
-    hasChanges = true;
-  }
-  
-  if (fullPhone !== userStore.phone && fullPhone !== '') {
-    payload.phone = fullPhone;
-    payload.mobile = fullPhone; // Included to match backend docs explicitly
-    hasChanges = true;
-  }
-
-  if (!hasChanges) {
+  if (name.value.trim() === userStore.name) {
     profileMessage.value = 'No changes to save.';
     profileLoading.value = false;
     return;
@@ -113,14 +50,13 @@ const updateProfile = async () => {
     const data = await request.send({
       url: `${baseUrl}/user/update`,
       method: 'POST',
-      data: payload,
+      data: { name: name.value.trim() },
       token: userStore.idToken
     });
 
     if (data.status === 'success') {
       profileMessage.value = 'Profile updated successfully.';
-      if (payload.name) userStore.name = payload.name;
-      if (payload.phone) userStore.phone = payload.phone;
+      userStore.name = name.value.trim();
     } else {
       throw new Error(data.error || 'Failed to update profile.');
     }
@@ -404,6 +340,40 @@ async function clickAccountInstall() {
 
 const showQrModal = ref(false);
 
+// Two-step delete confirmation: first tap arms the button (turns red,
+// "Confirm Delete"), second tap triggers the actual deletion.
+const deleteConfirming = ref(false);
+const deleteLoading = ref(false);
+const deleteError = ref('');
+const handleDeleteClick = async () => {
+  if (deleteLoading.value) return;
+
+  if (!deleteConfirming.value) {
+    deleteConfirming.value = true;
+    return;
+  }
+
+  // Confirmed: delete the backend record + Firebase user, then sign out.
+  // POST with no body (the endpoint takes none); auth is the Bearer token.
+  deleteLoading.value = true;
+  deleteError.value = '';
+  try {
+    await request.send({
+      url: `${baseUrl}/user/delete-account`,
+      method: 'POST',
+      token: userStore.idToken,
+    });
+    // Account is gone on the backend — tear down the local session and
+    // redirect to /login (signOut runs the full lifecycle teardown).
+    await signOut();
+  } catch (error) {
+    console.error('Delete account error:', error);
+    deleteError.value = error.message || 'Failed to delete account. Please try again.';
+    deleteConfirming.value = false;
+    deleteLoading.value = false;
+  }
+};
+
 const logoutLoading = ref(false);
 const handleLogout = async () => {
   if (logoutLoading.value) return;
@@ -466,32 +436,6 @@ const handleLogout = async () => {
               placeholder="Full Name"
               class="w-full border p-1 rounded focus:ring-2 focus:ring-brand outline-none"
             />
-          </div>
-
-          <div>
-            <div class="flex space-x-2">
-              
-              <div class="relative border p-1 rounded bg-white flex items-center justify-center w-[60px] focus-within:ring-2 focus-within:ring-brand overflow-hidden">
-                <span class="text-gray-800">{{ phoneCountryCode }}</span>
-                <i class="fa-solid fa-chevron-down text-[10px] text-gray-400 ml-1"></i>
-                
-                <select 
-                  v-model="phoneCountryCode" 
-                  class="absolute inset-0 w-full flex-1 opacity-0 cursor-pointer"
-                >
-                  <option v-for="c in countryCodes" :key="c.code" :value="c.code">
-                    {{ c.label }}
-                  </option>
-                </select>
-              </div>
-
-              <input 
-                v-model="phoneNumber" 
-                type="tel" 
-                placeholder="Phone Number" 
-                class="flex-1 border p-1 rounded focus:ring-2 focus:ring-brand outline-none"
-              />
-            </div>
           </div>
 
           <p v-if="profileMessage" class="text-green-600 text-sm mt-2"><i class="fa-solid fa-check mr-1"></i>{{ profileMessage }}</p>
@@ -706,6 +650,27 @@ const handleLogout = async () => {
             {{ passwordLoading ? 'Updating...' : 'Update Password' }}
           </button>
         </form>
+      </div>
+
+      <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
+        <h2 class="text-lg font-bold text-gray-800 mb-2">Delete Data and Account</h2>
+        <p class="text-xs text-gray-500 mb-4 leading-snug">This is irreversible.</p>
+
+        <button
+          type="button"
+          @click="handleDeleteClick"
+          :disabled="deleteLoading"
+          :class="[
+            'w-full text-white font-bold py-3 px-4 rounded transition text-sm shadow active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed',
+            deleteConfirming ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-400 hover:bg-gray-500',
+            deleteLoading ? 'cursor-not-allowed' : 'cursor-pointer'
+          ]"
+        >
+          <i v-if="deleteLoading" class="fa-solid fa-circle-notch fa-spin mr-2"></i>
+          {{ deleteLoading ? 'Deleting...' : (deleteConfirming ? 'Confirm Delete' : 'Delete') }}
+        </button>
+
+        <p v-if="deleteError" class="text-red-500 text-sm mt-3">{{ deleteError }}</p>
       </div>
 
       <button
