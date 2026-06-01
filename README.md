@@ -38,6 +38,8 @@ App-store releases run through **Codemagic** (`codemagic.yaml`, free tier, macOS
 
 **v5.0.2 (build 6)** — joint release via the `release` workflow: geofence drawing-step top bar removed (full-height map while drawing). Live on Google Play internal + TestFlight.
 
+**v5.0.3 (build 7)** — joint release: fix geofence drawing-step layout regression — with the top bar gone, the `justify-between` root parked the bottom sheet at the top; `mt-auto` pins it back to the bottom.
+
 Requirements baked into the workflows (do not regress): **Node 22** (Capacitor 8 CLI), **JDK 21** (Capacitor 8 compiles to source release 21), an **executable `gradlew`**, and an iOS distribution **certificate private key** passed to `fetch-signing-files --create`. Trigger a release locally with `node secrets/cm-run.mjs release main`. All signing material lives in gitignored `secrets/` + `.env`.
 
 > **Follow-up:** the iOS `CERTIFICATE_PRIVATE_KEY` is injected at API trigger time, so iOS builds started from the **Codemagic UI** will fail signing until that key is also added as a persistent Codemagic environment variable.
