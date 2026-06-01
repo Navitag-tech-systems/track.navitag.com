@@ -30,7 +30,7 @@ Vue 3 + Capacitor 8 mobile app for GPS device tracking. Connects to `api.navitag
 
 App-store releases run through **Codemagic** (`codemagic.yaml`, free tier, macOS M2) — no Mac required. Workflows:
 - **`release`** — combined, **all-or-nothing**: builds the Android AAB + iOS IPA, stamps them with one aligned version (from `package.json`) and one aligned build number (`max(latest Play versionCode, latest TestFlight build) + 1`), then uploads to TestFlight and publishes to Google Play (internal track). The iOS upload **gates** the Play publish, so either both ship or neither does.
-- **`ios-testflight`** / **`android-google-play`** — single-platform variants.
+- **`ios-testflight`** / **`android-google-play`** — single-platform variants. `android-google-play` computes its own `versionCode` (`google-play get-latest-build-number` + 1) and publishes **live** to the internal track (`submit_as_draft: false`) — no manual finalize. (Earlier it lacked the build-number step and Play rejected the upload with "version code already used".)
 
 **First joint release: v5.0.0 (build 2)** is live on both Google Play (internal testing) and TestFlight.
 
