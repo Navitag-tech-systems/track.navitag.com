@@ -36,6 +36,8 @@ App-store releases run through **Codemagic** (`codemagic.yaml`, free tier, macOS
 
 **v5.0.1** — Android-only patch (notification small-icon fix, see "Notification Icon"). Marketing version bumped on **both** platforms to stay aligned, but only the `android-google-play` workflow is deployed (no iOS changes this round).
 
+**v5.0.2 (build 6)** — joint release via the `release` workflow: geofence drawing-step top bar removed (full-height map while drawing). Live on Google Play internal + TestFlight.
+
 Requirements baked into the workflows (do not regress): **Node 22** (Capacitor 8 CLI), **JDK 21** (Capacitor 8 compiles to source release 21), an **executable `gradlew`**, and an iOS distribution **certificate private key** passed to `fetch-signing-files --create`. Trigger a release locally with `node secrets/cm-run.mjs release main`. All signing material lives in gitignored `secrets/` + `.env`.
 
 > **Follow-up:** the iOS `CERTIFICATE_PRIVATE_KEY` is injected at API trigger time, so iOS builds started from the **Codemagic UI** will fail signing until that key is also added as a persistent Codemagic environment variable.
