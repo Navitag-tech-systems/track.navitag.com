@@ -40,6 +40,16 @@ workflows:
           npm ci
       - name: Build web assets (Vite)
         script: npm run build
+      - name: Compute Android build number (above the latest on Google Play)
+        # Without this, Codemagic's per-workflow BUILD_NUMBER starts at 1 and
+        # Play rejects the upload ("Version code N has already been used").
+        # versionCode must be strictly greater than the highest already on Play.
+        script: |
+          set -e
+          PLAY=$(google-play get-latest-build-number --package-name "$PACKAGE_NAME" --credentials @env:GCLOUD_SERVICE_ACCOUNT_CREDENTIALS 2>/dev/null || echo 0)
+          NEXT=$(( PLAY + 1 ))
+          echo "BUILD_NUMBER=$NEXT" >> $CM_ENV
+          echo "Android versionCode -> $NEXT (latest on Play=$PLAY)"
       - name: Sync Capacitor (Android)
         script: npx cap sync android
       - name: Point Gradle at the Codemagic Android SDK
