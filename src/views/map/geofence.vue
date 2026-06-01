@@ -182,7 +182,7 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <div v-if="step === 2" class="pointer-events-auto bg-white rounded-t-3xl shadow-[0_-10px_20px_rgba(0,0,0,0.05)] p-5 pb-8 z-10 text-center">
+    <div v-if="step === 2" class="mt-auto pointer-events-auto bg-white rounded-t-3xl shadow-[0_-10px_20px_rgba(0,0,0,0.05)] p-5 pb-8 z-10 text-center">
       <div v-if="isSaving" class="py-4">
         <i class="fa-solid fa-circle-notch fa-spin text-brand text-2xl mb-3"></i>
         <p class="text-sm font-bold text-gray-700">Saving to server...</p>
