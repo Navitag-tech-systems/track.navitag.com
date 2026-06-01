@@ -40,16 +40,18 @@ workflows:
           npm ci
       - name: Build web assets (Vite)
         script: npm run build
-      - name: Compute Android build number (above the latest on Google Play)
-        # Without this, Codemagic's per-workflow BUILD_NUMBER starts at 1 and
-        # Play rejects the upload ("Version code N has already been used").
-        # versionCode must be strictly greater than the highest already on Play.
+      - name: Compute Android build number (above every uploaded bundle)
+        # get-latest-build-number only sees ACTIVE track releases, so a discarded
+        # draft makes it drop back and re-propose an already-uploaded (and thus
+        # permanently reserved) version code -> "Version code N has already been
+        # used". next-build-number.mjs reads the full bundle/apk upload library
+        # (which retains discarded-draft uploads), so it always steps above the
+        # true ceiling. Needs GCLOUD_SERVICE_ACCOUNT_CREDENTIALS + PACKAGE_NAME (set).
         script: |
           set -e
-          PLAY=$(google-play get-latest-build-number --package-name "$PACKAGE_NAME" --credentials @env:GCLOUD_SERVICE_ACCOUNT_CREDENTIALS 2>/dev/null || echo 0)
-          NEXT=$(( PLAY + 1 ))
+          NEXT=$(node scripts/next-build-number.mjs)
           echo "BUILD_NUMBER=$NEXT" >> $CM_ENV
-          echo "Android versionCode -> $NEXT (latest on Play=$PLAY)"
+          echo "Android versionCode -> $NEXT"
       - name: Sync Capacitor (Android)
         script: npx cap sync android
       - name: Point Gradle at the Codemagic Android SDK
@@ -98,13 +100,15 @@ workflows:
           npm ci
       - name: Build web assets (Vite)
         script: npm run build
-      - name: Compute Android build number (above the latest on Google Play)
+      - name: Compute Android build number (above every uploaded bundle)
+        # See the android-google-play note: steps above the true uploaded-bundle
+        # ceiling so a discarded draft can't cause a reused ("already been used")
+        # version code. Needs GCLOUD_SERVICE_ACCOUNT_CREDENTIALS + PACKAGE_NAME (set).
         script: |
           set -e
-          PLAY=$(google-play get-latest-build-number --package-name "$PACKAGE_NAME" --credentials @env:GCLOUD_SERVICE_ACCOUNT_CREDENTIALS 2>/dev/null || echo 0)
-          NEXT=$(( PLAY + 1 ))
+          NEXT=$(node scripts/next-build-number.mjs)
           echo "BUILD_NUMBER=$NEXT" >> $CM_ENV
-          echo "Android versionCode -> $NEXT (latest on Play=$PLAY)"
+          echo "Android versionCode -> $NEXT"
       - name: Sync Capacitor (Android)
         script: npx cap sync android
       - name: Point Gradle at the Codemagic Android SDK
@@ -216,15 +220,19 @@ workflows:
       - name: Build web assets (Vite)
         script: npm run build
       - name: Compute aligned version + build number
+        # ANDROID_NEXT steps above the true uploaded-bundle ceiling (so a discarded
+        # Play draft can't cause a reused version code); the final build number is
+        # also kept above the latest TestFlight build so both platforms stay aligned.
         script: |
           set -e
           VERSION=$(node -p "require('./package.json').version")
-          PLAY=$(google-play get-latest-build-number --package-name "$BUNDLE_ID" --credentials @env:GCLOUD_SERVICE_ACCOUNT_CREDENTIALS 2>/dev/null || echo 0)
+          ANDROID_NEXT=$(PACKAGE_NAME="$BUNDLE_ID" node scripts/next-build-number.mjs)
           TF=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APP_ID" 2>/dev/null || echo 0)
-          NEXT=$(( (PLAY > TF ? PLAY : TF) + 1 ))
+          TF_NEXT=$(( TF + 1 ))
+          NEXT=$(( ANDROID_NEXT > TF_NEXT ? ANDROID_NEXT : TF_NEXT ))
           echo "APP_VERSION=$VERSION" >> $CM_ENV
           echo "BUILD_NUMBER=$NEXT" >> $CM_ENV
-          echo "Aligned -> version=$VERSION  build=$NEXT  (play=$PLAY testflight=$TF)"
+          echo "Aligned -> version=$VERSION  build=$NEXT  (android_next=$ANDROID_NEXT testflight=$TF)"
       - name: Sync Capacitor (both platforms)
         script: |
           npx cap sync android
