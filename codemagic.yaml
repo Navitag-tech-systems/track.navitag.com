@@ -65,8 +65,8 @@ workflows:
       google_play:
         credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
         track: internal                 # internal -> closed -> beta -> production (promote in Play Console)
-        submit_as_draft: true           # NOTE: the very first release of a brand-new app usually must be
-                                         # uploaded/finalized manually in Play Console before the API will accept it.
+        submit_as_draft: false          # app is established (v5.0.0 already live) -> publish live straight
+                                         # to internal testers; no manual finalize in Play Console needed.
 
   # ==========================================================================
   # iOS  ->  TestFlight   (flip the flags at the bottom to also submit to App Store)
