@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue';
-import { useRoute, RouterView } from 'vue-router';
+import { useRoute, useRouter, RouterView } from 'vue-router';
 import { useUserStore } from '@/stores/user.js';
 import { useDevicesStore } from '@/stores/devices.js';
 import { useInstallStore, INSTALL_TOAST_ENABLED } from '@/stores/install.js';
@@ -22,6 +22,7 @@ const deviceStore = useDevicesStore();
 const installStore = useInstallStore();
 const toastStore = useToastStore();
 const route = useRoute();
+const router = useRouter();
 
 function isInIframe() {
   try {
@@ -67,7 +68,19 @@ const activeGeofences = computed(() => {
 });
 
 function trackMapMode(mode){
-  console.log('mode', mode[0])
+  const m = Array.isArray(mode) ? mode[0] : mode;
+  // The map emits 'track' both when the user SAVES (checkmark) and CANCELS (X).
+  // On save, poly-save has already set draftPolygon and the geofence view will
+  // navigate itself — so only treat a 'track' switch as a cancel when there is
+  // no pending draft. In that case leave the geofence view so its bottom sheet
+  // doesn't linger (mirrors each view's own Cancel destination).
+  if (m === 'track' && !deviceStore.draftPolygon) {
+    if (route.path === '/addgeo') {
+      router.replace('/');
+    } else if (route.path.startsWith('/editgeo')) {
+      router.replace('/list/geofences');
+    }
+  }
 }
 
 async function retryConnection() {
