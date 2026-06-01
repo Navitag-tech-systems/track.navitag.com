@@ -10,10 +10,16 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <!--
+        READ_MEDIA_IMAGES / READ_MEDIA_VIDEO removed: nothing in the app reads
+        the photo/video gallery (QR scanning is camera-only, sharing is text+URL
+        only). They are sensitive permissions that trigger Google Play's
+        Photo & Video Permissions declaration, so we don't declare them.
+        READ_EXTERNAL_STORAGE is capped at maxSdkVersion=32 (on API 33+ it
+        grants no media access anyway) so it no longer implies photo/video access.
+    -->
 
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
