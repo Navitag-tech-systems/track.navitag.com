@@ -43,6 +43,15 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
+        <!--
+            Notification small icon + tint. Android renders the small icon from
+            its alpha channel only, so this must be a white silhouette on
+            transparent (ic_stat_navitag). Without it, FCM falls back to
+            ic_launcher and the opaque square renders as a solid white blob.
+        -->
+        <meta-data android:name="com.google.firebase.messaging.default_notification_icon" android:resource="@drawable/ic_stat_navitag" />
+        <meta-data android:name="com.google.firebase.messaging.default_notification_color" android:resource="@color/notification_color" />
+
         <meta-data android:name="com.facebook.sdk.ApplicationId" android:value="@string/facebook_app_id" />
         <meta-data android:name="com.facebook.sdk.ClientToken" android:value="@string/facebook_client_token" />
 

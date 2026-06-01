@@ -34,6 +34,8 @@ App-store releases run through **Codemagic** (`codemagic.yaml`, free tier, macOS
 
 **First joint release: v5.0.0 (build 2)** is live on both Google Play (internal testing) and TestFlight.
 
+**v5.0.1** — Android-only patch (notification small-icon fix, see "Notification Icon"). Marketing version bumped on **both** platforms to stay aligned, but only the `android-google-play` workflow is deployed (no iOS changes this round).
+
 Requirements baked into the workflows (do not regress): **Node 22** (Capacitor 8 CLI), **JDK 21** (Capacitor 8 compiles to source release 21), an **executable `gradlew`**, and an iOS distribution **certificate private key** passed to `fetch-signing-files --create`. Trigger a release locally with `node secrets/cm-run.mjs release main`. All signing material lives in gitignored `secrets/` + `.env`.
 
 > **Follow-up:** the iOS `CERTIFICATE_PRIVATE_KEY` is injected at API trigger time, so iOS builds started from the **Codemagic UI** will fail signing until that key is also added as a persistent Codemagic environment variable.
@@ -46,6 +48,12 @@ Requirements baked into the workflows (do not regress): **Node 22** (Capacitor 8
 ### Launcher Icon (Android adaptive)
 
 - Adaptive icon XML (`mipmap-anydpi-v26/ic_launcher.xml` + `ic_launcher_round.xml`): the **background** layer fills the full 108dp canvas (no inset) so it reaches every edge of the launcher's mask; the **foreground** logo keeps a `16.7%` inset to stay inside the safe zone. Previously the background was *also* inset 16.7%, so the masked shape's edges had no fill and showed the home-screen through as dark lines on the right/bottom.
+
+### Notification Icon (Android)
+
+- Android renders the notification **small icon** from its **alpha channel only** (color is discarded; the system tints the silhouette). With no dedicated icon, FCM fell back to `@mipmap/ic_launcher` — an opaque square — so the status-bar/notification icon showed as a solid white **blob** (very visible on Xiaomi/MIUI, but standard Android 5.0+ behavior, not a device bug).
+- Fix: `ic_stat_navitag.png` — a **white arrow silhouette on transparent** at all 5 densities (`drawable-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}`, 24→96 px, glyph at ~86% fill), generated from `assets/icon-foreground.png` by `scripts/gen-notification-icon.cjs`. Registered in `AndroidManifest.xml` via `com.google.firebase.messaging.default_notification_icon` + `default_notification_color` (`@color/notification_color` = navitag blue `#1E88E5`). Requires a fresh build to take effect.
+- **iOS** needs no equivalent: iOS notifications always display the full-color **app icon** (`AppIcon-512@2x.png`, 1024², no alpha) automatically — there is no monochrome small-icon concept, so the blob issue does not occur.
 
 ### Manifest / Play data safety
 
