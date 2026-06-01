@@ -69,6 +69,60 @@ workflows:
                                          # to internal testers; no manual finalize in Play Console needed.
 
   # ==========================================================================
+  # ANDROID  ->  Google Play (PRODUCTION track, DRAFT)
+  #   Identical build to the internal workflow, but publishes to the production
+  #   track as a DRAFT release: it is created in Play Console for you to review
+  #   and click "Roll out" (it does NOT go live automatically).
+  #   NOTE: the first production rollout also requires the Play Console
+  #   "App content" declarations (data safety, content rating, app access,
+  #   privacy policy, target audience) to be complete, or Console blocks rollout.
+  # ==========================================================================
+  android-production:
+    name: Android -> Google Play (production draft)
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      node: 22.17.0
+      java: 21
+      android_signing:
+        - navitag_upload_keystore
+      groups:
+        - github_packages
+        - google_play
+      vars:
+        PACKAGE_NAME: "com.navitag.track"
+    scripts:
+      - name: Authenticate to GitHub Packages and install deps
+        script: |
+          echo "//npm.pkg.github.com/:_authToken=$GITHUB_PACKAGES_TOKEN" > .npmrc.local
+          npm ci
+      - name: Build web assets (Vite)
+        script: npm run build
+      - name: Compute Android build number (above the latest on Google Play)
+        script: |
+          set -e
+          PLAY=$(google-play get-latest-build-number --package-name "$PACKAGE_NAME" --credentials @env:GCLOUD_SERVICE_ACCOUNT_CREDENTIALS 2>/dev/null || echo 0)
+          NEXT=$(( PLAY + 1 ))
+          echo "BUILD_NUMBER=$NEXT" >> $CM_ENV
+          echo "Android versionCode -> $NEXT (latest on Play=$PLAY)"
+      - name: Sync Capacitor (Android)
+        script: npx cap sync android
+      - name: Point Gradle at the Codemagic Android SDK
+        script: echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
+      - name: Build signed release AAB
+        script: |
+          cd android
+          chmod +x ./gradlew
+          ./gradlew bundleRelease
+    artifacts:
+      - android/app/build/outputs/**/*.aab
+    publishing:
+      google_play:
+        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+        track: production
+        submit_as_draft: true           # DRAFT production release -> finalize / roll out in Play Console
+
+  # ==========================================================================
   # iOS  ->  TestFlight   (flip the flags at the bottom to also submit to App Store)
   # ==========================================================================
   ios-testflight:
