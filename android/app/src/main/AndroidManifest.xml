@@ -3,9 +3,13 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-feature android:name="android.hardware.location.gps" />
+    <!--
+        Location permissions removed: the app tracks external GPS devices via the
+        backend, not the phone's own location. The only consumer was an orphaned
+        LocationPicker component that is never mounted/imported anywhere. Re-add
+        ACCESS_FINE_LOCATION / ACCESS_COARSE_LOCATION (+ the gps uses-feature) here
+        if phone GPS is ever actually wired up.
+    -->
 
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />

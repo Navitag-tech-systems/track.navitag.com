@@ -61,10 +61,13 @@
 
 	<key>NSCameraUsageDescription</key>
 	<string>We need camera access to scan QR codes for linking devices to your account</string>
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>We use your location in the background to keep your position updated relative to your devices</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>We need your location to show your position relative to tracked assets.</string>
+	<!--
+		Location usage strings removed: the app tracks external GPS devices via the
+		backend, not the phone's own location (the only consumer was an orphaned
+		LocationPicker that is never mounted). Re-add NSLocationWhenInUseUsageDescription
+		if phone GPS is ever wired up.
+	-->
+
 
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
