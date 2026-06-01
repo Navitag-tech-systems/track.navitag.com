@@ -98,15 +98,15 @@ onUnmounted(() => {
 <template>
   <div class="h-full flex flex-col justify-between pointer-events-none relative">
     
-    <div class="pointer-events-auto bg-white/95 backdrop-blur-sm shadow-sm p-4 flex items-center safe-top z-10">
-      <button 
-        @click="router.back()" 
+    <div v-if="step === 1" class="pointer-events-auto bg-white/95 backdrop-blur-sm shadow-sm p-4 flex items-center safe-top z-10">
+      <button
+        @click="router.back()"
         class="w-10 h-10 flex items-center justify-center text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-full transition-colors mr-2 outline-none"
       >
         <i class="fa-solid fa-arrow-left text-lg"></i>
       </button>
       <h1 class="text-lg font-bold text-gray-800">
-        {{ step === 1 ? 'Edit Geofence' : 'Editing Geofence' }}
+        Edit Geofence
       </h1>
     </div>
 
@@ -143,7 +143,7 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <div v-if="step === 2" class="pointer-events-auto bg-white rounded-t-3xl shadow-[0_-10px_20px_rgba(0,0,0,0.05)] p-5 pb-8 z-10 text-center">
+    <div v-if="step === 2" class="mt-auto pointer-events-auto bg-white rounded-t-3xl shadow-[0_-10px_20px_rgba(0,0,0,0.05)] p-5 pb-8 z-10 text-center">
       <div v-if="isSaving" class="py-4">
         <i class="fa-solid fa-circle-notch fa-spin text-brand text-2xl mb-3"></i>
         <p class="text-sm font-bold text-gray-700">Saving to server...</p>
