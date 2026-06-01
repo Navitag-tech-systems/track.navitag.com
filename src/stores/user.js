@@ -24,7 +24,6 @@ export const useUserStore = defineStore('user', () => {
     localStorage.getItem('pwa_push_disabled') === 'true'
   );
   const countryCode = ref(null);
-  const ipLocation = ref(null);
   const name = ref(null);
   const phone = ref(null);
   const email = ref(null);
@@ -54,9 +53,14 @@ export const useUserStore = defineStore('user', () => {
   });
 
   // --- ACTION: Fetch Country Code ---
+  // Source: Cloudflare's edge trace (https://www.cloudflare.com/cdn-cgi/trace).
+  // It returns plain-text "key=value" lines; the `loc` field is the visitor's
+  // ISO 3166-1 alpha-2 country (uppercase, 2-letter) — the exact format the rest
+  // of the app expects (countryList codes, /user/sync country_code). No API key
+  // required, and the endpoint sends Access-Control-Allow-Origin: *, so the
+  // simple (ky, no-credentials) path works on both web and the Capacitor webview.
   async function fetchCountryCode() {
-    const token = 'f1b39e92820d53';
-    console.log('🌍 Fetching Country Code...');
+    console.log('🌍 Fetching Country Code (Cloudflare trace)...');
 
     const withTimeout = (promise, ms) => Promise.race([
       promise,
@@ -64,16 +68,14 @@ export const useUserStore = defineStore('user', () => {
     ]);
 
     const attempt = async () => {
-      const countryData = await withTimeout(
-        request.send({ url: `https://api.ipinfo.io/lite/me?token=${token}`, simple: true }),
+      const body = await withTimeout(
+        request.send({ url: 'https://www.cloudflare.com/cdn-cgi/trace', simple: true, raw: true }),
         8000
       );
-      if (!countryData?.country_code) return null;
+      const loc = String(body || '').match(/^loc=([A-Za-z]{2})/m)?.[1];
+      if (!loc) return null;
 
-      countryCode.value = countryData.country_code;
-      if (countryData.latitude && countryData.longitude) {
-        ipLocation.value = [countryData.latitude, countryData.longitude];
-      }
+      countryCode.value = loc.toUpperCase();
       console.log('✅ Country Code Detected:', countryCode.value);
       return countryCode.value;
     };
@@ -84,16 +86,13 @@ export const useUserStore = defineStore('user', () => {
         const result = await attempt();
         if (result) return result;
       } catch (error) {
-        console.warn(`⚠️ IP lookup attempt ${i + 1}/5 failed:`, error.message);
+        console.warn(`⚠️ Country lookup attempt ${i + 1}/5 failed:`, error.message);
       }
       if (i < 4) await new Promise(r => setTimeout(r, 2000 * (i + 1)));
     }
 
     // All retries exhausted
-    console.error('❌ All IP lookup attempts failed');
-    if (countryCode.value === null) {
-      countryCode.value = null;
-    }
+    console.error('❌ All country lookup attempts failed');
     return null;
   }
 
@@ -593,7 +592,7 @@ export const useUserStore = defineStore('user', () => {
   }
 
   return {
-    user, idToken, countryCode, ipLocation, loading, isLoggedIn, internet, error,
+    user, idToken, countryCode, loading, isLoggedIn, internet, error,
     setUser, clearUser, traccarLogout, serverConnect, connectSocket, fetchCountryCode, backendSync, disconnectSocket, getFreshToken, initPushNotifications, enablePushFromGesture, disablePushOnThisDevice, checkPushPermission,
     server_url, server_token, server_connect, server_group, socket, name, phone, email,
     fcmToken, pushPermission, showPushEnableToast, pushDisabledLocally

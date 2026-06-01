@@ -102,7 +102,8 @@ export const request = {
       params = null,
       isTraccar = false,
       token = null,
-      simple = false // <--- NEW FLAG
+      simple = false, // <--- NEW FLAG
+      raw = false // return the response body as-is (text), skip JSON parsing
     } = options;
 
     const isNative = Capacitor.isNativePlatform();
@@ -157,6 +158,7 @@ export const request = {
             }
           }
 
+          if (raw) return response.data;
           if (response.data === '' || response.data == null) return true;
           return response.data;
         }
@@ -189,6 +191,7 @@ export const request = {
 
         if (res.status >= 200 && res.status < 300) {
           const text = await res.text();
+          if (raw) return text;
           if (!text) return true;
           try { return JSON.parse(text); } catch { return true; }
         }

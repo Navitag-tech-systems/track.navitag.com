@@ -222,7 +222,6 @@ function dismissInstallToast() {
         <leafletMap
           v-if="userStore.isLoggedIn && masterLoading === false"
           :mode="isMapRoute ? isMapRoute : 'track'"
-          :center="userStore.ipLocation || undefined"
           :devices="deviceStore.deviceMarkers"
           :geos="activeGeofences"
           :liqkey="liqKey"
