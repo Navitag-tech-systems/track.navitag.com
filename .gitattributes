@@ -1,0 +1,3 @@
+# Keep patch-package patches as LF so they apply on the macOS/Linux CI builders
+# (Windows checkouts would otherwise rewrite them to CRLF and break `patch`).
+patches/*.patch text eol=lf
