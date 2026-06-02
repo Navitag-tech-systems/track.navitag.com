@@ -76,12 +76,10 @@
 	</array>
 	<key>WKAppBoundDomains</key>
 	<array>
-		<string>api.navitag.net</string>
-		<string>tserver1.navitag.com</string>
-		<string>tserver2.navitag.com</string>
-		<string>tserver3.navitag.com</string>
-		<string>tserver4.navitag.com</string>
-		<string>tserver5.navitag.com</string> 
+		<string>*.navitag.net</string>
+		<string>*.navitag.com</string>
+		<string>*.tile.openstreetmap.org</string>
+		<string>*.locationiq.com</string>
 	</array>
 	<key>ITSAppUsesNonExemptEncryption</key>
   <false/>

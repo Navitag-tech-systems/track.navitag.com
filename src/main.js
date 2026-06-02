@@ -26,3 +26,18 @@ registerPwa();
 
 
 app.mount('#app');
+
+// Debug console (eruda) + on-device connectivity diagnostics. Enabled ONLY
+// when built with VITE_DEBUG_CONSOLE=true (e.g. a Codemagic debug build); the
+// dynamic imports are tree-shaken out of normal release builds. Once running,
+// open the eruda panel and call window.netcheck() from its console to test
+// whether the navitag.* WKAppBoundDomains entries can be removed/wildcarded
+// and why tiles fail on iOS. See src/utils/debug/netcheck.js.
+if (import.meta.env.VITE_DEBUG_CONSOLE === 'true') {
+  import('eruda').then(async ({ default: eruda }) => {
+    eruda.init();
+    const { runNetCheck } = await import('@/utils/debug/netcheck');
+    window.netcheck = runNetCheck;
+    setTimeout(() => runNetCheck(), 4000);
+  });
+}

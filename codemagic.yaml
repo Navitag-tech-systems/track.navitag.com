@@ -144,6 +144,10 @@ workflows:
         XCODE_SCHEME: "App"
         APP_STORE_APP_ID: "6758300749"            # numeric Apple ID (App Store Connect -> App Information)
                                                   # -> build numbers auto-increment above existing TestFlight builds.
+        VITE_DEBUG_CONSOLE: "true"                # TEMP (diagnostic build): Vite bundles eruda + window.netcheck()
+                                                  # so iOS TestFlight builds get an on-device console. REMOVE before
+                                                  # a production iOS release. The `release` workflow does NOT set
+                                                  # this, so production builds stay clean (eruda is tree-shaken).
     scripts:
       - name: Authenticate to GitHub Packages and install deps
         script: |

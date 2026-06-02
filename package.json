@@ -46,6 +46,7 @@
     "@vitejs/plugin-vue": "^6.0.3",
     "@vue/test-utils": "^2.4.6",
     "autoprefixer": "^10.4.23",
+    "eruda": "^3.4.3",
     "jsdom": "^27.4.0",
     "patch-package": "^8.0.1",
     "postcss": "^8.5.6",
