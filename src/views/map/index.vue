@@ -79,9 +79,10 @@ function timeout(){
 }
 
 // --- Device Card Helpers ---
-const isOffline = (device) => {
-  return !device.status || device.status === 'offline' || device.status === 'unknown';
-};
+// Recency-gated online status (centralised in the store): online ⇔ backend
+// status "online" AND a position within the freshness window. Auto-expires
+// when a device falls silent; stale/replayed snapshots never read as online.
+const isOffline = (device) => !deviceStore.isDeviceOnline(device);
 
 const getSignalLevel = (signal) => {
   if (signal === undefined || signal === null) return 'N/A';

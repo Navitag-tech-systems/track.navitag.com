@@ -15,6 +15,25 @@ function normalizePlanLevel(value) {
   return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
 }
 
+// Online status is recency-gated. The Traccar WS and posbroker both replay the
+// last-known device+position on (re)connect — posbroker even re-publishes it
+// RETAINED — carrying status:"online" frozen on a stale timestamp. So a device
+// counts as online only when the backend says online AND we've heard from it
+// within this window; recency also lets a device that falls silent expire on
+// its own (no offline message required — important for posbroker, which never
+// emits one).
+const ONLINE_FRESH_MS = 5 * 60 * 1000;
+function isFresh(timestamp, now = Date.now()) {
+  const t = timestamp ? new Date(timestamp).getTime() : 0;
+  return t > 0 && (now - t) < ONLINE_FRESH_MS;
+}
+// Most recent "we heard from the device" time across the shapes we store:
+// updateTime (live serverTime/deviceTime), fixTime (GPS), or lastUpdate (the
+// initial Traccar /api/devices fetch, before any live position arrives).
+function deviceLastSeen(device) {
+  return device?.updateTime || device?.fixTime || device?.lastUpdate || null;
+}
+
 export const useDevicesStore = defineStore('devices', () => {
   const userStore = useUserStore();
   const router = useRouter();
@@ -35,14 +54,29 @@ export const useDevicesStore = defineStore('devices', () => {
   // fetchGeofences. Each entry: { imei, scopes: ['position:live', ...] }.
   const sharedToMe = ref([]);
 
+  // Ticking clock (30s) so the recency-gated online status re-evaluates even
+  // when a device falls silent and sends no further socket messages.
+  const now = ref(Date.now());
+  setInterval(() => { now.value = Date.now(); }, 30000);
+
+  // Single source of truth for the device-list + map online indicator.
+  // Online ⇔ backend status "online" AND a position within ONLINE_FRESH_MS.
+  // Reads `now`, so it expires reactively without needing a new socket message.
+  function isDeviceOnline(device) {
+    return device?.status === 'online' && isFresh(deviceLastSeen(device), now.value);
+  }
+
   // --- Socket Data Handler ---
   function processSocketData(data) {
     if ("devices" in data) {
       data.devices.forEach((d) => {
+        // Store status raw; online/offline is derived from recency at render
+        // time via isDeviceOnline, so a stale/replayed snapshot (incl.
+        // posbroker's retained last position) can't show a dead device online.
         if (devices[d.id]) {
-          Object.assign(devices[d.id], d); 
+          Object.assign(devices[d.id], d);
         } else {
-          devices[d.id] = d; 
+          devices[d.id] = d;
         }
       });
     }
@@ -73,8 +107,8 @@ export const useDevicesStore = defineStore('devices', () => {
           valid: pos.valid 
         });
 
-        // Map Markers Logic
-        const isOnline = device.status === "online";
+        // Map Markers Logic (freshness-gated, mirroring isDeviceOnline)
+        const isOnline = device.status === "online" && isFresh(pos.serverTime || pos.deviceTime || pos.fixTime);
         const isIgnitionOn = pos.attributes?.ignition;
         const markerColor = (isOnline && isIgnitionOn) ? "#57f491" : "#ffcbd1";
         const catObj = categoryMapping.find(category => category.server === device.category)
@@ -396,7 +430,7 @@ export const useDevicesStore = defineStore('devices', () => {
   return {
     devices, geofences, loading, error, deviceMarkers, deviceMarkerKeys,
     deviceSelectedObject, deviceSelected, mapUpdate, draftPolygon, activeRoute,
-    sharedToMe,
+    sharedToMe, now, isDeviceOnline,
     hasProPlan, geofenceLimit, canCreateGeofence,
     processSocketData,
     fetchDevices, fetchGeofences, fetchDeviceExpirations, fetchSharedToMe, fetchAll, updateDevice,

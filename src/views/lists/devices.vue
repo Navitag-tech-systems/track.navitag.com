@@ -68,9 +68,10 @@ const goToSettings = (id) => {
 };
 
 // --- Helpers ---
-const isOffline = (device) => {
-  return !device.status || device.status === 'offline' || device.status === 'unknown';
-};
+// Online ⇔ backend status "online" AND a position within the freshness window;
+// centralised in the store (recency-gated) so the badge auto-expires when a
+// device falls silent and stale/replayed snapshots never read as online.
+const isOffline = (device) => !deviceStore.isDeviceOnline(device);
 
 const getSignalLevel = (signal) => {
   if (signal === undefined || signal === null) return 'N/A';
