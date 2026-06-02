@@ -2,13 +2,6 @@
 <html lang="">
   <head>
     <meta charset="UTF-8">
-    <!-- TEST: force the webview to attach a Referer on cross-origin subresources
-         (e.g. Leaflet map tiles). iOS WKWebView appears to send NO Referer for
-         the app's local (https://localhost) origin, so LocationIQ's referrer
-         allow-list rejects tile <img> requests with 403 (Android's Chromium
-         sends https://localhost and works). unsafe-url is the strongest force;
-         tighten to "origin" for production if this works. -->
-    <meta name="referrer" content="unsafe-url">
     <link rel="icon" href="/favicon.ico" sizes="any">
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
     <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
