@@ -2,40 +2,16 @@
 import { ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useDevicesStore } from '@/stores/devices.js';
-import { useToastStore } from '@/stores/toast.js';
 import ShareModal from '@/components/ShareModal.vue';
-import SharedBadge from '@/components/SharedBadge.vue';
-import { hasScope } from '@/utils/scopes';
+import DeviceCard from '@/components/DeviceCard.vue';
+import { getWarnings } from '@/utils/deviceMetrics';
 
 const router = useRouter();
 const deviceStore = useDevicesStore();
-const toast = useToastStore();
 
 // --- Share Modal ---
 const showShareModal = ref(false);
 const shareTarget = ref({ imei: null, name: '' });
-
-// Per-device busy state for the lock button (so multiple devices in flight
-// don't share a single spinner).
-const lockBusyIds = ref(new Set());
-
-const toggleDeviceLock = async (device) => {
-  if (lockBusyIds.value.has(device.id)) return;
-  lockBusyIds.value = new Set(lockBusyIds.value).add(device.id);
-  try {
-    const next = !device.attributes?.activity_lock;
-    const res = await deviceStore.setActivityLock(device.id, next);
-    if (!res?.ok) {
-      const label = device.name || device.uniqueId;
-      toast.show(`Failed to ${next ? 'lock' : 'unlock'} ${label}.`, { variant: 'error' });
-    }
-  } finally {
-    const ns = new Set(lockBusyIds.value);
-    ns.delete(device.id);
-    lockBusyIds.value = ns;
-  }
-};
-
 const openShare = (device) => {
   shareTarget.value = { imei: device.uniqueId, name: device.name || '' };
   showShareModal.value = true;
@@ -43,95 +19,22 @@ const openShare = (device) => {
 
 // --- State ---
 const searchQuery = ref('');
-const filterBy = ref('all'); 
-const sortBy = ref('name'); 
+const filterBy = ref('all');
+const sortBy = ref('name');
 
-// --- Actions ---
 const toggleSelection = (id) => {
-  if (deviceStore.deviceSelected === id) {
-    deviceStore.deviceSelected = null;
-  } else {
-    deviceStore.deviceSelected = id;
-  }
+  deviceStore.deviceSelected = deviceStore.deviceSelected === id ? null : id;
 };
 
-const goToHistory = (uniqueId) => {
-  router.push(`/history/${uniqueId}`);
-};
-
-const goToDetails = (id) => {
-  router.push(`/devices/${id}`);
-};
-
-const goToSettings = (id) => {
-  router.push(`/device/settings/${id}`);
-};
-
-// --- Helpers ---
-// Online ⇔ backend status "online" AND a position within the freshness window;
-// centralised in the store (recency-gated) so the badge auto-expires when a
-// device falls silent and stale/replayed snapshots never read as online.
+// Online ⇔ recency-gated status, centralised in the store (see isDeviceOnline).
 const isOffline = (device) => !deviceStore.isDeviceOnline(device);
 
-const getSignalLevel = (signal) => {
-  if (signal === undefined || signal === null) return 'N/A';
-  if (signal < 0) {
-    if (signal >= -75) return 'Good';
-    if (signal >= -95) return 'Fair';
-    return 'Low';
-  }
-  if (signal > 20 || signal >= 4) return 'Good';
-  if (signal > 10 || signal >= 2) return 'Fair';
-  return 'Low';
-};
-
-// Standard Li-ion Voltage Map (3.7V Nominal, 4.2V Max)
-const getBatteryPercentage = (val) => {
-  if (val === undefined || val === null) return 'N/A';
-  const v = Number(val);
-  
-  if (isNaN(v)) return 'N/A';
-  if (v >= 4.20) return '100%';
-  if (v >= 4.10) return '90%';
-  if (v >= 4.00) return '80%';
-  if (v >= 3.90) return '70%';
-  if (v >= 3.80) return '60%';
-  if (v >= 3.70) return '50%';
-  if (v >= 3.65) return '20%';
-  if (v >= 3.60) return '10%';
-  return '0%'; // Critical
-};
-
-const getGpsQuality = (device) => {
-  const sat = device.sat || 0;
-  const hdop = device.hdop || 0;
-  const valid = device.valid;
-
-  if (!valid && sat === 0) return { label: 'No Fix', color: 'text-red-500', icon: 'fa-satellite' };
-  if (sat < 4 || (hdop > 0 && hdop > 6)) return { label: 'Bad', color: 'text-orange-500', icon: 'fa-satellite' };
-  if (sat < 7 || (hdop > 0 && hdop > 2.5)) return { label: 'Fair', color: 'text-yellow-600', icon: 'fa-satellite' };
-  if (sat < 12 || (hdop > 0 && hdop > 1)) return { label: 'Good', color: 'text-brand', icon: 'fa-satellite' };
-  return { label: 'Excellent', color: 'text-green-600', icon: 'fa-satellite' };
-};
-
-const getWarnings = (device) => {
-  const warnings = [];
-  if (device.power !== undefined && device.power !== null && device.power < 5) {
-    warnings.push('Low Power (< 5V)');
-  }
-  const signal = getSignalLevel(device.signalLevel);
-  if (signal === 'Low') {
-    warnings.push(`Weak Network`);
-  }
-  return warnings;
-};
-
-// --- Processed Devices ---
+// --- Processed Devices (search + filter + sort) ---
 const processedDevices = computed(() => {
   let arr = Object.values(deviceStore.devices);
 
   if (searchQuery.value.trim()) {
-    arr = arr.filter(device => 
+    arr = arr.filter(device =>
       device.name?.toLowerCase().includes(searchQuery.value.toLowerCase())
     );
   }
@@ -148,33 +51,21 @@ const processedDevices = computed(() => {
 
   arr.sort((a, b) => {
     if (sortBy.value === 'name') {
-      const nameA = a.name || '';
-      const nameB = b.name || '';
-      return nameA.localeCompare(nameB);
-    } 
+      return (a.name || '').localeCompare(b.name || '');
+    }
     if (sortBy.value === 'lastUpdate') {
-      const timeA = a.lastUpdate ? new Date(a.lastUpdate).getTime() : 0;
-      const timeB = b.lastUpdate ? new Date(b.lastUpdate).getTime() : 0;
-      return timeB - timeA; 
+      return (b.lastSeenMs || 0) - (a.lastSeenMs || 0);
     }
     return 0;
   });
 
   return arr;
 });
-
-const formatDate = (dateString) => {
-  if (!dateString) return 'Waiting for update...';
-  const date = new Date(dateString);
-  return date.toLocaleString(undefined, { 
-    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-  });
-};
 </script>
 
 <template>
   <div class="flex flex-col min-h-full bg-surface">
-    
+
     <div class="sticky top-0 z-20 bg-white shadow-sm border-b border-gray-200">
       <div class="p-4">
         <div class="flex justify-between">
@@ -182,10 +73,8 @@ const formatDate = (dateString) => {
           <RouterLink to="/linkdevice/start" class="w-10 h-10 rounded-full bg-accent-light text-accent flex items-center justify-center shrink-0" >
             <i class="fa-solid fa-plus"></i>
           </RouterLink>
-          
         </div>
-        
-        
+
         <div class="flex space-x-6 overflow-x-auto no-scrollbar mb-4">
           <button class="pb-3 text-sm font-semibold whitespace-nowrap transition-colors border-b-2 flex items-center gap-2 outline-none cursor-pointer border-brand text-brand">
             <i class="fa-solid fa-satellite-dish"></i>
@@ -199,10 +88,10 @@ const formatDate = (dateString) => {
 
         <div class="relative mb-3">
           <i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
-          <input 
+          <input
             v-model="searchQuery"
-            type="text" 
-            placeholder="Search trackers by name..." 
+            type="text"
+            placeholder="Search trackers by name..."
             class="w-full pl-10 pr-4 py-2 bg-gray-100 border-transparent rounded-xl text-sm focus:bg-white focus:border-brand focus:ring-2 focus:ring-brand-light transition-all outline-none"
           />
         </div>
@@ -227,7 +116,7 @@ const formatDate = (dateString) => {
     </div>
 
     <div class="p-4 space-y-4">
-      
+
       <div v-if="processedDevices.length === 0" class="text-center text-gray-500 py-10 bg-white rounded-xl border border-gray-200 shadow-sm">
         <div class="w-16 h-16 bg-surface rounded-full flex items-center justify-center mx-auto mb-4">
           <i class="fa-solid fa-satellite-dish text-2xl text-gray-400"></i>
@@ -248,170 +137,17 @@ const formatDate = (dateString) => {
       </div>
 
       <div v-else>
-        <div 
-          v-for="device in processedDevices" 
+        <DeviceCard
+          v-for="device in processedDevices"
           :key="device.id"
-          @click="toggleSelection(device.id)"
-          class="bg-white rounded-xl shadow-sm border p-4 my-2 relative overflow-hidden transition-all duration-200 cursor-pointer"
-          :class="[
-            getWarnings(device).length > 0 ? 'border-red-200' : 'border-gray-200',
-            deviceStore.deviceSelected === device.id ? 'ring-2 ring-brand shadow-md' : 'hover:shadow-md'
-          ]"
-        >
-          <div class="flex items-start mb-3">
-            <div class="p-2 rounded-full bg-brand-light text-brand mr-3">
-              <i class="fa-solid fa-truck text-lg"></i>
-            </div>
+          :device="device"
+          :selected="deviceStore.deviceSelected === device.id"
+          @select="toggleSelection(device.id)"
+          @share="openShare(device)"
+        />
 
-            <div class="flex-1 min-w-0">
-              <div class="flex items-center gap-2">
-                <h2 class="text-lg font-bold text-gray-800 leading-tight truncate">{{ device.name || 'Unnamed Tracker' }}</h2>
-                <SharedBadge :device="device" />
-                <button
-                  v-if="hasScope(device, 'share:public')"
-                  @click.stop="openShare(device)"
-                  class="w-6 h-6 flex items-center justify-center bg-gray-100 text-gray-500 rounded-full hover:bg-gray-200 transition-colors shrink-0"
-                  aria-label="Share tracking link"
-                >
-                  <i class="fa-solid fa-share-nodes text-xs"></i>
-                </button>
-              </div>
-              <p class="text-[11px] text-gray-400 font-mono mt-0.5 truncate">IMEI: {{ device.uniqueId }}</p>
-            </div>
-
-            <div class="flex items-center space-x-1.5 px-2 py-1 rounded-md border shrink-0 ml-2"
-                :class="isOffline(device) ? 'bg-red-50 border-red-100 text-red-600' : 'bg-green-50 border-green-100 text-green-600'">
-              <span class="relative flex h-2.5 w-2.5">
-                <span v-if="!isOffline(device)" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                <span class="relative inline-flex rounded-full h-2.5 w-2.5" :class="isOffline(device) ? 'bg-red-500' : 'bg-green-500'"></span>
-              </span>
-              <span class="text-[10px] font-bold uppercase tracking-wider">
-                {{ isOffline(device) ? 'OFFLINE' : 'ONLINE' }}
-              </span>
-            </div>
-          </div>
-
-          <div v-if="getWarnings(device).length > 0" class="mb-4 bg-red-50 border border-red-100 rounded-lg p-2.5 flex items-start gap-2">
-            <i class="fa-solid fa-triangle-exclamation text-red-500 mt-0.5 text-xs"></i>
-            <div class="flex flex-col">
-              <span v-for="(warn, idx) in getWarnings(device)" :key="idx" class="text-xs font-semibold text-red-700 leading-tight">
-                {{ warn }}
-              </span>
-            </div>
-          </div>
-
-          <div :class="{ 'opacity-60 saturate-50': isOffline(device) }">
-            
-            <div class="grid grid-cols-2 gap-2 mb-4">
-              <div class="flex items-center text-sm text-gray-600 bg-surface p-2 rounded-lg">
-                <div class="w-6 text-brand text-center"><i class="fa-solid fa-gauge-high"></i></div>
-                <span class="font-medium ml-1">{{ device.speed ? Math.round(device.speed * 1.852) : 0 }} km/h</span>
-              </div>
-              
-              <div class="flex items-center text-sm text-gray-600 bg-surface p-2 rounded-lg">
-                <div class="w-6 text-center" :class="device.ignition ? 'text-green-500' : 'text-gray-400'">
-                  <i class="fa-solid fa-key"></i>
-                </div>
-                <span class="font-medium ml-1">{{ device.ignition ? 'On' : 'Off' }}</span>
-              </div>
-
-              <div class="flex items-center text-sm text-gray-600 bg-surface p-2 rounded-lg">
-                <div class="w-6 text-accent text-center"><i class="fa-solid fa-bolt"></i></div>
-                <span class="font-medium ml-1">{{ device.power !== undefined ? `${Number(device.power).toFixed(2)}V` : 'N/A' }}</span>
-              </div>
-
-              <div class="flex items-center text-sm text-gray-600 bg-surface p-2 rounded-lg">
-                <div class="w-6 text-green-500 text-center"><i class="fa-solid fa-battery-full"></i></div>
-                <span class="font-medium ml-1">{{ getBatteryPercentage(device.battery) }}</span>
-              </div>
-              
-              <div class="flex items-center text-sm text-gray-600 bg-surface p-2 rounded-lg">
-                <div class="w-6 text-purple-500 text-center"><i class="fa-solid fa-signal"></i></div>
-                <span class="font-medium ml-1 uppercase text-xs">{{ getSignalLevel(device.signalLevel) }}</span>
-              </div>
-
-              <div class="flex items-center text-sm text-gray-600 bg-surface p-2 rounded-lg">
-                <div class="w-6 text-center" :class="getGpsQuality(device).color">
-                  <i class="fa-solid" :class="getGpsQuality(device).icon"></i>
-                </div>
-                <span class="font-medium ml-1 text-xs">{{ getGpsQuality(device).label }}</span>
-                <span v-if="device.sat" class="ml-auto text-[10px] text-gray-400 font-mono">{{ device.sat }} sats</span>
-              </div>
-            </div>
-
-            <div class="pt-3 border-t border-gray-100">
-              <div class="flex items-start text-xs text-gray-600 mb-2">
-                <div class="w-5 mt-0.5 text-gray-400 text-center"><i class="fa-solid fa-location-dot"></i></div>
-                <span class="line-clamp-1 leading-tight">{{ device.address || 'Address calculating...' }}</span>
-              </div>
-              <div class="flex items-center text-[10px] text-gray-400 pl-1">
-                <i class="fa-regular fa-clock mr-1.5"></i>
-                Updated: {{ formatDate(device.lastUpdate) }}
-              </div>
-            </div>
-
-          </div> 
-
-          <div v-if="deviceStore.deviceSelected === device.id" class="mt-4 pt-3 border-t border-gray-100 flex justify-between items-center animate-fade-in gap-2">
-            
-            <button
-              @click.stop="goToSettings(device.id)"
-              :disabled="!hasScope(device, 'energy:read')"
-              :title="hasScope(device, 'energy:read') ? '' : 'Settings not available for this share'"
-              class="flex-1 flex flex-col items-center justify-center bg-surface hover:bg-gray-100 py-2 rounded-lg transition-colors group disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-surface"
-            >
-              <i class="fa-solid fa-gear text-lg text-gray-500 group-hover:text-brand mb-1"></i>
-              <span class="text-[10px] font-bold text-gray-600 group-hover:text-brand">Settings</span>
-            </button>
-
-            <button
-              @click.stop="goToHistory(device.uniqueId)"
-              :disabled="!hasScope(device, 'history:read')"
-              :title="hasScope(device, 'history:read') ? '' : 'History access not granted'"
-              class="flex-1 flex flex-col items-center justify-center bg-surface hover:bg-gray-100 py-2 rounded-lg transition-colors group disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-surface"
-            >
-              <i class="fa-solid fa-clock-rotate-left text-lg text-gray-500 group-hover:text-brand mb-1"></i>
-              <span class="text-[10px] font-bold text-gray-600 group-hover:text-brand">History</span>
-            </button>
-
-            <button @click.stop="goToDetails(device.id)" class="flex-1 flex flex-col items-center justify-center bg-surface hover:bg-gray-100 py-2 rounded-lg transition-colors group">
-              <i class="fa-solid fa-circle-info text-lg text-gray-500 group-hover:text-brand mb-1"></i>
-              <span class="text-[10px] font-bold text-gray-600 group-hover:text-brand">Details</span>
-            </button>
-
-            <button
-              @click.stop="toggleDeviceLock(device)"
-              :disabled="device.shared || lockBusyIds.has(device.id)"
-              :aria-label="device.attributes?.activity_lock ? 'Unlock device' : 'Lock device'"
-              :title="device.shared ? 'Activity lock can only be controlled by the device owner' : ''"
-              class="flex-1 flex flex-col items-center justify-center bg-surface hover:bg-gray-100 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-surface"
-            >
-              <i
-                v-if="lockBusyIds.has(device.id)"
-                class="fa-solid fa-circle-notch fa-spin text-lg text-gray-500 mb-1"
-              ></i>
-              <i
-                v-else
-                :class="[
-                  'text-lg mb-1',
-                  device.attributes?.activity_lock ? 'fa-solid fa-lock text-red-500' : 'fa-solid fa-lock-open text-green-600',
-                ]"
-              ></i>
-              <span
-                class="text-[10px] font-bold"
-                :class="device.attributes?.activity_lock ? 'text-red-500' : 'text-green-600'"
-              >
-                {{ device.attributes?.activity_lock ? 'Locked' : 'Unlocked' }}
-              </span>
-            </button>
-
-          </div>
-
-        </div>
-        
         <RouterLink to="/linkdevice/start" class="bg- my-2 rounded-xl shadow-sm border border-gray-200 p-4 flex justify-center items-center transition-all hover:shadow-md">
           <div class="flex items-center gap-4">
-
             <div class="w-10 h-10 rounded-full bg-accent-light text-accent flex items-center justify-center shrink-0">
               <i class="fa-solid fa-plus"></i>
             </div>
@@ -436,16 +172,7 @@ const formatDate = (dateString) => {
   display: none;
 }
 .no-scrollbar {
-  -ms-overflow-style: none; 
-  scrollbar-width: none; 
-}
-
-.animate-fade-in {
-  animation: fadeIn 0.2s ease-out forwards;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(-5px); }
-  to { opacity: 1; transform: translateY(0); }
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 </style>

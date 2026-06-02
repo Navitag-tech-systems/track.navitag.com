@@ -23,15 +23,18 @@ function normalizePlanLevel(value) {
 // its own (no offline message required — important for posbroker, which never
 // emits one).
 const ONLINE_FRESH_MS = 5 * 60 * 1000;
-function isFresh(timestamp, now = Date.now()) {
-  const t = timestamp ? new Date(timestamp).getTime() : 0;
-  return t > 0 && (now - t) < ONLINE_FRESH_MS;
+// Parse a Traccar timestamp (ISO string or epoch) to epoch ms ONCE, at
+// ingestion, and cache it as device.lastSeenMs. The list re-renders on every
+// socket message, so doing new Date(...) per render (×N cards × ~5 calls each)
+// is thousands of string-parses/sec at fleet scale; comparing cached integers
+// is effectively free.
+function toMs(ts) {
+  if (ts == null) return 0;
+  const t = typeof ts === 'number' ? ts : new Date(ts).getTime();
+  return Number.isFinite(t) ? t : 0;
 }
-// Most recent "we heard from the device" time across the shapes we store:
-// updateTime (live serverTime/deviceTime), fixTime (GPS), or lastUpdate (the
-// initial Traccar /api/devices fetch, before any live position arrives).
-function deviceLastSeen(device) {
-  return device?.updateTime || device?.fixTime || device?.lastUpdate || null;
+function isFresh(lastSeenMs, now = Date.now()) {
+  return lastSeenMs > 0 && (now - lastSeenMs) < ONLINE_FRESH_MS;
 }
 
 export const useDevicesStore = defineStore('devices', () => {
@@ -54,16 +57,17 @@ export const useDevicesStore = defineStore('devices', () => {
   // fetchGeofences. Each entry: { imei, scopes: ['position:live', ...] }.
   const sharedToMe = ref([]);
 
-  // Ticking clock (30s) so the recency-gated online status re-evaluates even
-  // when a device falls silent and sends no further socket messages.
+  // Ticking clock (60s) so the recency-gated online status re-evaluates even
+  // when a device falls silent and sends no further socket messages. 60s keeps
+  // idle re-renders low at fleet scale; expiry lands within 5–6 min.
   const now = ref(Date.now());
-  setInterval(() => { now.value = Date.now(); }, 30000);
+  setInterval(() => { now.value = Date.now(); }, 60000);
 
   // Single source of truth for the device-list + map online indicator.
   // Online ⇔ backend status "online" AND a position within ONLINE_FRESH_MS.
   // Reads `now`, so it expires reactively without needing a new socket message.
   function isDeviceOnline(device) {
-    return device?.status === 'online' && isFresh(deviceLastSeen(device), now.value);
+    return device?.status === 'online' && isFresh(device?.lastSeenMs || 0, now.value);
   }
 
   // --- Socket Data Handler ---
@@ -78,6 +82,11 @@ export const useDevicesStore = defineStore('devices', () => {
         } else {
           devices[d.id] = d;
         }
+        // Keep lastSeenMs as the freshest recency signal: a devices-only
+        // message can carry a newer lastUpdate, but never rewind below a
+        // more-recent position already recorded.
+        const ms = toMs(d.lastUpdate);
+        if (ms > (devices[d.id].lastSeenMs || 0)) devices[d.id].lastSeenMs = ms;
       });
     }
 
@@ -104,11 +113,12 @@ export const useDevicesStore = defineStore('devices', () => {
           signalLevel: pos.network?.cellTowers?.[0]?.signalStrength,
           address: pos.address,
           geofences: pos.geofenceIds,
-          valid: pos.valid 
+          valid: pos.valid,
+          lastSeenMs: toMs(pos.serverTime || pos.deviceTime || pos.fixTime),
         });
 
         // Map Markers Logic (freshness-gated, mirroring isDeviceOnline)
-        const isOnline = device.status === "online" && isFresh(pos.serverTime || pos.deviceTime || pos.fixTime);
+        const isOnline = device.status === "online" && isFresh(device.lastSeenMs);
         const isIgnitionOn = pos.attributes?.ignition;
         const markerColor = (isOnline && isIgnitionOn) ? "#57f491" : "#ffcbd1";
         const catObj = categoryMapping.find(category => category.server === device.category)
@@ -159,7 +169,7 @@ export const useDevicesStore = defineStore('devices', () => {
           // list — see src/utils/scopes.js. shared:false makes the
           // ownership flag explicit for hasScope consumers and any UI that
           // wants to render an owned-vs-shared affordance.
-          devices[device.id] = { ...device, shared: false, scopes: [OWNER_SENTINEL] };
+          devices[device.id] = { ...device, shared: false, scopes: [OWNER_SENTINEL], lastSeenMs: toMs(device.lastUpdate) };
         });
       }
       await fetchDeviceExpirations();
@@ -257,6 +267,7 @@ export const useDevicesStore = defineStore('devices', () => {
         ...entry.device,
         shared: true,
         scopes: Array.isArray(entry.scopes) ? entry.scopes : [],
+        lastSeenMs: toMs(entry.device.lastUpdate),
       };
       if (devices[entry.device.id]) {
         Object.assign(devices[entry.device.id], merged);
