@@ -116,12 +116,10 @@ export const useDevicesStore = defineStore('devices', () => {
       });
 
       if (Array.isArray(retArr)) {
-        if (retArr.length < 1) {
-             console.log('[Devices] No devices found, redirecting to teaser.');
-             router.push('/linkdevice/teaser');
-             throw new Error('NO_DEVICES');
-        }
-
+        // An empty owned-device list is NOT an error and NOT a teaser
+        // trigger on its own — the user may still have devices shared TO
+        // them (fetchSharedToMe). The teaser decision is made in fetchAll()
+        // after the shared-device merge, so both sources are considered.
         retArr.forEach(device => {
           // Owned devices carry the sentinel scope rather than an enumerated
           // list — see src/utils/scopes.js. shared:false makes the
@@ -243,12 +241,25 @@ export const useDevicesStore = defineStore('devices', () => {
       // false return.
       await Promise.all([fetchDevices(), fetchGeofences(), fetchSharedToMe()]);
       mergeSharedToMeIntoDevices();
-      return true; // Successfully fetched
-    } catch (err) {
-      if (err.message === 'NO_DEVICES') {
+
+      // Teaser decision happens HERE, after the merge, so it accounts for
+      // BOTH owned devices and devices shared TO this user. Checking the
+      // post-merge `devices` map (rather than the raw owned list) also
+      // naturally excludes wildcard / failed-lookup shares, which
+      // mergeSharedToMeIntoDevices already filters out. Nothing renderable
+      // from either source → teaser. Deciding here (not inside fetchDevices)
+      // is also what keeps mergeSharedToMeIntoDevices from being skipped by
+      // a throw — that skip was leaving shared rows to be (re)created by the
+      // broker without shared:true / scopes.
+      if (Object.keys(devices).length === 0) {
+        console.log('[Devices] No owned or shared devices, redirecting to teaser.');
         loading.value = false;
+        router.push('/linkdevice/teaser');
         return 'no_devices';
       }
+
+      return true; // Successfully fetched
+    } catch (err) {
       console.error('[Devices] fetchAll failed:', err);
       error.value = err.message || 'Failed to fetch tracking data.';
       return false; // Fetch failed

@@ -126,6 +126,12 @@ export const session = {
       if (sessionValid) {
         const fetched = await deviceStore.fetchAll();
 
+        // fetchAll already redirected to the teaser; don't connect sockets
+        // for a zero-device account (and don't flag it as an error).
+        if (fetched === 'no_devices') {
+          return;
+        }
+
         if (!fetched) {
           console.error('❌ Failed to fetch devices or geofences');
           userStore.error = true;
@@ -173,6 +179,12 @@ export const session = {
 
       console.log('📥 Fetching latest devices and geofences...');
       const fetched = await deviceStore.fetchAll();
+
+      // fetchAll already redirected to the teaser; don't reconnect sockets
+      // for a zero-device account (and don't flag it as an error).
+      if (fetched === 'no_devices') {
+        return;
+      }
 
       if (!fetched) {
         console.error('❌ Failed to fetch devices or geofences');
