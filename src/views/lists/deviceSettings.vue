@@ -20,6 +20,10 @@ const notifStore = useNotificationsStore();
 
 const deviceId = route.params.id;
 
+// iOS App Store guideline 3.1.1: no externally-purchased plan/subscription
+// surfaces on iOS (Top Up link, plan tier, expiration). Android/web keep them.
+const isIos = Capacitor.getPlatform() === 'ios';
+
 // Get the device from the store
 const device = computed(() => deviceStore.devices[deviceId]);
 
@@ -583,17 +587,18 @@ watch(isActive, async (nv, ov) => {
           </p>
         </div>
 
-        <div class="flex items-center justify-between p-4 border rounded-lg">
+        <div v-if="!isIos" class="flex items-center justify-between p-4 border rounded-lg">
           <span class="text-sm text-gray-500">Plan</span>
           <span class="text-sm font-bold text-gray-800">{{ device.plan_level || 'N/A' }}</span>
         </div>
 
-        <div class="flex items-center justify-between p-4 border rounded-lg">
+        <div v-if="!isIos" class="flex items-center justify-between p-4 border rounded-lg">
           <span class="text-sm text-gray-500">Expiration</span>
           <span class="text-sm font-bold" :class="device.expiration ? 'text-gray-800' : 'text-red-500'">{{ device.expiration ? new Date(device.expiration).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A' }}</span>
         </div>
 
         <button
+          v-if="!isIos"
           @click="openTopUp"
           class="w-full bg-accent hover:bg-accent/90 text-white font-bold py-3 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 active:scale-[0.98]"
         >

@@ -1,8 +1,14 @@
 <script setup>
+import { Capacitor } from '@capacitor/core';
+
 defineProps({
   show: { type: Boolean, default: false },
 });
 defineEmits(['close']);
+
+// iOS App Store guideline 3.1.1: don't direct users to an externally-purchased
+// paid tier. Neutral copy on iOS; keep the Pro upgrade prompt on Android/web.
+const isIos = Capacitor.getPlatform() === 'ios';
 </script>
 
 <template>
@@ -13,7 +19,10 @@ defineEmits(['close']);
           <i class="fa-solid fa-lock text-amber-600 text-xl"></i>
         </div>
         <h2 class="text-xl font-bold text-gray-800 mb-2">Geofence Limit Reached</h2>
-        <p class="text-sm text-gray-500 mb-6 leading-relaxed">
+        <p v-if="isIos" class="text-sm text-gray-500 mb-6 leading-relaxed">
+          You have reached your geofence limit for this device.
+        </p>
+        <p v-else class="text-sm text-gray-500 mb-6 leading-relaxed">
           You have reached the limit of your geofence creation. Please upgrade to the Pro plan to add more.
         </p>
         <button

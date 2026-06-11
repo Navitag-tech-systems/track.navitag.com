@@ -101,6 +101,15 @@ src/utils/lifecycle/
 
 Shop, cart, and payment flows have been removed from the app. Deleted: `src/views/shop/`, `src/views/payment/`, `src/stores/cart.js`, `xendit-components-web` dependency, and the shop tab in `bottomNav.vue`. Device purchasing is handled entirely on the marketing site (`navitag.com/shop`) via external CTA links in `lists/devices.vue` and `linkDevice/addOrBuy.vue`. Regression checks complete.
 
+### iOS App Review — Guideline 3.1.1 (Payments)
+
+v5.1.0 (build 11) was **rejected** under 3.1.1: the app surfaced an externally-purchased paid plan with no In-App Purchase. Resolution (iOS-only, gated on `Capacitor.getPlatform() === 'ios'`; **Android/web keep all plan surfaces**):
+
+- **`deviceSettings.vue`** — Status card hides the **Plan** row, **Expiration** row, and **Top Up** button on iOS (`isIos` const). The Active/Disabled toggle stays. `openTopUp()` (external `navitag.com/top-up/:imei`) is now unreachable on iOS.
+- **`geofenceLimitModal.vue`** — neutral copy on iOS ("You have reached your geofence limit for this device.") instead of "upgrade to the Pro plan". Plan-based gating logic is unchanged — only the purchase-directing wording is suppressed.
+
+The physical-device-service framing (the plan is cellular/data connectivity for owned tracker hardware, cf. 3.1.3(e)) is captured in `appstore-3.1.1-reply.md` for the Resolution Center reply. **Decision deferred:** real StoreKit IAP (RevenueCat + backend receipt validation) if Apple still requires it. Resubmit via the `ios-testflight` Codemagic workflow with a bumped build number.
+
 ### Account Settings
 
 - Email field is read-only in the account page (`src/views/account/index.vue`)
