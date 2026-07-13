@@ -6,13 +6,13 @@ import { request } from '@/utils/http';
 import { baseUrl, categoryMapping } from '@/utils/variables';
 import { OWNER_SENTINEL } from '@/utils/scopes';
 
-// Backend now emits plan_level lowercase ('pro', 'basic'); older shapes
-// shipped 'Pro' / 'Basic'. Normalize on ingestion so the UI can render
-// the field directly and downstream comparisons are stable. Comparison
-// sites still use toLowerCase() defensively in case a new path skips this.
+// Canonical plan_level is lowercase ('pro', 'basic'). Older API shapes shipped
+// 'Pro' / 'Basic', so normalize to lowercase on ingestion — the stored value
+// then matches the backend canonical form. Display capitalizes cosmetically
+// via CSS (`capitalize` class) at render time, not in the data.
 function normalizePlanLevel(value) {
   if (typeof value !== 'string' || value.length === 0) return value;
-  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+  return value.toLowerCase();
 }
 
 // Online status is recency-gated. The Traccar WS and posbroker both replay the

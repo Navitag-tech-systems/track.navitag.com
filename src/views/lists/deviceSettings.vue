@@ -589,7 +589,7 @@ watch(isActive, async (nv, ov) => {
 
         <div v-if="!isIos" class="flex items-center justify-between p-4 border rounded-lg">
           <span class="text-sm text-gray-500">Plan</span>
-          <span class="text-sm font-bold text-gray-800">{{ device.plan_level || 'N/A' }}</span>
+          <span class="text-sm font-bold text-gray-800 capitalize">{{ device.plan_level || 'N/A' }}</span>
         </div>
 
         <div v-if="!isIos" class="flex items-center justify-between p-4 border rounded-lg">
