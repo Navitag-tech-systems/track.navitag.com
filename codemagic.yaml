@@ -141,6 +141,8 @@ workflows:
                                                 #   was added (IDESwiftPackageCore off-by-one, Abort trap 6).
       groups:
         - github_packages
+        - ios_signing                           # CERTIFICATE_PRIVATE_KEY (2048-bit RSA) — lets
+                                                #   fetch-signing-files --create mint the dist cert + profile
       vars:
         XCODE_PROJECT: "ios/App/App.xcodeproj"   # SPM-based Capacitor project: no .xcworkspace / CocoaPods
         XCODE_SCHEME: "App"
@@ -167,11 +169,13 @@ workflows:
           agvtool new-version -all $(($LATEST + 1))
       - name: Set up code signing (creates the cert + App Store profile if missing)
         script: |
+          set -e   # without this, a fetch-signing-files failure silently passed the step
           keychain initialize
           app-store-connect fetch-signing-files "com.navitag.track" \
             --type IOS_APP_STORE \
             --certificate-key @env:CERTIFICATE_PRIVATE_KEY \
-            --create
+            --create \
+            --delete-stale-profiles
           keychain add-certificates
           xcode-project use-profiles
       - name: Resolve Swift packages (SPM pre-resolve; RevenueCat pulls purchases-ios remotely)
