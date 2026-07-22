@@ -25,7 +25,9 @@ const offering = ref(null);
 const loadingOffering = ref(false);
 const purchasingId = ref(null);
 const errorMsg = ref('');
-const purchaseSucceeded = ref(false);
+// Purchase lifecycle: 'idle' → 'processing' (paid, awaiting fulfillment) →
+// 'done' (expiration confirmed extended) | 'pending' (paid, webhook slow).
+const phase = ref('idle');
 
 const TIER_PATTERN = /^\$rc_custom_(basic|pro)_(\d+)month$/i;
 
@@ -58,11 +60,55 @@ const otherTier = computed(() => (currentTier.value === 'pro' ? 'basic' : 'pro')
 const currentPackages = computed(() => groupedPackages.value[currentTier.value] || []);
 const otherPackages = computed(() => groupedPackages.value[otherTier.value] || []);
 
-// Basic → "Upgrade to Pro"; Pro → generic "Change plan" (reveals Basic).
-const changeLabel = computed(() => (currentTier.value === 'basic' ? 'Upgrade to Pro' : 'Change plan'));
-
-// Whether the other tier's durations have been revealed.
+// The sheet shows ONE tier at a time — a toggle, not two stacked lists.
+// showOtherTier false → the device's current tier; true → the opposite tier.
 const showOtherTier = ref(false);
+const displayedTier = computed(() => (showOtherTier.value ? otherTier.value : currentTier.value));
+const displayedPackages = computed(() => (showOtherTier.value ? otherPackages.value : currentPackages.value));
+
+// Single toggle button. Label depends on the device's plan AND which tier is
+// currently shown:
+//   basic device → "Get to pro plans" (show pro) / "Stay with basic" (go back)
+//   pro device   → "Change to basic"  (show basic) / "Stay with pro"  (go back)
+const toggleLabel = computed(() => {
+  if (currentTier.value === 'basic') {
+    return showOtherTier.value ? 'Stay with basic' : 'Get Pro Plans';
+  }
+  return showOtherTier.value ? 'Stay with pro' : 'Change to basic';
+});
+
+// Radio-style selection: tapping a duration only SELECTS it; the Buy Now button
+// commits the purchase. selectedEntry is the currently-picked package, or null.
+const selectedId = ref(null);
+const selectedEntry = computed(
+  () => displayedPackages.value.find((e) => e.pkg.identifier === selectedId.value) || null,
+);
+
+// Switching tiers re-defaults the pick to the 3-month option of the newly shown
+// tier (handled by the displayedPackages watcher below).
+function toggleTier() {
+  showOtherTier.value = !showOtherTier.value;
+}
+
+// Once Buy Now is tapped, the sheet leaves the selection UI and shows ONLY the
+// purchase status (spinner → blue/green/amber). Errors and cancellations reset
+// phase to 'idle' with purchasingId cleared, which returns to selection.
+const showStatus = computed(() => !!purchasingId.value || phase.value !== 'idle');
+
+// The spinner is up while paying or extending — no exit during that window
+// (the header ✕ is hidden; Close only appears once settled/timed out).
+const isProcessing = computed(() => !!purchasingId.value || phase.value === 'processing');
+
+// Estimated new expiration if this duration is bought now. Top-ups stack, so
+// they extend from the later of today / current expiration (mirrors
+// applyPreviewUpdate and the backend). Display-only estimate.
+function estimatedExpiration(months) {
+  const now = new Date();
+  const current = props.device?.expiration ? new Date(props.device.expiration) : null;
+  const base = current && current > now ? new Date(current) : new Date(now);
+  base.setMonth(base.getMonth() + months);
+  return base.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
 
 async function loadOffering() {
   loadingOffering.value = true;
@@ -76,22 +122,41 @@ async function loadOffering() {
 
 watch(() => props.show, (visible) => {
   if (visible) {
-    purchaseSucceeded.value = false;
+    phase.value = 'idle';
     errorMsg.value = '';
     showOtherTier.value = false;
+    selectedId.value = null;
     loadOffering();
   }
 });
 
-// Fulfillment lands via an async RevenueCat webhook, not in the purchase
-// response itself — poll device-expiration a few times so the Plan/
-// Expiration rows on the settings page catch up without the user having to
-// back out and back in.
-async function pollForUpdatedPlan(attempts = 6, delayMs = 2500) {
+// Always default the pick to the 3-month option (fallback: first/cheapest)
+// whenever the shown list changes — i.e. on open once the offering loads, and
+// on every tier switch.
+watch(displayedPackages, (pkgs) => {
+  if (!pkgs.length) return;
+  const preferred = pkgs.find((e) => e.months === 3) || pkgs[0];
+  selectedId.value = preferred.pkg.identifier;
+});
+
+// Fulfillment lands via an async RevenueCat webhook (order → data-renew →
+// device_inventory), NOT in the StoreKit purchase response. So after payment
+// we poll device-expiration until the stored expiration actually advances (or
+// plan_level changes) — that transition is the real "top-up complete" signal.
+// Top-ups stack on an active plan, so we compare against the pre-purchase
+// value. Returns false if nothing landed within the window (webhook slow or
+// failed); the caller then shows a "will update shortly" state, never a false
+// "done".
+async function waitForFulfillment(prevExpiration, prevPlan, attempts = 13, delayMs = 1500) {
+  const prevMs = prevExpiration ? new Date(prevExpiration).getTime() : 0;
   for (let i = 0; i < attempts; i++) {
     await new Promise((resolve) => setTimeout(resolve, delayMs));
     await deviceStore.fetchDeviceExpirations().catch(() => {});
+    const d = deviceStore.devices?.[props.device.id];
+    const nowMs = d?.expiration ? new Date(d.expiration).getTime() : 0;
+    if (nowMs > prevMs || (d && d.plan_level !== prevPlan)) return true;
   }
+  return false;
 }
 
 // Localhost review only: fake the plan/expiration update so the Current Plan
@@ -109,9 +174,16 @@ function applyPreviewUpdate(entry) {
 }
 
 async function buy(entry) {
-  if (purchasingId.value || !props.device) return;
+  if (purchasingId.value || !props.device || !entry) return;
   purchasingId.value = entry.pkg.identifier;
   errorMsg.value = '';
+  phase.value = 'idle';
+
+  // Snapshot before paying so waitForFulfillment can detect the extension —
+  // top-ups stack on an already-active plan (the backend just pushes the
+  // expiration further out), so we diff against these, not against "no plan".
+  const beforeExpiration = props.device.expiration;
+  const beforePlan = props.device.plan_level;
 
   const result = await purchasePlan({
     device: props.device,
@@ -128,12 +200,17 @@ async function buy(entry) {
     return;
   }
 
-  purchaseSucceeded.value = true;
+  // Payment succeeded. Preview has no webhook, so fake the extension and report
+  // done immediately; on iOS, wait for the real expiration to move before we
+  // claim the plan actually changed.
   if (result.preview) {
     applyPreviewUpdate(entry);
-  } else {
-    pollForUpdatedPlan();
+    phase.value = 'done';
+    return;
   }
+
+  phase.value = 'processing';
+  phase.value = (await waitForFulfillment(beforeExpiration, beforePlan)) ? 'done' : 'pending';
 }
 
 function close() {
@@ -153,6 +230,7 @@ function close() {
             </span>
           </div>
           <button
+            v-if="!isProcessing"
             @click="close"
             aria-label="Close"
             class="w-9 h-9 flex items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors outline-none"
@@ -162,97 +240,135 @@ function close() {
         </div>
 
         <div class="p-5 space-y-5">
-          <div v-if="device" class="flex items-center justify-between p-4 border rounded-lg">
-            <span class="text-sm text-gray-500">Current Plan</span>
-            <span class="text-sm font-bold text-gray-800 capitalize">
-              {{ device.plan_level || 'N/A' }}
-              <span v-if="device.expiration" class="font-normal text-gray-500">
-                · expires {{ new Date(device.expiration).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }}
-              </span>
-            </span>
-          </div>
 
-          <div v-if="previewMode" class="bg-amber-50 text-amber-700 text-xs p-3 rounded-xl border border-amber-100 flex items-start gap-2">
-            <i class="fa-solid fa-flask mt-0.5"></i>
-            <span>Localhost review build — prices are the real App Store PH prices, but tapping a plan runs a <strong>simulated</strong> purchase (no charge, no StoreKit). On iOS this opens the real Apple payment sheet.</span>
-          </div>
-
-          <div v-if="purchaseSucceeded" class="bg-green-50 text-green-600 text-sm p-3 rounded-xl border border-green-100 flex items-center gap-2">
-            <i class="fa-solid fa-circle-check"></i>
-            Purchase successful! Your plan will update shortly.
-          </div>
-
-          <div v-if="errorMsg" class="bg-red-50 text-red-600 text-sm p-3 rounded-xl border border-red-100 flex items-center gap-2">
-            <i class="fa-solid fa-circle-exclamation"></i>
-            {{ errorMsg }}
-          </div>
-
-          <div v-if="loadingOffering" class="flex items-center justify-center p-10 text-gray-400 text-sm">
-            <i class="fa-solid fa-circle-notch fa-spin mr-2"></i>
-            Loading plans…
-          </div>
-
-          <template v-else>
-            <!-- Current plan_level durations -->
-            <div v-if="currentPackages.length">
-              <div class="flex items-center gap-2 mb-2">
-                <h3 class="text-sm font-bold text-gray-700 uppercase tracking-wider capitalize">{{ currentTier }}</h3>
-                <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-gray-100 text-gray-500">Your plan</span>
+          <!-- STATUS VIEW: after Buy Now, everything else is hidden. -->
+          <div v-if="showStatus" class="flex flex-col items-center text-center py-6 space-y-5">
+            <!-- Paying / extending: spinner + (blue) processing feedback -->
+            <template v-if="purchasingId || phase === 'processing'">
+              <i class="fa-solid fa-circle-notch fa-spin text-4xl text-brand"></i>
+              <p v-if="purchasingId" class="text-sm text-gray-500">Processing your purchase…</p>
+              <div v-else class="w-full bg-blue-50 text-blue-600 text-sm p-3 rounded-xl border border-blue-100 flex items-center justify-center gap-2">
+                <i class="fa-solid fa-circle-notch fa-spin"></i>
+                Payment received — extending your plan…
               </div>
-              <div class="space-y-2">
-                <button
-                  v-for="entry in currentPackages"
-                  :key="entry.pkg.identifier"
-                  type="button"
-                  :disabled="!!purchasingId"
-                  @click="buy(entry)"
-                  class="w-full flex items-center justify-between p-4 border rounded-xl transition-colors active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed hover:border-brand"
-                >
-                  <span class="text-sm font-bold text-gray-800">{{ entry.months }} Months</span>
-                  <span class="flex items-center gap-2 text-sm font-bold text-brand">
-                    <i v-if="purchasingId === entry.pkg.identifier" class="fa-solid fa-circle-notch fa-spin"></i>
-                    {{ entry.pkg.product.priceString }}
-                  </span>
-                </button>
-              </div>
-            </div>
+            </template>
 
-            <!-- Reveal the other tier (upgrade / change plan) -->
+            <!-- Done: green feedback -->
+            <template v-else-if="phase === 'done'">
+              <i class="fa-solid fa-circle-check text-4xl text-green-500"></i>
+              <div class="w-full bg-green-50 text-green-600 text-sm p-3 rounded-xl border border-green-100 flex items-center justify-center gap-2">
+                <i class="fa-solid fa-circle-check"></i>
+                <span>Top-up complete! Your plan now runs to
+                {{ device?.expiration ? new Date(device.expiration).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'the new date' }}.</span>
+              </div>
+            </template>
+
+            <!-- Pending / timeout: amber feedback -->
+            <template v-else-if="phase === 'pending'">
+              <i class="fa-solid fa-clock text-4xl text-amber-500"></i>
+              <div class="w-full bg-amber-50 text-amber-700 text-sm p-3 rounded-xl border border-amber-100 flex items-center justify-center gap-2">
+                <i class="fa-solid fa-clock"></i>
+                Payment received. Your plan will update shortly.
+              </div>
+            </template>
+
+            <!-- Close appears once settled (green) or on timeout. -->
             <button
-              v-if="!showOtherTier && otherPackages.length"
+              v-if="phase === 'done' || phase === 'pending'"
               type="button"
-              @click="showOtherTier = true"
-              class="w-full flex items-center justify-center gap-2 p-3 rounded-xl border border-dashed border-gray-300 text-sm font-bold text-brand hover:bg-brand/5 transition-colors outline-none"
+              @click="close"
+              class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-3.5 rounded-xl transition-colors shadow-sm active:scale-[0.98] outline-none"
             >
-              <i class="fa-solid fa-arrow-up-right-dots"></i>
-              {{ changeLabel }}
+              Close
             </button>
+          </div>
 
-            <!-- Other tier durations (revealed on demand) -->
-            <div v-if="showOtherTier && otherPackages.length">
-              <div class="flex items-center gap-2 mb-2">
-                <h3 class="text-sm font-bold text-gray-700 uppercase tracking-wider capitalize">{{ otherTier }}</h3>
-              </div>
-              <p class="text-xs text-gray-400 mb-2 leading-relaxed">
-                Changing your plan converts your unused allocation to the new tier, added on top of this purchase.
-              </p>
-              <div class="space-y-2">
-                <button
-                  v-for="entry in otherPackages"
-                  :key="entry.pkg.identifier"
-                  type="button"
-                  :disabled="!!purchasingId"
-                  @click="buy(entry)"
-                  class="w-full flex items-center justify-between p-4 border rounded-xl transition-colors active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed hover:border-brand"
-                >
-                  <span class="text-sm font-bold text-gray-800">{{ entry.months }} Months</span>
-                  <span class="flex items-center gap-2 text-sm font-bold text-brand">
-                    <i v-if="purchasingId === entry.pkg.identifier" class="fa-solid fa-circle-notch fa-spin"></i>
-                    {{ entry.pkg.product.priceString }}
-                  </span>
-                </button>
-              </div>
+          <!-- SELECTION VIEW: pick a duration, then Buy Now. -->
+          <template v-else>
+            <div v-if="device" class="flex items-center justify-between p-4 border rounded-lg">
+              <span class="text-sm text-gray-500">Current Plan</span>
+              <span class="text-sm font-bold text-gray-800 capitalize">
+                {{ device.plan_level || 'N/A' }}
+                <span v-if="device.expiration" class="font-normal text-gray-500">
+                  · expires {{ new Date(device.expiration).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }}
+                </span>
+              </span>
             </div>
+
+            <div v-if="previewMode" class="bg-amber-50 text-amber-700 text-xs p-3 rounded-xl border border-amber-100 flex items-start gap-2">
+              <i class="fa-solid fa-flask mt-0.5"></i>
+              <span>Localhost review build — prices are the real App Store PH prices, but tapping Buy Now runs a <strong>simulated</strong> purchase (no charge, no StoreKit). On iOS this opens the real Apple payment sheet.</span>
+            </div>
+
+            <div v-if="errorMsg" class="bg-red-50 text-red-600 text-sm p-3 rounded-xl border border-red-100 flex items-center gap-2">
+              <i class="fa-solid fa-circle-exclamation"></i>
+              {{ errorMsg }}
+            </div>
+
+            <div v-if="loadingOffering" class="flex items-center justify-center p-10 text-gray-400 text-sm">
+              <i class="fa-solid fa-circle-notch fa-spin mr-2"></i>
+              Loading plans…
+            </div>
+
+            <template v-else>
+              <!-- One tier at a time; the toggle below swaps which one is shown. -->
+              <div v-if="displayedPackages.length">
+                <div class="flex items-center gap-2 mb-2">
+                  <h3 class="text-sm font-bold text-gray-700 uppercase tracking-wider capitalize">{{ displayedTier }}</h3>
+                  <span v-if="!showOtherTier" class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-gray-100 text-gray-500">Your plan</span>
+                </div>
+                <p v-if="showOtherTier" class="text-xs text-gray-400 mb-2 leading-relaxed">
+                  Changing your plan converts your unused allocation to the new tier, added on top of this purchase.
+                </p>
+                <!-- Radio-style selection: tap to select, Buy Now to purchase. -->
+                <div class="space-y-2">
+                  <button
+                    v-for="entry in displayedPackages"
+                    :key="entry.pkg.identifier"
+                    type="button"
+                    @click="selectedId = entry.pkg.identifier"
+                    class="w-full flex items-center justify-between p-4 border rounded-xl transition-colors active:scale-[0.98]"
+                    :class="selectedId === entry.pkg.identifier ? 'border-brand ring-2 ring-brand-light bg-brand/5' : 'border-gray-200 hover:border-brand'"
+                  >
+                    <span class="flex items-center gap-3">
+                      <span
+                        class="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors"
+                        :class="selectedId === entry.pkg.identifier ? 'border-brand' : 'border-gray-300'"
+                      >
+                        <span v-if="selectedId === entry.pkg.identifier" class="w-2.5 h-2.5 rounded-full bg-brand"></span>
+                      </span>
+                      <span class="flex flex-col items-start">
+                        <span class="text-sm font-bold text-gray-800">{{ entry.months }} Months</span>
+                        <span class="text-[11px] font-normal text-gray-400 mt-0.5">expires on {{ estimatedExpiration(entry.months) }}</span>
+                      </span>
+                    </span>
+                    <span class="text-sm font-bold text-brand">{{ entry.pkg.product.priceString }}</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Buy Now: commits the selected duration (the real purchase). -->
+              <button
+                type="button"
+                :disabled="!selectedEntry"
+                @click="buy(selectedEntry)"
+                class="w-full flex items-center justify-center gap-2 bg-accent hover:bg-accent/90 text-white font-bold py-3.5 rounded-xl transition-colors shadow-sm active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed outline-none"
+              >
+                <i class="fa-solid fa-bolt"></i>
+                Buy Now<span v-if="selectedEntry"> · {{ selectedEntry.pkg.product.priceString }}</span>
+              </button>
+
+              <!-- Single toggle: swaps between the current tier and the other tier. -->
+              <button
+                v-if="otherPackages.length"
+                type="button"
+                @click="toggleTier"
+                class="w-full flex items-center justify-center gap-2 p-3 rounded-xl border border-dashed border-gray-300 text-sm font-bold text-brand hover:bg-brand/5 transition-colors outline-none"
+              >
+                <i class="fa-solid" :class="showOtherTier ? 'fa-arrow-left' : 'fa-arrow-up-right-dots'"></i>
+                {{ toggleLabel }}
+              </button>
+            </template>
           </template>
         </div>
       </div>
