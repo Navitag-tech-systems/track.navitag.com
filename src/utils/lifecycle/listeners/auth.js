@@ -1,6 +1,8 @@
 import { auth } from '@/firebase';
 import { useUserStore } from '@/stores/user';
 import router from '@/router';
+import { iapLogIn, iapLogOut } from '@/utils/iap';
+import { clearMedusaSession } from '@/utils/medusa';
 
 export function registerAuthListeners(session) {
   auth.addListener('authStateChange', async (data) => {
@@ -11,6 +13,7 @@ export function registerAuthListeners(session) {
       console.log('✅ Auth State: Logged In');
 
       await userStore.setUser(firebaseUser);
+      iapLogIn(firebaseUser.uid);
 
       const sessionStarted = await session.startSession();
       if (sessionStarted) {
@@ -18,6 +21,8 @@ export function registerAuthListeners(session) {
       }
     } else {
       console.log('🛑 Auth State: Logged Out');
+      iapLogOut();
+      clearMedusaSession();
       if (userStore.isLoggedIn) {
         session.stopSession();
       } else {

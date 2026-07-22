@@ -1,14 +1,25 @@
 <script setup>
-import { Capacitor } from '@capacitor/core';
+import { useRouter } from 'vue-router';
+import { isIapUiEnabled } from '@/utils/iap';
 
 defineProps({
   show: { type: Boolean, default: false },
 });
-defineEmits(['close']);
+const emit = defineEmits(['close']);
 
-// iOS App Store guideline 3.1.1: don't direct users to an externally-purchased
-// paid tier. Neutral copy on iOS; keep the Pro upgrade prompt on Android/web.
-const isIos = Capacitor.getPlatform() === 'ios';
+// Now that real StoreKit IAP exists on iOS, the "upgrade to Pro" prompt is
+// shown on every platform again (the 3.1.1 neutral-copy softening is reverted).
+// On iOS / localhost review (`iapUi`) we also surface a "View Plans" CTA that
+// routes to the in-app Top-Up flow; the geofence limit is account-wide, so the
+// user picks which device to upgrade from its Settings > Top-Up. Android/web
+// keep the prompt without the in-app CTA (they use the external web checkout).
+const iapUi = isIapUiEnabled();
+const router = useRouter();
+
+function viewPlans() {
+  emit('close');
+  router.push('/list/devices');
+}
 </script>
 
 <template>
@@ -19,15 +30,21 @@ const isIos = Capacitor.getPlatform() === 'ios';
           <i class="fa-solid fa-lock text-amber-600 text-xl"></i>
         </div>
         <h2 class="text-xl font-bold text-gray-800 mb-2">Geofence Limit Reached</h2>
-        <p v-if="isIos" class="text-sm text-gray-500 mb-6 leading-relaxed">
-          You have reached your geofence limit for this device.
-        </p>
-        <p v-else class="text-sm text-gray-500 mb-6 leading-relaxed">
+        <p class="text-sm text-gray-500 mb-6 leading-relaxed">
           You have reached the limit of your geofence creation. Please upgrade to the Pro plan to add more.
         </p>
         <button
+          v-if="iapUi"
+          @click="viewPlans"
+          class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-3.5 rounded-xl transition-colors shadow-sm outline-none mb-2"
+        >
+          View Plans
+        </button>
+        <button
           @click="$emit('close')"
-          class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-3.5 rounded-xl transition-colors shadow-sm outline-none"
+          :class="iapUi
+            ? 'w-full bg-surface hover:bg-gray-100 text-gray-600 font-bold py-3.5 rounded-xl transition-colors outline-none'
+            : 'w-full bg-brand hover:bg-brand-dark text-white font-bold py-3.5 rounded-xl transition-colors shadow-sm outline-none'"
         >
           Got it
         </button>

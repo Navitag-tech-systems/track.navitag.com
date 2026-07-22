@@ -11,6 +11,8 @@ import { categoryMapping, baseUrl } from '@/utils/variables';
 import { hasScope } from '@/utils/scopes';
 import QrScanner from '@/components/QrScanner.vue';
 import SharedBadge from '@/components/SharedBadge.vue';
+import PlanPurchaseSheet from '@/components/PlanPurchaseSheet.vue';
+import { isIapUiEnabled } from '@/utils/iap';
 
 const route = useRoute();
 const router = useRouter();
@@ -20,9 +22,14 @@ const notifStore = useNotificationsStore();
 
 const deviceId = route.params.id;
 
-// iOS App Store guideline 3.1.1: no externally-purchased plan/subscription
-// surfaces on iOS (Top Up link, plan tier, expiration). Android/web keep them.
-const isIos = Capacitor.getPlatform() === 'ios';
+// iOS App Store guideline 3.1.1: real StoreKit IAP (via RevenueCat) replaces
+// the external-browser Top Up flow on iOS. Plan/Expiration are safe to show
+// again now that a native purchase path exists. Android/web keep the
+// external Medusa web-checkout Top Up flow. `iapUi` is also true in the
+// localhost web review (import.meta.env.DEV) so the native Manage Plan flow can
+// be exercised in a browser; it stays false in production web/Android builds.
+const iapUi = isIapUiEnabled();
+const showPlanSheet = ref(false);
 
 // Get the device from the store
 const device = computed(() => deviceStore.devices[deviceId]);
@@ -302,6 +309,10 @@ onMounted(() => {
 
 
 async function openTopUp() {
+  if (iapUi) {
+    showPlanSheet.value = true;
+    return;
+  }
   const url = `https://www.navitag.com/top-up/${device.value.uniqueId}`
   if (Capacitor.isNativePlatform()) {
     await Browser.open({ url })
@@ -587,25 +598,26 @@ watch(isActive, async (nv, ov) => {
           </p>
         </div>
 
-        <div v-if="!isIos" class="flex items-center justify-between p-4 border rounded-lg">
+        <div class="flex items-center justify-between p-4 border rounded-lg">
           <span class="text-sm text-gray-500">Plan</span>
           <span class="text-sm font-bold text-gray-800 capitalize">{{ device.plan_level || 'N/A' }}</span>
         </div>
 
-        <div v-if="!isIos" class="flex items-center justify-between p-4 border rounded-lg">
+        <div class="flex items-center justify-between p-4 border rounded-lg">
           <span class="text-sm text-gray-500">Expiration</span>
           <span class="text-sm font-bold" :class="device.expiration ? 'text-gray-800' : 'text-red-500'">{{ device.expiration ? new Date(device.expiration).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A' }}</span>
         </div>
 
         <button
-          v-if="!isIos"
           @click="openTopUp"
           class="w-full bg-accent hover:bg-accent/90 text-white font-bold py-3 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 active:scale-[0.98]"
         >
           <i class="fa-solid fa-bolt"></i>
-          Top Up
+          Top-Up
         </button>
       </div>
+
+      <PlanPurchaseSheet :show="showPlanSheet" :device="device" @close="showPlanSheet = false" />
 
       <div v-if="device && !device.shared" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
         <div class="flex items-center gap-2">

@@ -31,6 +31,7 @@
     "@capacitor/share": "^8.0.1",
     "@fortawesome/fontawesome-free": "^7.1.0",
     "@geoman-io/leaflet-geoman-free": "^2.19.2",
+    "@revenuecat/purchases-capacitor": "^13.2.3",
     "@tailwindcss/vite": "^4.1.18",
     "firebase": "^12.8.0",
     "ky": "^1.14.3",

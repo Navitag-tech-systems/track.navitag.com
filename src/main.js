@@ -10,6 +10,7 @@ import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css'
 // Import the new Service
 import { LifecycleService } from '@/utils/lifecycle';
 import { registerPwa } from '@/utils/pwa';
+import { configureIap } from '@/utils/iap';
 
 const app = createApp(App);
 const pinia = createPinia();
@@ -23,6 +24,10 @@ LifecycleService.init();
 
 // Register the PWA service worker on web (no-op on native).
 registerPwa();
+
+// Configure RevenueCat once per app lifetime (no-op off iOS). Identity is
+// attached later via iapLogIn()/iapLogOut() in the auth listener.
+configureIap();
 
 
 app.mount('#app');
