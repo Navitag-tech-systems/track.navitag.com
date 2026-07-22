@@ -184,8 +184,15 @@ workflows:
         script: |
           set -e
           echo "=== xcode in use ===" && xcodebuild -version
-          echo "=== available Xcodes on this machine ===" && (ls -d /Applications/Xcode*.app || true)
-          echo "--- resolving Swift package dependencies ---"
+          # ROOT CAUSE of the earlier Abort-trap-6 crash: a STALE Package.resolved
+          # (committed pre-RevenueCat) whose entry count no longer matches the live
+          # graph. Xcode 16+/26 strictly validate this and crash in
+          # IDESwiftPackageCore ("count of array (N) differs from index set (N-1)").
+          # Capacitor regenerates Package.swift every build, so any committed
+          # Package.resolved is unreliable — wipe it (+ DerivedData) for a clean resolve.
+          find ios -name "Package.resolved" -print -delete 2>/dev/null || true
+          rm -rf "$HOME/Library/Developer/Xcode/DerivedData" 2>/dev/null || true
+          echo "--- resolving Swift package dependencies (clean) ---"
           xcodebuild -project ios/App/App.xcodeproj -scheme App -resolvePackageDependencies
       - name: Build signed IPA
         script: |

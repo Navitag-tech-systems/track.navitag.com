@@ -45,3 +45,6 @@ crashlog.md
 claude.md
 .claude
 .npmrc.local
+# SPM resolved file — Capacitor regenerates Package.swift per build, so a committed
+# Package.resolved goes stale and crashes Xcode 26 SPM resolution (Abort trap 6).
+ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
