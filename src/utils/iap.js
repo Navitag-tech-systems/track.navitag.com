@@ -139,10 +139,21 @@ export async function purchasePlan({ device, tier, months, pkg }) {
     const result = await Purchases.purchasePackage({ aPackage: toRaw(pkg) });
     return { ok: true, customerInfo: result.customerInfo, cartId };
   } catch (err) {
+    // Log the full error BEFORE branching on cancel. In sandbox a genuine
+    // failure (e.g. a product still MISSING_METADATA in App Store Connect) is
+    // frequently reported to the plugin as PURCHASE_CANCELLED, so a silent
+    // cancel-branch would hide the real cause. Surface everything for
+    // on-device (TestFlight) diagnosis.
+    console.error('[IAP] purchasePackage error', {
+      code: err?.code,
+      message: err?.message,
+      underlyingErrorMessage: err?.underlyingErrorMessage,
+      readableErrorCode: err?.readableErrorCode,
+      err,
+    });
     if (err?.code === PURCHASES_ERROR_CODE.PURCHASE_CANCELLED_ERROR) {
       return { ok: false, cancelled: true };
     }
-    console.error('[IAP] purchasePlan failed:', err);
     return { ok: false, error: err?.message || 'Purchase failed. Please try again.' };
   }
 }

@@ -199,10 +199,16 @@ async function buy(entry) {
   });
   purchasingId.value = null;
 
-  if (result.cancelled) return;
+  if (result.cancelled) {
+    // Don't dump silently back to the cards — after a full-screen native sheet
+    // that reads as "it just closed". Show an explicit cancelled state.
+    phase.value = 'cancelled';
+    return;
+  }
 
   if (!result.ok) {
     errorMsg.value = result.error || 'Purchase failed. Please try again.';
+    phase.value = 'error';
     return;
   }
 
@@ -217,6 +223,13 @@ async function buy(entry) {
 
   phase.value = 'processing';
   phase.value = (await waitForFulfillment(beforeExpiration, beforePlan)) ? 'done' : 'pending';
+}
+
+// After a failed/cancelled purchase, return to the selection view so the user
+// can retry without reopening the sheet (the current selection is kept).
+function tryAgain() {
+  errorMsg.value = '';
+  phase.value = 'idle';
 }
 
 function close() {
@@ -278,12 +291,40 @@ function close() {
               </div>
             </template>
 
-            <!-- Close appears once settled (green) or on timeout. -->
+            <!-- Cancelled: neutral; you were not charged. Offer retry. -->
+            <template v-else-if="phase === 'cancelled'">
+              <i class="fa-solid fa-circle-xmark text-4xl text-gray-400"></i>
+              <div class="w-full bg-gray-50 text-gray-600 text-sm p-3 rounded-xl border border-gray-200 flex items-center justify-center gap-2">
+                Purchase cancelled — you were not charged.
+              </div>
+            </template>
+
+            <!-- Error / failed purchase: red; the purchase did not go through. -->
+            <template v-else-if="phase === 'error'">
+              <i class="fa-solid fa-circle-exclamation text-4xl text-red-500"></i>
+              <div class="w-full bg-red-50 text-red-600 text-sm p-3 rounded-xl border border-red-100 flex items-center justify-center gap-2">
+                <i class="fa-solid fa-circle-exclamation"></i>
+                <span>{{ errorMsg || 'Purchase not completed. Please try again.' }}</span>
+              </div>
+            </template>
+
+            <!-- Retry after a failed/cancelled purchase (returns to selection). -->
             <button
-              v-if="phase === 'done' || phase === 'pending'"
+              v-if="phase === 'error' || phase === 'cancelled'"
+              type="button"
+              @click="tryAgain"
+              class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-3.5 rounded-xl transition-colors shadow-sm active:scale-[0.98] outline-none"
+            >
+              Try again
+            </button>
+            <!-- Close appears once settled (green/amber) or after a failure/cancel. -->
+            <button
+              v-if="phase === 'done' || phase === 'pending' || phase === 'error' || phase === 'cancelled'"
               type="button"
               @click="close"
-              class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-3.5 rounded-xl transition-colors shadow-sm active:scale-[0.98] outline-none"
+              :class="phase === 'error' || phase === 'cancelled'
+                ? 'w-full text-gray-500 font-bold py-3 rounded-xl hover:bg-gray-100 transition-colors outline-none'
+                : 'w-full bg-brand hover:bg-brand-dark text-white font-bold py-3.5 rounded-xl transition-colors shadow-sm active:scale-[0.98] outline-none'"
             >
               Close
             </button>
