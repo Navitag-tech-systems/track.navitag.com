@@ -1,3 +1,4 @@
+import { toRaw } from 'vue';
 import { Capacitor } from '@capacitor/core';
 import { Purchases, PURCHASES_ERROR_CODE } from '@revenuecat/purchases-capacitor';
 import { createTopUpCart } from '@/utils/medusa';
@@ -131,7 +132,11 @@ export async function purchasePlan({ device, tier, months, pkg }) {
     await Purchases.setAttributes({ pending_cart_id: cartId });
 
     // 3. Charge via StoreKit. Fulfilment lands later via the RevenueCat webhook.
-    const result = await Purchases.purchasePackage({ aPackage: pkg });
+    //    toRaw: callers hold the package inside Vue state, and a reactive Proxy
+    //    does not serialize across the Capacitor bridge — native would receive
+    //    no dictionary and reject with "must provide aPackage parameter".
+    //    Harmless on an already-plain object (preview mock, raw plugin object).
+    const result = await Purchases.purchasePackage({ aPackage: toRaw(pkg) });
     return { ok: true, customerInfo: result.customerInfo, cartId };
   } catch (err) {
     if (err?.code === PURCHASES_ERROR_CODE.PURCHASE_CANCELLED_ERROR) {

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch } from 'vue';
+import { ref, shallowRef, computed, watch } from 'vue';
 import { useDevicesStore } from '@/stores/devices.js';
 import { getPlanOffering, purchasePlan, isIapPreview } from '@/utils/iap';
 
@@ -21,7 +21,13 @@ const emit = defineEmits(['close']);
 
 const deviceStore = useDevicesStore();
 
-const offering = ref(null);
+// shallowRef, NOT ref: a deep `ref` wraps every RevenueCat package in a Vue
+// reactive Proxy, and a Proxy does not survive serialization across the
+// Capacitor bridge — the native side then sees no `aPackage` dictionary and
+// Purchases.purchasePackage rejects with "must provide aPackage parameter".
+// The offering is only ever replaced wholesale, never mutated in place, so
+// shallow reactivity is sufficient for the computeds that derive from it.
+const offering = shallowRef(null);
 const loadingOffering = ref(false);
 const purchasingId = ref(null);
 const errorMsg = ref('');
