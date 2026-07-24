@@ -597,7 +597,7 @@ watch(isActive, async (nv, ov) => {
 
         <div class="flex items-center justify-between p-4 border rounded-lg">
           <span class="text-sm text-gray-500">Expiration</span>
-          <span class="text-sm font-bold" :class="device.expiration ? 'text-gray-800' : 'text-red-500'">{{ device.expiration ? new Date(device.expiration).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A' }}</span>
+          <span class="text-sm font-bold" :class="device.expiration ? 'text-gray-800' : 'text-red-500'">{{ device.expiration ? new Date(device.expiration).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A' }}</span>
         </div>
 
         <button

@@ -23,7 +23,7 @@ const device = computed(() => {
 // Helper to format dates
 const formatDate = (isoString) => {
   if (!isoString) return 'N/A';
-  return new Date(isoString).toLocaleString();
+  return new Date(isoString).toLocaleString(undefined, { hour12: false });
 };
 
 // Helper to format booleans/nulls

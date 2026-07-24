@@ -87,6 +87,7 @@ function formatDate(value) {
     year: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
+    hour12: false,
   });
 }
 

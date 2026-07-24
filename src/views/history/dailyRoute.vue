@@ -171,7 +171,7 @@ const changeDate = async (offset) => {
 const formatTime = (isoString) => {
   if (!isoString) return '--:--';
   const date = new Date(isoString);
-  return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
 };
 
 // --- INTERACTION LOGIC ---

@@ -113,7 +113,7 @@ function estimatedExpiration(months) {
   const current = props.device?.expiration ? new Date(props.device.expiration) : null;
   const base = current && current > now ? new Date(current) : new Date(now);
   base.setMonth(base.getMonth() + months);
-  return base.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return base.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 async function loadOffering() {
@@ -265,7 +265,7 @@ function close() {
               <div class="w-full bg-green-50 text-green-600 text-sm p-3 rounded-xl border border-green-100 flex items-center justify-center gap-2">
                 <i class="fa-solid fa-circle-check"></i>
                 <span>Top-up complete! Your plan now runs to
-                {{ device?.expiration ? new Date(device.expiration).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'the new date' }}.</span>
+                {{ device?.expiration ? new Date(device.expiration).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'the new date' }}.</span>
               </div>
             </template>
 
@@ -296,7 +296,7 @@ function close() {
               <span class="text-sm font-bold text-gray-800 capitalize">
                 {{ device.plan_level || 'N/A' }}
                 <span v-if="device.expiration" class="font-normal text-gray-500">
-                  · expires {{ new Date(device.expiration).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }}
+                  · expires {{ new Date(device.expiration).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) }}
                 </span>
               </span>
             </div>

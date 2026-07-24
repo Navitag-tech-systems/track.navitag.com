@@ -58,6 +58,6 @@ export const formatDate = (dateString) => {
   if (!dateString) return 'Waiting for update...';
   const date = new Date(dateString);
   return date.toLocaleString(undefined, {
-    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
   });
 };
