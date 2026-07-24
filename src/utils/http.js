@@ -46,6 +46,30 @@ async function loadSessionId() {
 }
 
 /**
+ * Build the Error thrown for a non-2xx response.
+ *
+ * Non-2xx used to throw a bare `new Error('HTTP 409')`, discarding the body —
+ * so an api.navitag.net error envelope never reached the caller. That was
+ * tolerable while every backend call was Traccar's opaque 4xx, but the v1 API
+ * answers with something useful: `{ error, tier, geofence_limit, current }` on
+ * a quota refusal, `{ error, reason, action }` on a half-provisioned account.
+ *
+ * Additive: `.status` and `.body` are new, and `.message` now prefers the
+ * API's own `error` string over "HTTP 409". Nothing matches on the old format
+ * (checked), and the several places that surface `err.message` straight to the
+ * user get a real sentence instead of a status code.
+ */
+function httpError(status, body) {
+  const apiMessage = (body && typeof body === 'object' && typeof body.error === 'string')
+    ? body.error
+    : null;
+  const err = new Error(apiMessage || `HTTP ${status}`);
+  err.status = status;
+  err.body = body ?? null;
+  return err;
+}
+
+/**
  * Centralized Request Maker
  * Native: Uses CapacitorHttp + Manual Cookie Injection for Session persistence.
  * Web: Uses ky with { credentials: 'include' } for automatic browser cookie handling.
@@ -162,7 +186,8 @@ export const request = {
           if (response.data === '' || response.data == null) return true;
           return response.data;
         }
-        throw new Error(`HTTP ${response.status}`);
+        // CapacitorHttp already parsed the body when it is JSON.
+        throw httpError(response.status, response.data);
       } catch (error) {
         console.error(`Native ${method} Error [${url}]:`, error);
         throw error;
@@ -195,7 +220,11 @@ export const request = {
           if (!text) return true;
           try { return JSON.parse(text); } catch { return true; }
         }
-        throw new Error(`HTTP ${res.status}`);
+        // Read the error body before throwing — ky gives us the response, but
+        // the stream is consumed once, so this has to happen here.
+        let errBody = null;
+        try { errBody = JSON.parse(await res.text()); } catch { /* non-JSON error page */ }
+        throw httpError(res.status, errBody);
       } catch (error) {
         console.error(`Web/Simple ${method} Error [${url}]:`, error);
         throw error;

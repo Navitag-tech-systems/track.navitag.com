@@ -96,6 +96,7 @@ src/utils/lifecycle/
 - **Email is required** for backend user creation (Traccar requires email). All current SSO providers return an email, so the in-app email-collection flow has been removed.
 - **Apple name capture** (`src/utils/auth.js`): Apple only provides the user's display name on the very first sign-in. The name is captured immediately and persisted to `localStorage` (`apple_pending_name`). `backendSync()` in `src/stores/user.js` reads the cached name as a fallback when Pinia state and `firebaseUser.displayName` are both empty, and cleans up the cache after successful sync. The backend (`api.navitag.net` — `User.php`) also sets Firebase `displayName` via the Admin SDK during sync, making the name permanently available on future logins.
 - **Web SSO** uses redirect mode; same-origin Firebase auth handler used for mobile web.
+- **App Check (anti-bot signups)** — `src/firebase.js` initializes Firebase App Check on **web only** (reCAPTCHA v3, guarded off native via `!Capacitor.isNativePlatform()`) to close the public `identitytoolkit accounts:signUp` REST endpoint that bots hit directly (bypassing all frontend validation). Site key ← `VITE_APPCHECK_RECAPTCHA_V3_SITE_KEY` (set in Vercel; no-ops if unset). Localhost passes via a debug token. **Monitor mode only — NOT enforced**: it mints/attaches tokens but blocks nothing yet, because enforcement is project-wide (shared with navitag.com + native) and would reject native logins until native App Check ships. Deployed 2026-07-22 (commit `91d2cc6`). navitag.com (www-v3) shares the same Firebase project and has the matching web App Check.
 
 ### Ecommerce Removed
 
@@ -121,6 +122,8 @@ The physical-device-service framing (the plan is cellular/data connectivity for 
 **⚠️ Verify before shipping:** the RevenueCat → `https://shopapi.navitag.com/hooks/revenuecat` webhook is **built and deployed** — it completes the `pending_cart_id` cart, which flows into the existing `data-renew` fulfillment chain (end-to-end validated via a simulated webhook, order `display_id 46`). Still to confirm on a real device / TestFlight sandbox purchase: (1) `medusa.js` region + variant resolution against live Medusa, (2) that the manual-provider capture emits `order.payment_captured`, and (3) the resulting `device_inventory` plan/expiration update. A completed IAP will charge via Apple, so verify fulfillment before production release.
 
 **App Store Connect:** the 6 consumables are **created, en-US localized, and priced** (PH territory) in App Store Connect, and the Paid Apps Agreement is **active**. The only remaining gate is the **review screenshot** Apple requires for a first IAP submission — it needs the purchase UI in a real build. Resubmit via the `ios-testflight` Codemagic workflow with a bumped build number once the screenshot is captured.
+
+**TestFlight — build 13 (v5.1.0):** the first build carrying the IAP flow is uploaded and `VALID` in App Store Connect (Codemagic `6a60bbdf...`). ⚠️ **NOT yet tested on-device** — no sandbox IAP purchase has been run against it, so the real purchase → webhook → `data-renew` → `device_inventory` chain is still unverified (see "Verify before shipping" above). Next: sandbox-test a purchase on build 13, capture the review screenshot from it, then attach + resubmit.
 
 ### Account Settings
 
@@ -163,7 +166,9 @@ The physical-device-service framing (the plan is cellular/data connectivity for 
 
 ### Link Device (`src/views/linkDevice/link.vue`)
 
-After `POST ${baseUrl}/user/link-device` succeeds, the view routes straight to `/linkdevice/enable/:imei`. The device list and expirations are refreshed by the subsequent enable flow / `startSession`.
+Linking **is** activation — there is no separate enable step. `POST ${baseUrl}/user/link-device` already performs the whole thing server-side in one transaction: Traccar rename + `disabled=false` + join the owner's 1:1 group, `linkUserToDevice` permission, SIM enable (idempotent, skipped for unmanaged providers), expiration from `preloaded_months`, accumulator reset, and the default notification-settings/rules seed — with rollback (unlink + re-disable Traccar + re-disable SIM) if any step fails. On `status === 'success'` the view routes straight to `/linkdevice/success`, which calls `LifecycleService.reloadAndReconnect()` on mount to refresh the device list and expirations.
+
+The old `/linkdevice/enable/:imei` screen (`enable.vue`) was **removed** — it re-ran `POST /device/enable` plus a direct Traccar `GET /api/devices?id=` + `PUT /api/devices/{id}` to flip `disabled`, all of which `link-device` had already done. `Device::enable` detects the no-op (`setTraccarDisabled` → `unchanged`, SIM already enabled) and returns "already enabled; state synced" **without** extending expiration, so the screen only ever added two failure modes and a "Skip for now" path that left users with a linked-but-idle-looking device. `POST /device/enable` itself stays — it still backs the activate/deactivate toggle in Device Settings.
 
 ### History / Daily Route (`src/views/history/dailyRoute.vue`)
 

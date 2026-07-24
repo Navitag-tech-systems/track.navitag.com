@@ -4,6 +4,7 @@ import { useRouter, useRoute } from 'vue-router';
 import { useUserStore } from '@/stores/user.js';
 import { useDevicesStore } from '@/stores/devices.js';
 import { request } from '@/utils/http.js'
+import { baseUrl } from '@/utils/variables';
 import { LifecycleService } from '@/utils/lifecycle';
 
 const router = useRouter();
@@ -44,37 +45,36 @@ const updateToTraccar = async (latLngs) => {
   try {
     const pointsArray = Array.isArray(latLngs[0]) ? latLngs[0] : latLngs;
 
-    // Preserving the existing working WKT formatting logic
-    let points = pointsArray.map(p => `${p.lat} ${p.lng}`);
-    
-    const first = points[0];
-    const last = points[points.length - 1];
-    if (first !== last) {
-      points.push(first);
-    }
-    
-    const areaString = `POLYGON ((${points.join(', ')}))`;
-
+    // Points, not WKT — the server builds the polygon string (one axis-order
+    // implementation instead of two). It also merges onto the authoritative
+    // Traccar record, so `description` / `calendarId` / `attributes` survive
+    // an edit; this used to PUT a 3-field object and silently clear them.
     await request.send({
-      url: `https://${userStore.server_url}/api/geofences/${geoid}`,
+      url: `${baseUrl}/geofence/${geoid}`,
       method: 'PUT',
-      isTraccar: true,
+      token: userStore.idToken,
       data: {
-        id: Number(geoid),
         name: geofenceName.value.trim(),
-        area: areaString,
+        points: pointsArray.map(p => [p.lat, p.lng]),
       },
     })
 
     LifecycleService.startSession()
 
-    // Success! Update local Pinia store  
+    // Success! Update local Pinia store
     router.replace('/');
 
   } catch (err) {
     console.error('Failed to update geofence:', err);
     isSaving.value = false;
-    
+
+    // A rejected shape or name is the user's to fix, not a dead end — the
+    // global error screen would strand them with no way back to the drawing.
+    if (err?.status === 400 || err?.status === 404) {
+      alert(err.message || 'That geofence could not be updated.');
+      return;
+    }
+
     // Trigger global dead-end error
     userStore.error = true;
   }

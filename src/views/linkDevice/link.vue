@@ -35,7 +35,11 @@ const linkDeviceToAccount = async () => {
     });
 
     if (data.status === 'success') {
-      router.push(`/linkdevice/enable/${imei}`);
+      // /user/link-device is the whole activation: it sets Traccar
+      // disabled=false, joins the owner group, enables the SIM (with rollback
+      // on failure) and sets expiration from preloaded_months. There is no
+      // separate activation step left to route through.
+      router.push('/linkdevice/success');
     } else {
       throw new Error(data.error || data.message || 'Unknown error occurred.');
     }

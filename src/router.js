@@ -13,7 +13,6 @@ import LinkDeviceStart from '@/views/linkDevice/start.vue'
 import LinkDeviceSelect from '@/views/linkDevice/select.vue'
 import LinkDeviceError from '@/views/linkDevice/error.vue'
 import LinkDeviceLink from '@/views/linkDevice/link.vue'
-import LinkDeviceEnable from '@/views/linkDevice/enable.vue'
 import LinkDeviceSuccess from '@/views/linkDevice/success.vue'
 
 import DeviceSettings from './views/lists/deviceSettings.vue'
@@ -84,12 +83,6 @@ const router = createRouter({
       path: '/linkdevice/link/:imei',
       name: 'linkdevice-link',
       component: LinkDeviceLink,
-      meta: { requiresAuth: true, activeTab: 'list' }
-    },
-    {
-      path: '/linkdevice/enable/:imei',
-      name: 'linkdevice-enable',
-      component: LinkDeviceEnable,
       meta: { requiresAuth: true, activeTab: 'list' }
     },
     {

@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router';
 import { useUserStore } from '@/stores/user.js';
 import { useDevicesStore } from '@/stores/devices.js';
 import { request } from '@/utils/http';
+import { baseUrl } from '@/utils/variables';
 import { LifecycleService } from '@/utils/lifecycle';
 
 const router = useRouter();
@@ -25,34 +26,12 @@ const nextStep = () => {
   step.value = 2; // Proceed to map drawing
 };
 
-// Link the newly created geofence to the user's 1:1 Traccar group so it
-// applies to every device they own (including future ones). Retried with
-// backoff because the geofence already exists at this point — a transient
-// failure should not leave an orphan. Best-effort: returns false on full
-// exhaustion; caller still navigates so the user isn't trapped.
-const linkGeofenceToUserGroup = async (geofenceId, attempts = 3) => {
-  const groupId = userStore.server_group;
-  if (!groupId) return false;
-  for (let i = 0; i < attempts; i++) {
-    try {
-      await request.send({
-        url: `https://${userStore.server_url}/api/permissions`,
-        method: 'POST',
-        data: { groupId: Number(groupId), geofenceId: Number(geofenceId) },
-        isTraccar: true,
-      });
-      return true;
-    } catch (err) {
-      console.warn(`[Geofence] link attempt ${i + 1}/${attempts} failed:`, err?.message || err);
-      if (i < attempts - 1) {
-        await new Promise(r => setTimeout(r, 500 * (i + 1)));
-      }
-    }
-  }
-  return false;
-};
+// The geofence→group link is no longer this view's problem. POST /v1/geofence
+// creates and links in one atomic server-side step, and rolls the geofence back
+// if the link fails — so the old create-then-retry-3× dance, and the orphan it
+// left behind when it gave up, are both gone.
 
-const saveToTraccar = async (latLngs) => {
+const saveGeofence = async (latLngs) => {
   if (isSaving.value) return;
   isSaving.value = true;
   deviceStore.loading = true
@@ -61,60 +40,53 @@ const saveToTraccar = async (latLngs) => {
     // Ensure we are working with a flat array of {lat, lng} objects.
     const pointsArray = Array.isArray(latLngs[0]) ? latLngs[0] : latLngs;
 
-    // --- CORRECTION START ---
-    // Traccar WKT expects "LONGITUDE LATITUDE" (X Y order).
-    // Original code was sending "LAT LON", which flips coordinates.
-    let points = pointsArray.map(p => `${p.lat} ${p.lng}`);
-    // --- CORRECTION END ---
-
-    // Traccar WKT requires the polygon to be closed (first point == last point)
-    // Leaflet often gives an open array, so we close it manually if needed.
-    const first = points[0];
-    const last = points[points.length - 1];
-    if (first !== last) {
-      points.push(first);
-    }
-
-    const areaString = `POLYGON ((${points.join(', ')}))`;
-
+    // Send points, not WKT. The server is the only place that builds the
+    // polygon string now, so the lat/lon axis order has one implementation
+    // instead of the two that used to disagree with their own comments.
     const newGeofence = await request.send({
-      url: `https://${userStore.server_url}/api/geofences`,
+      url: `${baseUrl}/geofence`,
       method: 'POST',
+      token: userStore.idToken,
       data: {
         name: geofenceName.value.trim(),
-        area: areaString,
+        points: pointsArray.map(p => [p.lat, p.lng]),
       },
-      isTraccar: true,
     })
 
-    if(!newGeofence) userStore.error = true
-
-    // Link the geofence to the user's 1:1 Traccar group so it auto-applies to
-    // every owned device. Without this, geofenceEnter/Exit rules never fire.
-    const linked = await linkGeofenceToUserGroup(newGeofence.id);
-    if (!linked) {
-      console.error('[Geofence] Failed to link geofence to user group after retries:', newGeofence.id);
-    }
-
-    // Update local Pinia store immediately to reflect changes on the map
-    // Note: Store keeps [lat, lon] format for Leaflet, while Server gets WKT [lon, lat]
-    const leafletPoints = pointsArray.map(p => [p.lng, p.lat]);
-
+    // Optimistic store update so the shape is on the map before the refetch.
+    // [lat, lng] — matching what fetchGeofences parses out of the WKT. This
+    // used to write [lng, lat], drawing every newly-created geofence
+    // transposed until the next session refresh corrected it.
     deviceStore.geofences[newGeofence.id] = {
       name: newGeofence.name,
-      points: leafletPoints
+      points: pointsArray.map(p => [p.lat, p.lng])
     };
 
     LifecycleService.startSession()
 
-    // Success! Update local Pinia store
     router.replace('/')
-
 
   } catch (err) {
     console.error('Failed to save geofence:', err);
-    alert('Failed to save geofence. Please check your internet connection.');
+
+    // 409 is the server refusing, not failing: either the plan quota is used
+    // up or the account is mid-provisioning. Both are actionable, so say which
+    // rather than blaming the connection.
+    if (err?.status === 409) {
+      const body = err.body || {};
+      if (body.action === 'retry_after_sync') {
+        alert('Your account is still being set up. Please close and reopen the app, then try again.');
+      } else {
+        alert(`You have used all ${body.geofence_limit ?? ''} geofences included in your ${body.tier ?? 'current'} plan. Delete one, or upgrade a device, to add another.`.replace(/\s+/g, ' '));
+      }
+    } else if (err?.status === 400) {
+      alert(err.message || 'That shape could not be saved. Try drawing it again.');
+    } else {
+      alert('Failed to save geofence. Please check your internet connection.');
+    }
     isSaving.value = false;
+  } finally {
+    deviceStore.loading = false;
   }
 };
 
@@ -123,7 +95,7 @@ const unwatch = watch(() => deviceStore.draftPolygon, (data) => {
   if (data && step.value === 2) {
     // data[0] is the poly_id (should be 'new')
     // data[1] is the LatLngs array drawn by the user
-    saveToTraccar(data[1]);
+    saveGeofence(data[1]);
   }
 });
 

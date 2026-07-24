@@ -421,7 +421,7 @@ const handleLogout = async () => {
         <form @submit.prevent="updateProfile" class="space-y-4">
           <div>
             <input
-              :value="userStore.user?.email || userStore.email || ''"
+              :value="userStore.email || userStore.user?.email || ''"
               type="email"
               placeholder="Email"
               readonly

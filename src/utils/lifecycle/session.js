@@ -67,7 +67,10 @@ export const session = {
       // processSocketData's "create new device" branch.
       useBrokerStore().connect();
 
-      deviceStore.enforceGeofenceLimit();
+      // The geofence quota is enforced entirely server-side now: creation is
+      // refused at the limit by POST /v1/geofence, and pruning runs from the
+      // plan/expiration events that actually change an allowance. Deleting a
+      // user's data as a side effect of opening the app is gone.
 
       return true;
     } finally {
@@ -146,8 +149,6 @@ export const session = {
         const broker = useBrokerStore();
         broker.disconnect();
         broker.connect();
-
-        deviceStore.enforceGeofenceLimit();
       } else {
         userStore.error = true;
       }
@@ -198,8 +199,6 @@ export const session = {
         () => this.handleSocketDisconnect()
       );
       useBrokerStore().connect();
-
-      deviceStore.enforceGeofenceLimit();
 
       console.log('✅ Data reloaded and socket reconnected successfully!');
     } catch (error) {

@@ -356,28 +356,20 @@ const saveDevice = async () => {
   successMsg.value = '';
 
   try {
-    const nextAttributes = { ...(device.value.attributes || {}) };
-    if (noSpeedLimit.value) {
-      delete nextAttributes.speedLimit;
-    } else {
-      nextAttributes.speedLimit = kphNum * KNOTS_PER_KPH;
-    }
+    // Send ONLY what this screen edits. The API read-modify-writes these onto
+    // the live Traccar snapshot, so groupId / uniqueId / phone / model / contact
+    // are no longer ours to echo back — sending a stale copy of those is exactly
+    // what could clobber live state. `disabled` is owned by /device/enable and
+    // /device/disable (see toggleDevice), not by this call.
+    const edits = {
+      name: name.value.trim(),
+      category: category.value ?? null,
+      // null clears the limit; the server merges into attributes rather than
+      // replacing them, so activity_lock / auto_lock survive untouched.
+      speedLimit: noSpeedLimit.value ? null : kphNum * KNOTS_PER_KPH,
+    };
 
-    // Traccar expects the full device object on PUT
-    const updatedDevice = {
-      "id": deviceId,
-      "name": name.value.trim(),
-      "uniqueId": device.value.uniqueId,
-      "disabled": !isActive.value,
-      "groupId": device.value.groupId,
-      "phone": device.value.phone,
-      "model": device.value.model,
-      "contact": device.value.contact,
-      "category": category.value,
-      "attributes": nextAttributes
-    }
-
-    const update = await deviceStore.updateDevice(deviceId, updatedDevice);
+    const update = await deviceStore.updateDevice(deviceId, edits);
 
     if (update) {
       router.push("/")
