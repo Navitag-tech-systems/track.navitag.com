@@ -31,6 +31,33 @@ const nextStep = () => {
 // if the link fails — so the old create-then-retry-3× dance, and the orphan it
 // left behind when it gave up, are both gone.
 
+// One create attempt plus the shared success side-effects. Used by both the
+// first attempt and the post-sync retry, so the two can never drift. Throws on
+// a non-2xx (the caller decides whether to retry); navigates away on success.
+const attemptCreate = async (pointsArray, createBody) => {
+  // Send points, not WKT. The server is the only place that builds the
+  // polygon string now, so the lat/lon axis order has one implementation
+  // instead of the two that used to disagree with their own comments.
+  const newGeofence = await request.send({
+    url: `${baseUrl}/geofence`,
+    method: 'POST',
+    token: userStore.idToken,
+    data: createBody,
+  });
+
+  // Optimistic store update so the shape is on the map before the refetch.
+  // [lat, lng] — matching what fetchGeofences parses out of the WKT. This
+  // used to write [lng, lat], drawing every newly-created geofence
+  // transposed until the next session refresh corrected it.
+  deviceStore.geofences[newGeofence.id] = {
+    name: newGeofence.name,
+    points: pointsArray.map(p => [p.lat, p.lng]),
+  };
+
+  LifecycleService.startSession();
+  router.replace('/');
+};
+
 const saveGeofence = async (latLngs) => {
   if (isSaving.value) return;
   isSaving.value = true;
@@ -39,46 +66,45 @@ const saveGeofence = async (latLngs) => {
     // Leaflet polygons can be nested arrays depending on shape complexity.
     // Ensure we are working with a flat array of {lat, lng} objects.
     const pointsArray = Array.isArray(latLngs[0]) ? latLngs[0] : latLngs;
-
-    // Send points, not WKT. The server is the only place that builds the
-    // polygon string now, so the lat/lon axis order has one implementation
-    // instead of the two that used to disagree with their own comments.
-    const newGeofence = await request.send({
-      url: `${baseUrl}/geofence`,
-      method: 'POST',
-      token: userStore.idToken,
-      data: {
-        name: geofenceName.value.trim(),
-        points: pointsArray.map(p => [p.lat, p.lng]),
-      },
-    })
-
-    // Optimistic store update so the shape is on the map before the refetch.
-    // [lat, lng] — matching what fetchGeofences parses out of the WKT. This
-    // used to write [lng, lat], drawing every newly-created geofence
-    // transposed until the next session refresh corrected it.
-    deviceStore.geofences[newGeofence.id] = {
-      name: newGeofence.name,
-      points: pointsArray.map(p => [p.lat, p.lng])
+    const createBody = {
+      name: geofenceName.value.trim(),
+      points: pointsArray.map(p => [p.lat, p.lng]),
     };
 
-    LifecycleService.startSession()
-
-    router.replace('/')
+    try {
+      await attemptCreate(pointsArray, createBody);
+    } catch (err) {
+      // 409 { action: 'retry_after_sync' } is the account mid-provisioning:
+      // server_group isn't set yet, so create was refused BEFORE anything was
+      // created on Traccar (the guard runs first) — nothing to duplicate. A
+      // fresh /user/sync heals the group server-side (CASE 3 self-heal), and
+      // that only runs on sync, not on foreground resume — so telling the user
+      // to relaunch was the only recovery. Re-sync once and retry the create
+      // here instead. Bounded to one sync + one retry: a persistent
+      // provisioning failure re-throws and drops through to the message.
+      if (err?.status === 409 && (err.body || {}).action === 'retry_after_sync') {
+        try {
+          if (await userStore.backendSync()) {
+            await attemptCreate(pointsArray, createBody);
+            return; // healed and created — navigated away
+          }
+        } catch (retryErr) {
+          console.error('Geofence create retry after sync failed:', retryErr);
+        }
+        alert('Your account is still being set up. Please close and reopen the app, then try again.');
+        isSaving.value = false;
+        return;
+      }
+      throw err; // anything else is handled by the terminal branch below
+    }
 
   } catch (err) {
     console.error('Failed to save geofence:', err);
 
-    // 409 is the server refusing, not failing: either the plan quota is used
-    // up or the account is mid-provisioning. Both are actionable, so say which
-    // rather than blaming the connection.
+    // retry_after_sync is handled above; a 409 reaching here is the plan quota.
     if (err?.status === 409) {
       const body = err.body || {};
-      if (body.action === 'retry_after_sync') {
-        alert('Your account is still being set up. Please close and reopen the app, then try again.');
-      } else {
-        alert(`You have used all ${body.geofence_limit ?? ''} geofences included in your ${body.tier ?? 'current'} plan. Delete one, or upgrade a device, to add another.`.replace(/\s+/g, ' '));
-      }
+      alert(`You have used all ${body.geofence_limit ?? ''} geofences included in your ${body.tier ?? 'current'} plan. Delete one, or upgrade a device, to add another.`.replace(/\s+/g, ' '));
     } else if (err?.status === 400) {
       alert(err.message || 'That shape could not be saved. Try drawing it again.');
     } else {
