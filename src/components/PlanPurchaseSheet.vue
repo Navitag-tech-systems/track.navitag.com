@@ -105,15 +105,55 @@ const showStatus = computed(() => !!purchasingId.value || phase.value !== 'idle'
 // (the header ✕ is hidden; Close only appears once settled/timed out).
 const isProcessing = computed(() => !!purchasingId.value || phase.value === 'processing');
 
-// Estimated new expiration if this duration is bought now. Top-ups stack, so
-// they extend from the later of today / current expiration (mirrors
-// applyPreviewUpdate and the backend). Display-only estimate.
-function estimatedExpiration(months) {
+// The 3-month price for a tier, from the loaded offering — used for the
+// tier-change conversion ratio below. Prefers the numeric StoreProduct.price,
+// falls back to parsing priceString (covers the localhost preview mock).
+function threeMonthPrice(tier) {
+  const list = groupedPackages.value[tier] || [];
+  const three = list.find((e) => e.months === 3) || list[0];
+  const p = three?.pkg?.product;
+  if (p?.price != null && !Number.isNaN(Number(p.price))) return Number(p.price);
+  const n = parseFloat(String(p?.priceString || '').replace(/[^0-9.]/g, ''));
+  return Number.isNaN(n) ? null : n;
+}
+
+// Whether buying `entry` converts an already-active plan to a different tier —
+// i.e. the shown date is the backend's value-preserving *estimate*, not an exact
+// top-up. Drives the "est." prefix on the card (and the conversion math below).
+function isConversionEstimate(entry) {
   const now = new Date();
   const current = props.device?.expiration ? new Date(props.device.expiration) : null;
-  const base = current && current > now ? new Date(current) : new Date(now);
-  base.setMonth(base.getMonth() + months);
-  return base.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const hasActive = current && current > now;
+  const curPrice = threeMonthPrice(currentTier.value);
+  const tgtPrice = threeMonthPrice(entry.tier);
+  return !!(entry.tier !== currentTier.value && hasActive && curPrice && tgtPrice);
+}
+
+// Estimated new expiration if this duration is bought now.
+//  • Same tier: top-ups stack — extend from the later of today / current
+//    expiration (mirrors applyPreviewUpdate). Exact.
+//  • Tier change (upgrade/downgrade): the backend converts the remaining paid
+//    time by the 3-month price ratio (currentTier/targetTier) and rebases from
+//    today (api.navitag.net Webhook.php::dataRenew). We mirror that so the
+//    preview matches reality — the basic₃/pro₃ ratio is identical on-device and
+//    in Medusa (both web×1.2). Accurate to about a day (no server tz / −2
+//    buffer), so the card flags it "est." via isConversionEstimate.
+// Display-only estimate.
+function estimatedExpiration(entry) {
+  const now = new Date();
+  const current = props.device?.expiration ? new Date(props.device.expiration) : null;
+  const hasActive = current && current > now;
+  const isTierChange = isConversionEstimate(entry);
+
+  const result = new Date(isTierChange || !hasActive ? now : current);
+  result.setMonth(result.getMonth() + entry.months);
+  if (isTierChange) {
+    const curPrice = threeMonthPrice(currentTier.value);
+    const tgtPrice = threeMonthPrice(entry.tier);
+    const remainingDays = Math.max(0, Math.floor((current.getTime() - now.getTime()) / 86400000));
+    result.setDate(result.getDate() + Math.floor(remainingDays * (curPrice / tgtPrice)));
+  }
+  return result.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 async function loadOffering() {
@@ -146,21 +186,23 @@ watch(displayedPackages, (pkgs) => {
 });
 
 // Fulfillment lands via an async RevenueCat webhook (order → data-renew →
-// device_inventory), NOT in the StoreKit purchase response. So after payment
-// we poll device-expiration until the stored expiration actually advances (or
-// plan_level changes) — that transition is the real "top-up complete" signal.
-// Top-ups stack on an active plan, so we compare against the pre-purchase
-// value. Returns false if nothing landed within the window (webhook slow or
-// failed); the caller then shows a "will update shortly" state, never a false
-// "done".
-async function waitForFulfillment(prevExpiration, prevPlan, attempts = 13, delayMs = 1500) {
+// device_inventory), NOT in the StoreKit purchase response. So after payment we
+// poll device-expiration until the stored expiration CHANGES (or plan_level
+// changes) — that transition is the real "top-up complete" signal. Same-tier
+// top-ups push the expiration later; a tier UPGRADE (basic→pro) converts unused
+// allocation to the pricier tier and can move the expiration EARLIER, so we
+// detect any change in either direction (guarded against a transient null/0),
+// not just an advance. Returns false if nothing landed within the window
+// (webhook slow or failed); the caller then shows a "will update shortly"
+// state, never a false "done".
+async function waitForFulfillment(prevExpiration, prevPlan, attempts = 16, delayMs = 1500) {
   const prevMs = prevExpiration ? new Date(prevExpiration).getTime() : 0;
   for (let i = 0; i < attempts; i++) {
     await new Promise((resolve) => setTimeout(resolve, delayMs));
     await deviceStore.fetchDeviceExpirations().catch(() => {});
     const d = deviceStore.devices?.[props.device.id];
     const nowMs = d?.expiration ? new Date(d.expiration).getTime() : 0;
-    if (nowMs > prevMs || (d && d.plan_level !== prevPlan)) return true;
+    if ((nowMs && nowMs !== prevMs) || (d && d.plan_level !== prevPlan)) return true;
   }
   return false;
 }
@@ -386,7 +428,7 @@ function close() {
                       </span>
                       <span class="flex flex-col items-start">
                         <span class="text-sm font-bold text-gray-800">{{ entry.months }} Months</span>
-                        <span class="text-[11px] font-normal text-gray-400 mt-0.5">expires on {{ estimatedExpiration(entry.months) }}</span>
+                        <span class="text-[11px] font-normal text-gray-400 mt-0.5">{{ isConversionEstimate(entry) ? 'est. ' : '' }}expires on {{ estimatedExpiration(entry) }}</span>
                       </span>
                     </span>
                     <span class="text-sm font-bold text-brand">{{ entry.pkg.product.priceString }}</span>
