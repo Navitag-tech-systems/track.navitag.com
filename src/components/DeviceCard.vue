@@ -10,6 +10,7 @@ import { useToastStore } from '@/stores/toast.js';
 import SharedBadge from '@/components/SharedBadge.vue';
 import { hasScope } from '@/utils/scopes';
 import { getSignalLevel, getBatteryPercentage, getGpsQuality, getWarnings, formatDate } from '@/utils/deviceMetrics';
+import InlineLoader from '@/components/InlineLoader.vue';
 
 const props = defineProps({
   device: { type: Object, required: true },
@@ -184,7 +185,7 @@ const goToSettings = () => router.push(`/device/settings/${props.device.id}`);
         :title="device.shared ? 'Activity lock can only be controlled by the device owner' : ''"
         class="flex-1 flex flex-col items-center justify-center bg-surface hover:bg-gray-100 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-surface"
       >
-        <i v-if="lockBusy" class="fa-solid fa-circle-notch fa-spin text-lg text-gray-500 mb-1"></i>
+        <InlineLoader v-if="lockBusy" size="lg" class="text-gray-500 mb-1" />
         <i
           v-else
           :class="[

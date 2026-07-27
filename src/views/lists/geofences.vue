@@ -6,6 +6,7 @@ import { useUserStore } from '@/stores/user.js';
 import { request } from '@/utils/http';
 import { baseUrl } from '@/utils/variables';
 import GeofenceLimitModal from '@/components/geofenceLimitModal.vue';
+import InlineLoader from '@/components/InlineLoader.vue';
 
 const router = useRouter();
 const deviceStore = useDevicesStore();
@@ -203,8 +204,8 @@ const editGeofence = (id) => {
                 :disabled="isDeleting"
                 class="py-3 px-4 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-sm transition-colors flex items-center justify-center gap-2 outline-none disabled:opacity-70"
               >
-                <i v-if="isDeleting" class="fa-solid fa-circle-notch fa-spin"></i>
-                {{ isDeleting ? 'Deleting...' : 'Delete' }}
+                <InlineLoader v-if="isDeleting" />
+                {{ isDeleting ? 'Deleting…' : 'Delete' }}
               </button>
             </div>
 

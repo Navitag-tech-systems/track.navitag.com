@@ -4,6 +4,7 @@ import { RouterLink } from 'vue-router';
 import { supportedProviders, getErrorMessage, createUserWithEmailAndPassword } from '@/utils/auth';
 import { useUserStore } from '@/stores/user.js';
 import { countries } from '@/utils/countryList';
+import InlineLoader from '@/components/InlineLoader.vue';
 
 const userStore = useUserStore();
 const email = ref('');
@@ -148,8 +149,9 @@ const handleSignup = async () => {
           8 characters long and have 1 Capital, 1 Number, 1 special Character
         </p>
         
-        <button type="submit" :disabled="loading" class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-2 px-4 rounded transition disabled:opacity-50 cursor-pointer">
-          {{ loading ? 'Creating Account...' : 'Sign Up' }}
+        <button type="submit" :disabled="loading" class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-2 px-4 rounded transition disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2">
+          <InlineLoader v-if="loading" />
+          {{ loading ? 'Creating account…' : 'Sign Up' }}
         </button>
       </form>
 

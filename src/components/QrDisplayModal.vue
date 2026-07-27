@@ -1,6 +1,7 @@
 <script setup>
 import { ref, watch } from 'vue';
 import QRCode from 'qrcode';
+import InlineLoader from '@/components/InlineLoader.vue';
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -56,7 +57,7 @@ watch(
     </div>
     <div v-else-if="errorMsg" class="text-red-300 text-sm py-12">{{ errorMsg }}</div>
     <div v-else class="text-white text-sm py-12">
-      <i class="fa-solid fa-circle-notch fa-spin mr-1"></i>Generating...
+      <InlineLoader label="Generating…" />
     </div>
 
     <button

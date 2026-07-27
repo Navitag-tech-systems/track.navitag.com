@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useUserStore } from '@/stores/user.js';
 import { baseUrl } from '@/utils/variables';
 import { request } from '@/utils/http';
+import InlineLoader from '@/components/InlineLoader.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -94,8 +95,8 @@ const linkDeviceToAccount = async () => {
         :disabled="loading"
         class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-4 px-4 rounded-xl flex items-center justify-center transition cursor-pointer text-lg shadow-md active:scale-[0.98] disabled:opacity-50"
       >
-        <i v-if="loading" class="fa-solid fa-circle-notch fa-spin mr-2"></i>
-        {{ loading ? 'Linking...' : 'Link Device' }}
+        <InlineLoader v-if="loading" class="mr-2" />
+        {{ loading ? 'Linking…' : 'Link Device' }}
       </button>
     </div>
   </div>

@@ -7,6 +7,7 @@ import { request } from '@/utils/http.js';
 import { baseUrl } from '@/utils/variables';
 import { hasScope } from '@/utils/scopes';
 import SharedBadge from '@/components/SharedBadge.vue';
+import InlineLoader from '@/components/InlineLoader.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -203,8 +204,7 @@ const kindMeta = {
       </div>
 
       <div v-if="loading" class="flex items-center justify-center p-6 text-gray-400 text-sm">
-        <i class="fa-solid fa-circle-notch fa-spin mr-2"></i>
-        Loading…
+        <InlineLoader label="Loading…" />
       </div>
 
       <div v-else-if="errorMsg" class="bg-red-50 text-red-600 text-sm p-3 rounded-xl border border-red-100 flex items-center gap-2">

@@ -1,11 +1,12 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter, RouterView } from 'vue-router';
 import { useUserStore } from '@/stores/user.js';
 import { useDevicesStore } from '@/stores/devices.js';
 import { useInstallStore, INSTALL_TOAST_ENABLED } from '@/stores/install.js';
 import { useToastStore } from '@/stores/toast.js';
 import { useAppGateStore } from '@/stores/appGate.js';
+import { useBootStore } from '@/stores/boot.js';
 import BottomNav from './components/bottomNav.vue';
 import Loading from '@/components/loading.vue';
 import Error from '@/components/error.vue';
@@ -24,6 +25,7 @@ const deviceStore = useDevicesStore();
 const installStore = useInstallStore();
 const toastStore = useToastStore();
 const appGate = useAppGateStore();
+const boot = useBootStore();
 const route = useRoute();
 const router = useRouter();
 
@@ -61,9 +63,53 @@ const masterLoading = computed(() => {
   }
 })
 
+// COLD vs WARM.
+//
+// The dividing line is "has the app ever been fully up this login", which is
+// NOT deviceStore.hasLoadedOnce — that flips as soon as the device list is
+// known, while masterLoading stays true through the wait for the first
+// position. Using it here would tear the splash away at ~85% and drop the user
+// into an empty map, which is precisely the gap the splash exists to cover.
+//
+// So latch it explicitly: the first time masterLoading goes false while logged
+// in AND holding real data. The hasLoadedOnce condition matters on the failure
+// path — a fetch that threw releases masterLoading without ever producing
+// data, and that must not count as "we've been up", or the retry would come
+// back as a hairline bar over an empty list instead of a proper splash.
+const hasRenderedOnce = ref(false);
+watch(masterLoading, (busy) => {
+  if (!busy && userStore.isLoggedIn && deviceStore.hasLoadedOnce) {
+    hasRenderedOnce.value = true;
+  }
+});
+// Logging out drops us back to nothing on screen; the next login is cold again.
+watch(() => userStore.isLoggedIn, (loggedIn) => {
+  if (!loggedIn) hasRenderedOnce.value = false;
+});
+
+const showColdSplash = computed(() => masterLoading.value && !hasRenderedOnce.value);
+
+// Driven by the boot run rather than masterLoading, so the bar spans the whole
+// reconnect (including the serverConnect leg, where neither loading flag is
+// necessarily set). The leave transition is what holds it visible at 100%.
+//
+// Not gated on mode === 'warm': this is the fallback for ANY boot run that
+// isn't showing the cold splash, so a cold run that somehow starts with data
+// already on screen still gets feedback instead of nothing at all.
+const showWarmBar = computed(() => !showColdSplash.value && boot.inProgress);
+
 const showNav = computed(() => {
   let plat = getPlatformInfo(); // Evaluates platform logic
-  return masterLoading.value === false && userStore.isLoggedIn && route.meta.requiresAuth === true && route.meta.activeTab !== false;
+  // The blocking overlays are listed explicitly rather than inferred from
+  // masterLoading. That coupling was accidental — masterLoading happened to be
+  // true during a failed reconnect (server_connect false), which is the only
+  // reason the nav wasn't already painting on top of <Error />; it renders
+  // later in the DOM at the same z-50. <NoNet /> never got that protection at
+  // all. Both are now handled on purpose.
+  if (showColdSplash.value) return false;
+  if (userStore.error || !userStore.internet) return false;
+  if (appGate.action === 'block') return false;
+  return userStore.isLoggedIn && route.meta.requiresAuth === true && route.meta.activeTab !== false;
 });
 
 const activeGeofences = computed(() => {
@@ -88,7 +134,16 @@ function trackMapMode(mode){
 
 async function retryConnection() {
   userStore.error = false;
-  await LifecycleService.checkConnectionAndReconnect();
+  // The most common way to reach <Error /> is a failed /user/sync — which
+  // means server_url was never set, and checkConnectionAndReconnect bails on
+  // its own `if (!userStore.server_url) return` guard before doing anything.
+  // Retry was silently a no-op in exactly the case users hit most. Fall back
+  // to a full cold restart when there is no Traccar session to resume.
+  if (userStore.server_url) {
+    await LifecycleService.checkConnectionAndReconnect();
+  } else {
+    await LifecycleService.startSession();
+  }
 }
 
 // Returns 'install' | 'notification' | null. Prompt matrix:
@@ -177,7 +232,13 @@ function dismissInstallToast() {
          out — see components/updateRequired.vue. -->
     <UpdateRequired v-if="appGate.action === 'block'"/>
 
-    <Loading v-if="masterLoading"/>
+    <Transition name="boot-fade">
+      <Loading v-if="showColdSplash" variant="cold"/>
+    </Transition>
+    <Transition name="boot-fade">
+      <Loading v-if="showWarmBar" variant="warm"/>
+    </Transition>
+
     <Error v-if="userStore.error"/>
     <NoNet v-if="!userStore.internet"/>
 
@@ -251,8 +312,16 @@ function dismissInstallToast() {
         class="absolute inset-0 z-0 transition-opacity duration-300"
         :class="isMapRoute ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'"
       >
+        <!-- Mounted on `hasLoadedOnce`, NOT on masterLoading. Gating on the
+             latter tore the entire Leaflet instance down and rebuilt it — tiles,
+             markers, geoman layers — on every foreground self-heal. It also
+             delayed first mount until after the splash lifted; now the map
+             initialises behind the splash, so tiles are already in flight by
+             the time the user sees it. Safe to mount with an empty marker set:
+             leafletMap watches its device key-set and creates markers as
+             processSocketData populates them. -->
         <leafletMap
-          v-if="userStore.isLoggedIn && masterLoading === false"
+          v-if="userStore.isLoggedIn && deviceStore.hasLoadedOnce"
           :mode="isMapRoute ? isMapRoute : 'track'"
           :devices="deviceStore.deviceMarkers"
           :geos="activeGeofences"
@@ -302,5 +371,22 @@ function dismissInstallToast() {
 </template>
 
 <style>
-/* No extra styles needed if Tailwind is handling everything */
+/* Boot surfaces fade out rather than popping. The leave transition is also what
+   gives the "hold at 100%" beat: the bar has already snapped to 100 by the time
+   the v-if flips, so it lingers there for the duration of the fade. */
+.boot-fade-enter-active,
+.boot-fade-leave-active {
+  transition: opacity 260ms ease;
+}
+.boot-fade-enter-from,
+.boot-fade-leave-to {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boot-fade-enter-active,
+  .boot-fade-leave-active {
+    transition-duration: 1ms;
+  }
+}
 </style>

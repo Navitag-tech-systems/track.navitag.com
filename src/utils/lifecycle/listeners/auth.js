@@ -1,5 +1,6 @@
 import { auth } from '@/firebase';
 import { useUserStore } from '@/stores/user';
+import { useBootStore } from '@/stores/boot';
 import router from '@/router';
 import { iapLogIn, iapLogOut } from '@/utils/iap';
 import { clearMedusaSession } from '@/utils/medusa';
@@ -13,6 +14,7 @@ export function registerAuthListeners(session) {
       console.log('✅ Auth State: Logged In');
 
       await userStore.setUser(firebaseUser);
+      useBootStore().done('auth');
       iapLogIn(firebaseUser.uid);
 
       const sessionStarted = await session.startSession();
@@ -21,6 +23,11 @@ export function registerAuthListeners(session) {
       }
     } else {
       console.log('🛑 Auth State: Logged Out');
+      // Stand the boot run down. init() opened it with auth + region in flight,
+      // and nothing on the logged-out path ever closes those — leaving the
+      // progress store's rAF loop running for as long as the user sits on the
+      // login screen. A later login re-opens the run from startSession.
+      useBootStore().reset('cold');
       iapLogOut();
       clearMedusaSession();
       if (userStore.isLoggedIn) {

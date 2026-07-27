@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { LifecycleService } from '@/utils/lifecycle';
+import InlineLoader from '@/components/InlineLoader.vue';
 
 const router = useRouter();
 
@@ -59,7 +60,7 @@ function goToMap() {
         class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-4 px-4 rounded-xl flex items-center justify-center transition cursor-pointer text-lg shadow-md active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <template v-if="isRefreshing">
-          <i class="fa-solid fa-spinner fa-spin mr-2"></i> SYNCING...
+          <InlineLoader label="Syncing…" size="lg" />
         </template>
         <template v-else>
           MAP

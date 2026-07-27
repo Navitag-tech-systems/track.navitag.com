@@ -5,7 +5,7 @@ import { useUserStore } from '@/stores/user.js';
 import { useDevicesStore } from '@/stores/devices.js';
 import { request } from '@/utils/http.js'
 import { baseUrl } from '@/utils/variables';
-import { LifecycleService } from '@/utils/lifecycle';
+import InlineLoader from '@/components/InlineLoader.vue';
 
 const router = useRouter();
 const route = useRoute();
@@ -41,7 +41,11 @@ const nextStep = () => {
 const updateToTraccar = async (latLngs) => {
   if (isSaving.value) return;
   isSaving.value = true;
-  deviceStore.loading = true
+  // Deliberately does NOT touch deviceStore.loading. That flag raises the
+  // global boot splash, and this function set it true on entry with no
+  // matching false on ANY path — so a rejected edit (the 400/404 branch below)
+  // dismissed its alert straight onto a permanent full-screen splash. The
+  // `isSaving` sheet spinner in the template is the correct, scoped feedback.
   try {
     const pointsArray = Array.isArray(latLngs[0]) ? latLngs[0] : latLngs;
 
@@ -59,7 +63,13 @@ const updateToTraccar = async (latLngs) => {
       },
     })
 
-    LifecycleService.startSession()
+    // Refetch just the geofences. This used to call
+    // LifecycleService.startSession(), which re-ran the ENTIRE boot pipeline —
+    // /user/sync, Traccar reconnect, full device fetch, socket cycle — to pick
+    // up one edited polygon.
+    deviceStore.fetchGeofences().catch(err => {
+      console.warn('Geofence refetch after edit failed:', err?.message || err);
+    });
 
     // Success! Update local Pinia store
     router.replace('/');
@@ -145,8 +155,8 @@ onUnmounted(() => {
 
     <div v-if="step === 2" class="mt-auto pointer-events-auto bg-white rounded-t-3xl shadow-[0_-10px_20px_rgba(0,0,0,0.05)] p-5 pb-8 z-10 text-center">
       <div v-if="isSaving" class="py-4">
-        <i class="fa-solid fa-circle-notch fa-spin text-brand text-2xl mb-3"></i>
-        <p class="text-sm font-bold text-gray-700">Saving to server...</p>
+        <InlineLoader size="2xl" class="text-brand mb-3" />
+        <p class="text-sm font-bold text-gray-700">Saving…</p>
       </div>
       <div v-else>
         <h3 class="font-bold text-gray-800 mb-1">{{ geofenceName }}</h3>

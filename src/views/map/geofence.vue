@@ -5,7 +5,7 @@ import { useUserStore } from '@/stores/user.js';
 import { useDevicesStore } from '@/stores/devices.js';
 import { request } from '@/utils/http';
 import { baseUrl } from '@/utils/variables';
-import { LifecycleService } from '@/utils/lifecycle';
+import InlineLoader from '@/components/InlineLoader.vue';
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -54,14 +54,24 @@ const attemptCreate = async (pointsArray, createBody) => {
     points: pointsArray.map(p => [p.lat, p.lng]),
   };
 
-  LifecycleService.startSession();
+  // Refetch just the geofences. This used to call
+  // LifecycleService.startSession(), which re-ran the ENTIRE boot pipeline —
+  // /user/sync, Traccar reconnect, full device fetch, socket cycle — to pick up
+  // one new polygon, and raced the `finally` below for ownership of
+  // deviceStore.loading.
+  deviceStore.fetchGeofences().catch(err => {
+    console.warn('Geofence refetch after create failed:', err?.message || err);
+  });
   router.replace('/');
 };
 
 const saveGeofence = async (latLngs) => {
   if (isSaving.value) return;
   isSaving.value = true;
-  deviceStore.loading = true
+  // Deliberately does NOT touch deviceStore.loading. That flag raises the
+  // global boot splash (which, before the progress work, read "Navitag Track")
+  // directly over this view's own saving spinner, so saving a shape looked like
+  // the app rebooting. The scoped `isSaving` spinner is the right feedback.
   try {
     // Leaflet polygons can be nested arrays depending on shape complexity.
     // Ensure we are working with a flat array of {lat, lng} objects.
@@ -111,8 +121,6 @@ const saveGeofence = async (latLngs) => {
       alert('Failed to save geofence. Please check your internet connection.');
     }
     isSaving.value = false;
-  } finally {
-    deviceStore.loading = false;
   }
 };
 
@@ -182,8 +190,8 @@ onUnmounted(() => {
 
     <div v-if="step === 2" class="mt-auto pointer-events-auto bg-white rounded-t-3xl shadow-[0_-10px_20px_rgba(0,0,0,0.05)] p-5 pb-8 z-10 text-center">
       <div v-if="isSaving" class="py-4">
-        <i class="fa-solid fa-circle-notch fa-spin text-brand text-2xl mb-3"></i>
-        <p class="text-sm font-bold text-gray-700">Saving to server...</p>
+        <InlineLoader size="2xl" class="text-brand mb-3" />
+        <p class="text-sm font-bold text-gray-700">Saving…</p>
       </div>
       <div v-else>
         <h3 class="font-bold text-gray-800 mb-1">{{ geofenceName }}</h3>

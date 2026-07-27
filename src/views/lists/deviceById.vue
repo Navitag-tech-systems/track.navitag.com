@@ -5,6 +5,7 @@ import { useDevicesStore } from '@/stores/devices.js';
 import { hasScope } from '@/utils/scopes';
 import ShareModal from '@/components/ShareModal.vue';
 import SharedBadge from '@/components/SharedBadge.vue';
+import InlineLoader from '@/components/InlineLoader.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -140,7 +141,8 @@ async function toggleActivityLock() {
     </div>
 
     <div v-if="!device" class="p-10 text-center text-gray-500">
-      <p>Device not found or loading...</p>
+      <p v-if="!deviceStore.hasLoadedOnce">Loading…</p>
+      <p v-else>Device not found.</p>
     </div>
 
     <div v-else class="p-4 space-y-4 pb-10">
@@ -302,7 +304,7 @@ async function toggleActivityLock() {
               activityLock ? 'bg-red-500 hover:bg-red-600' : 'bg-gray-400 hover:bg-gray-500',
             ]"
           >
-            <i v-if="activityLockBusy" class="fa-solid fa-circle-notch fa-spin text-3xl"></i>
+            <InlineLoader v-if="activityLockBusy" size="3xl" />
             <i v-else :class="activityLock ? 'fa-solid fa-lock' : 'fa-solid fa-lock-open'" class="text-3xl"></i>
           </button>
           <p v-if="lockError" class="text-xs text-red-500 mt-2">{{ lockError }}</p>

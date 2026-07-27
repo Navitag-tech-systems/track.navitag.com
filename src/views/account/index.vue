@@ -5,6 +5,7 @@ import { useUserStore } from '@/stores/user.js';
 import { useInstallStore } from '@/stores/install.js';
 import { useNotificationsStore } from '@/stores/notifications.js';
 import QrDisplayModal from '@/components/QrDisplayModal.vue';
+import InlineLoader from '@/components/InlineLoader.vue';
 import { signOut } from '@/utils/auth';
 import { auth } from '@/firebase';
 import { baseUrl } from '@/utils/variables';
@@ -446,8 +447,8 @@ const handleLogout = async () => {
             :disabled="profileLoading"
             class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-3 px-4 rounded transition cursor-pointer text-sm shadow active:scale-[0.98] disabled:opacity-50 mt-2"
           >
-            <i v-if="profileLoading" class="fa-solid fa-circle-notch fa-spin mr-2"></i>
-            {{ profileLoading ? 'Saving...' : 'Save Profile' }}
+            <InlineLoader v-if="profileLoading" class="mr-2" />
+            {{ profileLoading ? 'Saving…' : 'Save Profile' }}
           </button>
         </form>
       </div>
@@ -462,10 +463,10 @@ const handleLogout = async () => {
           </div>
 
           <div class="flex items-center gap-2 shrink-0">
-            <i
+            <InlineLoader
               v-if="masterBusy || (!notifStore.loaded && notifStore.loading)"
-              class="fa-solid fa-circle-notch fa-spin text-gray-400 text-sm"
-            ></i>
+              class="text-gray-400"
+            />
             <button
               type="button"
               :disabled="masterBusy || !notifStore.loaded"
@@ -495,10 +496,7 @@ const handleLogout = async () => {
           </div>
 
           <div class="flex items-center gap-2 shrink-0">
-            <i
-              v-if="emergencyBusy"
-              class="fa-solid fa-circle-notch fa-spin text-gray-400 text-sm"
-            ></i>
+            <InlineLoader v-if="emergencyBusy" class="text-gray-400" />
             <button
               type="button"
               :disabled="emergencyBusy || !notifStore.loaded"
@@ -528,10 +526,7 @@ const handleLogout = async () => {
           </div>
 
           <div class="flex items-center gap-2 shrink-0">
-            <i
-              v-if="pushBusy"
-              class="fa-solid fa-circle-notch fa-spin text-gray-400 text-sm"
-            ></i>
+            <InlineLoader v-if="pushBusy" class="text-gray-400" />
             <button
               type="button"
               :disabled="pushBusy || pushUnsupported"
@@ -646,8 +641,8 @@ const handleLogout = async () => {
             :disabled="passwordLoading"
             class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-3 px-4 rounded transition cursor-pointer text-sm shadow active:scale-[0.98] disabled:opacity-50 mt-2"
           >
-            <i v-if="passwordLoading" class="fa-solid fa-circle-notch fa-spin mr-2"></i>
-            {{ passwordLoading ? 'Updating...' : 'Update Password' }}
+            <InlineLoader v-if="passwordLoading" class="mr-2" />
+            {{ passwordLoading ? 'Updating…' : 'Update Password' }}
           </button>
         </form>
       </div>
@@ -666,8 +661,8 @@ const handleLogout = async () => {
             deleteLoading ? 'cursor-not-allowed' : 'cursor-pointer'
           ]"
         >
-          <i v-if="deleteLoading" class="fa-solid fa-circle-notch fa-spin mr-2"></i>
-          {{ deleteLoading ? 'Deleting...' : (deleteConfirming ? 'Confirm Delete' : 'Delete') }}
+          <InlineLoader v-if="deleteLoading" class="mr-2" />
+          {{ deleteLoading ? 'Deleting…' : (deleteConfirming ? 'Confirm Delete' : 'Delete') }}
         </button>
 
         <p v-if="deleteError" class="text-red-500 text-sm mt-3">{{ deleteError }}</p>
@@ -678,8 +673,9 @@ const handleLogout = async () => {
         :disabled="logoutLoading"
         class="w-full bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-bold py-3 px-4 rounded transition cursor-pointer text-sm shadow-sm active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
       >
-        <i :class="logoutLoading ? 'fa-solid fa-circle-notch fa-spin mr-2' : 'fa-solid fa-right-from-bracket mr-2'"></i>
-        {{ logoutLoading ? 'Logging out...' : 'Log Out' }}
+        <InlineLoader v-if="logoutLoading" class="mr-2" />
+        <i v-else class="fa-solid fa-right-from-bracket mr-2"></i>
+        {{ logoutLoading ? 'Logging out…' : 'Log Out' }}
       </button>
 
     </div>

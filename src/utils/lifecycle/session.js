@@ -2,6 +2,7 @@ import { useUserStore } from '@/stores/user';
 import { useDevicesStore } from '@/stores/devices';
 import { useNotificationsStore } from '@/stores/notifications';
 import { useBrokerStore } from '@/stores/broker';
+import { useBootStore } from '@/stores/boot';
 import { request } from '@/utils/http';
 import { baseUrl } from '@/utils/variables';
 import router from '@/router';
@@ -18,12 +19,24 @@ export const session = {
 
     const userStore = useUserStore();
     const deviceStore = useDevicesStore();
+    const boot = useBootStore();
+
+    // Restart as a cold boot only if a warm reconnect ran in between. On the
+    // ordinary first boot this is a no-op — init() already opened the cold flow
+    // and the auth/region steps are underway, so the bar must not rewind.
+    boot.ensureFlow('cold');
+    // Idempotent: covers a log-out → log-in without a page reload, where the
+    // auth listener's done('auth') landed against a previous run.
+    boot.done('auth');
 
     try {
       if (this.countryCodePromise) {
+        boot.begin('region');
         await this.countryCodePromise;
       }
+      boot.done('region', { degraded: userStore.countryCode == null });
 
+      boot.begin('account');
       const synced = await userStore.backendSync();
       if (!synced) {
         console.warn('⚠️ Backend Sync Failed — retrying with fresh token...');
@@ -31,18 +44,25 @@ export const session = {
         const retried = freshToken ? await userStore.backendSync(freshToken) : false;
         if (!retried) {
           console.error('❌ Backend Sync Failed after retry');
+          boot.fail('account');
           userStore.error = true;
           return false;
         }
       }
+      boot.done('account');
 
+      boot.begin('server');
       const connected = await userStore.serverConnect();
       if (!connected) {
         console.error('❌ Server Connect Failed');
+        boot.fail('server');
         userStore.error = true;
         return false;
       }
+      boot.done('server');
 
+      // The devices + live steps are marked inside fetchAll / processSocketData,
+      // so all three fetchAll callers get them without duplicating the calls.
       const fetched = await deviceStore.fetchAll();
 
       if (fetched === 'no_devices') {
@@ -110,6 +130,15 @@ export const session = {
 
   async checkConnectionAndReconnect() {
     if (this.isReconnecting) return;
+    // startSession holds a DIFFERENT lock (isStartingSession), so the two could
+    // previously overlap: backgrounding and foregrounding during a cold boot
+    // sees a not-yet-open socket, fires a reconnect, and we end up running two
+    // fetchAll + connectSocket sequences against each other. A session that is
+    // still starting is already doing everything this would do.
+    if (this.isStartingSession) {
+      console.log('⏸️ Skipping reconnect — session start already in progress.');
+      return;
+    }
 
     const userStore = useUserStore();
     if (!userStore.server_url) return;
@@ -120,13 +149,21 @@ export const session = {
 
     this.isReconnecting = true;
     const deviceStore = useDevicesStore();
+    const boot = useBootStore();
+
+    // A reconnect resumes from the Traccar session — auth restore and
+    // /user/sync do not re-run — so it gets the shorter warm flow, normalized
+    // to reach 100%. Always a fresh run, unlike startSession's ensureFlow.
+    boot.reset('warm');
 
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
 
     try {
+      boot.begin('server');
       const sessionValid = await userStore.serverConnect();
 
       if (sessionValid) {
+        boot.done('server');
         const fetched = await deviceStore.fetchAll();
 
         // fetchAll already redirected to the teaser; don't connect sockets
@@ -150,6 +187,7 @@ export const session = {
         broker.disconnect();
         broker.connect();
       } else {
+        boot.fail('server');
         userStore.error = true;
       }
     } finally {
@@ -166,8 +204,14 @@ export const session = {
 
     const userStore = useUserStore();
     const deviceStore = useDevicesStore();
+    const boot = useBootStore();
 
     console.log('🔄 Initiating manual data reload and socket cycle...');
+
+    // Warm flow: this path never re-runs auth or /user/sync. The Traccar
+    // session is assumed live, so the server step is already behind us.
+    boot.reset('warm');
+    boot.done('server');
 
     try {
       if (this.reconnectTimer) clearTimeout(this.reconnectTimer);

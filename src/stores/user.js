@@ -46,13 +46,25 @@ export const useUserStore = defineStore('user', () => {
   const isLoggedIn = computed(() => user.value !== null && user.value !== false);
 
   const loading = computed(() => {
+    // Auth state not yet resolved by Firebase — we don't know who this is.
     if (user.value === null) {
       return true;
-    } else if (user.value === false) {
-      return countryCode.value === null;
-    } else {
-      return !server_connect.value;
     }
+    // Logged out. The login screen must NEVER wait on the country lookup: this
+    // branch used to return `countryCode.value === null`, which held a
+    // first-time visitor on the full-screen splash for up to 60s (5 attempts x
+    // 8s timeout + 20s of backoff — see fetchCountryCode) before they could
+    // even see a sign-in form.
+    //
+    // Nothing on the logged-out surfaces needs it. Signup reads countryCode
+    // only to PREFILL its country/server picker (views/signup/index.vue), and
+    // the user can set it by hand; the one hard consumer is /user/sync, which
+    // runs after login and is gated in startSession where it belongs.
+    if (user.value === false) {
+      return false;
+    }
+    // Logged in — still connecting to the user's Traccar server.
+    return !server_connect.value;
   });
 
   // --- ACTION: Fetch Country Code ---

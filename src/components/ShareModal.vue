@@ -5,6 +5,7 @@ import { Capacitor } from '@capacitor/core';
 import { Share } from '@capacitor/share';
 import { useShareStore } from '@/stores/share.js';
 import { useDevicesStore } from '@/stores/devices.js';
+import InlineLoader from '@/components/InlineLoader.vue';
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -183,8 +184,8 @@ watch(
           :disabled="loading"
           class="w-full py-2 bg-brand text-white rounded-lg text-sm font-bold hover:bg-brand-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <i v-if="loading" class="fa-solid fa-spinner fa-spin mr-1"></i>
-          {{ loading ? 'Generating...' : 'Generate Link' }}
+          <InlineLoader v-if="loading" class="mr-1" />
+          {{ loading ? 'Generating…' : 'Generate Link' }}
         </button>
 
         <button

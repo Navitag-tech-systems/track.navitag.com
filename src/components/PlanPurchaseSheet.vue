@@ -2,6 +2,7 @@
 import { ref, shallowRef, computed, watch } from 'vue';
 import { useDevicesStore } from '@/stores/devices.js';
 import { getPlanOffering, purchasePlan, isIapPreview } from '@/utils/iap';
+import InlineLoader from '@/components/InlineLoader.vue';
 
 // True only in the localhost web review (`npm run dev` in a browser). Used to
 // show a "simulated purchase" badge and to fake the plan update so the flow can
@@ -251,11 +252,10 @@ function close() {
           <div v-if="showStatus" class="flex flex-col items-center text-center py-6 space-y-5">
             <!-- Paying / extending: spinner + (blue) processing feedback -->
             <template v-if="purchasingId || phase === 'processing'">
-              <i class="fa-solid fa-circle-notch fa-spin text-4xl text-brand"></i>
+              <InlineLoader size="4xl" class="text-brand" />
               <p v-if="purchasingId" class="text-sm text-gray-500">Processing your purchase…</p>
               <div v-else class="w-full bg-blue-50 text-blue-600 text-sm p-3 rounded-xl border border-blue-100 flex items-center justify-center gap-2">
-                <i class="fa-solid fa-circle-notch fa-spin"></i>
-                Payment received — extending your plan…
+                <InlineLoader label="Payment received — extending your plan…" />
               </div>
             </template>
 
@@ -312,8 +312,7 @@ function close() {
             </div>
 
             <div v-if="loadingOffering" class="flex items-center justify-center p-10 text-gray-400 text-sm">
-              <i class="fa-solid fa-circle-notch fa-spin mr-2"></i>
-              Loading plans…
+              <InlineLoader label="Loading plans…" />
             </div>
 
             <template v-else>

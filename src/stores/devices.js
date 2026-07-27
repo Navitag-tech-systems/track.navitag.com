@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed, reactive } from 'vue';
 import { useUserStore } from '@/stores/user.js';
+import { useBootStore } from '@/stores/boot.js';
 import { useRouter } from 'vue-router';
 import { request } from '@/utils/http';
 import { baseUrl, categoryMapping } from '@/utils/variables';
@@ -37,8 +38,15 @@ function isFresh(lastSeenMs, now = Date.now()) {
   return lastSeenMs > 0 && (now - lastSeenMs) < ONLINE_FRESH_MS;
 }
 
+// How long to wait for the first socket frame after a successful fetch before
+// giving up on it. `loading` is released by processSocketData, so without this
+// a socket that connects but never speaks leaves the app on a permanent
+// full-screen splash with no way out.
+const LIVE_WATCHDOG_MS = 20000;
+
 export const useDevicesStore = defineStore('devices', () => {
   const userStore = useUserStore();
+  const boot = useBootStore();
   const router = useRouter();
 
   // --- State ---
@@ -51,6 +59,13 @@ export const useDevicesStore = defineStore('devices', () => {
   const draftPolygon = ref(null);
   const deviceMarkers = reactive({});
   const activeRoute = ref({ line: [], markers: {} });
+
+  // True once fetchAll has completed at least once this session — including the
+  // zero-device case, which is a real answer, not a pending one. Views use it to
+  // tell "still loading" apart from "no such device"; those two states used to
+  // share one message ("Device not found or loading..."), so a genuinely missing
+  // device showed a loading string forever.
+  const hasLoadedOnce = ref(false);
 
   // Devices shared TO this user by other accounts (from POST /share/tome).
   // Hydrated on every lifecycle entry in parallel with fetchDevices +
@@ -81,6 +96,31 @@ export const useDevicesStore = defineStore('devices', () => {
   // Reads `now`, so it expires reactively without needing a new socket message.
   function isDeviceOnline(device) {
     return device?.status === 'online' && isFresh(device?.lastSeenMs || 0, now.value);
+  }
+
+  // --- Live-data watchdog ---
+  // Armed when a fetch succeeds, disarmed by the first socket frame (Traccar or
+  // posbroker — both land in processSocketData).
+  let liveWatchdog = null;
+
+  function clearLiveWatchdog() {
+    if (liveWatchdog) {
+      clearTimeout(liveWatchdog);
+      liveWatchdog = null;
+    }
+  }
+
+  function armLiveWatchdog() {
+    clearLiveWatchdog();
+    liveWatchdog = setTimeout(() => {
+      liveWatchdog = null;
+      if (!loading.value) return;
+      console.warn('[Devices] No live position within 20s — releasing the loading gate.');
+      // Let the user into the app with whatever the fetch returned rather than
+      // holding them on a splash that has nothing left to wait for.
+      loading.value = false;
+      boot.markStalled();
+    }, LIVE_WATCHDOG_MS);
   }
 
   // --- Socket Data Handler ---
@@ -155,9 +195,20 @@ export const useDevicesStore = defineStore('devices', () => {
       });
     }
     console.log('procced socket message', data)
-    setTimeout(()=>{
-      loading.value = false;
-    }, 1000)
+
+    // First frame in — we're live. Both marks are idempotent, which matters
+    // because this runs on every socket message, not just the first.
+    clearLiveWatchdog();
+    boot.done('live');
+
+    // The 1s hold stays for now: it exists so the map has a beat to paint its
+    // first markers instead of flashing empty. Guarded so we don't queue a
+    // timer per socket frame for the rest of the session.
+    if (loading.value) {
+      setTimeout(() => {
+        loading.value = false;
+      }, 1000)
+    }
   }
 
   // --- Actions ---
@@ -315,14 +366,18 @@ export const useDevicesStore = defineStore('devices', () => {
   }
 
   async function fetchAll() {
+    boot.begin('devices');
     loading.value = true;
     error.value = null;
+    clearLiveWatchdog();
     try {
       // fetchSharedToMe is best-effort and never throws, so an outage there
       // cannot poison Promise.all and turn a successful device fetch into a
       // false return.
       await Promise.all([fetchDevices(), fetchGeofences(), fetchSharedToMe()]);
       mergeSharedToMeIntoDevices();
+      // Both branches below are answers, not pending states.
+      hasLoadedOnce.value = true;
 
       // Teaser decision happens HERE, after the merge, so it accounts for
       // BOTH owned devices and devices shared TO this user. Checking the
@@ -336,14 +391,29 @@ export const useDevicesStore = defineStore('devices', () => {
       if (Object.keys(devices).length === 0) {
         console.log('[Devices] No owned or shared devices, redirecting to teaser.');
         loading.value = false;
+        // No devices means no socket traffic is coming, so the live step would
+        // never land. Close out the run rather than leaving the bar short.
+        boot.completeAll();
         router.push('/linkdevice/teaser');
         return 'no_devices';
       }
 
+      boot.done('devices');
+      // `loading` deliberately stays true here — it is released by the first
+      // socket frame in processSocketData, so the splash covers the gap between
+      // "list fetched" and "positions on the map". The watchdog bounds that wait.
+      boot.begin('live');
+      armLiveWatchdog();
       return true; // Successfully fetched
     } catch (err) {
       console.error('[Devices] fetchAll failed:', err);
       error.value = err.message || 'Failed to fetch tracking data.';
+      // Release the gate on the way out. This used to fall through with
+      // `loading` still true, so any throw from fetchDevices/fetchGeofences
+      // stranded the user on the splash — and the <Error /> overlay that
+      // covered it cleared on retry while the splash underneath did not.
+      loading.value = false;
+      boot.fail('devices');
       return false; // Fetch failed
     }
   }
@@ -472,6 +542,9 @@ export const useDevicesStore = defineStore('devices', () => {
   // anything it was not explicitly asked to delete.
 
   function clearData() {
+    clearLiveWatchdog();
+    hasLoadedOnce.value = false;
+    loading.value = false;
     Object.keys(devices).forEach(key => delete devices[key]);
     Object.keys(deviceMarkers).forEach(key => delete deviceMarkers[key]);
     Object.keys(geofences).forEach(key => delete geofences[key]);
@@ -499,7 +572,7 @@ export const useDevicesStore = defineStore('devices', () => {
   return {
     devices, geofences, loading, error, deviceMarkers, deviceMarkerKeys,
     deviceSelectedObject, deviceSelected, mapUpdate, draftPolygon, activeRoute,
-    sharedToMe, now, isDeviceOnline,
+    sharedToMe, now, isDeviceOnline, hasLoadedOnce,
     entitlement, geofenceLimit, canCreateGeofence,
     processSocketData,
     fetchDevices, fetchGeofences, fetchDeviceExpirations, fetchSharedToMe, fetchAll, updateDevice,
