@@ -14,7 +14,7 @@
     "postinstall": "patch-package --error-on-fail"
   },
   "dependencies": {
-    "@burkaloo/leaflet-vue3": "^2.3.4",
+    "@burkaloo/leaflet-vue3": "^2.3.5",
     "@capacitor-firebase/analytics": "^8.0.1",
     "@capacitor-firebase/authentication": "^8.0.1",
     "@capacitor-firebase/messaging": "^8.0.1",
