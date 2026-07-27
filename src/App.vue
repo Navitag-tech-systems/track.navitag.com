@@ -5,10 +5,12 @@ import { useUserStore } from '@/stores/user.js';
 import { useDevicesStore } from '@/stores/devices.js';
 import { useInstallStore, INSTALL_TOAST_ENABLED } from '@/stores/install.js';
 import { useToastStore } from '@/stores/toast.js';
+import { useAppGateStore } from '@/stores/appGate.js';
 import BottomNav from './components/bottomNav.vue';
 import Loading from '@/components/loading.vue';
 import Error from '@/components/error.vue';
 import NoNet from './components/noNet.vue';
+import UpdateRequired from '@/components/updateRequired.vue';
 import { getPlatformInfo, liqKey } from './utils/variables';
 import { leafletMap } from '@burkaloo/leaflet-vue3'
 import { LifecycleService } from '@/utils/lifecycle'
@@ -21,6 +23,7 @@ const userStore = useUserStore();
 const deviceStore = useDevicesStore();
 const installStore = useInstallStore();
 const toastStore = useToastStore();
+const appGate = useAppGateStore();
 const route = useRoute();
 const router = useRouter();
 
@@ -94,6 +97,9 @@ async function retryConnection() {
 //   Anything else (desktop, other UAs):  neither
 //   Native (Capacitor):                  neither (handled natively)
 const currentToast = computed(() => {
+  // An update nudge outranks the install/notification prompts — they share the
+  // same top slot, and being on a current build matters more than either.
+  if (appGate.action === 'warn') return null;
   if (isInIframe()) return null;
   if (Capacitor.isNativePlatform()) return null;
   if (!userStore.isLoggedIn) return null;
@@ -167,9 +173,35 @@ function dismissInstallToast() {
     class="flex flex-col h-dvh w-full pt-safe-top bg-surface"
     :class="{ 'pb-safe-bottom': !showNav }"
   >
+    <!-- Hard version wall. Sits above every other overlay and offers no way
+         out — see components/updateRequired.vue. -->
+    <UpdateRequired v-if="appGate.action === 'block'"/>
+
     <Loading v-if="masterLoading"/>
     <Error v-if="userStore.error"/>
     <NoNet v-if="!userStore.internet"/>
+
+    <div
+      v-if="appGate.action === 'warn'"
+      class="fixed top-[calc(env(safe-area-inset-top)+12px)] left-4 right-4 z-50 bg-white shadow-lg rounded-lg p-4 flex items-center gap-3"
+    >
+      <span class="flex-1 text-sm text-slate-800">
+        {{ appGate.message || 'A new version of Navitag Track is available.' }}
+      </span>
+      <button
+        class="px-3 py-1 bg-blue-600 text-white rounded text-sm"
+        @click="appGate.openStore()"
+      >
+        Update
+      </button>
+      <button
+        class="text-slate-500 hover:text-slate-700 cursor-pointer"
+        aria-label="Dismiss"
+        @click="appGate.dismissWarn()"
+      >
+        <i class="fa-solid fa-xmark text-lg"></i>
+      </button>
+    </div>
 
     <div
       v-if="currentToast === 'install'"
