@@ -320,8 +320,24 @@ function dismissInstallToast() {
              the time the user sees it. Safe to mount with an empty marker set:
              leafletMap watches its device key-set and creates markers as
              processSocketData populates them. -->
+        <!-- MOUNT LATE, ON PURPOSE (reverted 2026-08-16).
+             This was briefly `deviceStore.hasLoadedOnce`, to mount behind the
+             splash so tiles were already in flight. That broke map centring:
+             hasLoadedOnce flips when the device LIST arrives, which is before
+             any position does, so the map initialised with an EMPTY marker set.
+             leafletMap only fits bounds on a mode change or a `geos` change —
+             never when devices/markers change — so the one fit that ran had
+             nothing to fit, and nothing re-fitted once positions landed. The
+             map sat at the package's default centre (Sheridan, WY) with the
+             user's devices off-screen in Manila.
+             masterLoading stays true until the first socket frame, so gating on
+             it means the map mounts WITH markers and fits to them, which is the
+             behaviour main ships today. The tile-preload win is not worth
+             shipping a map that never finds the user's devices; the real fix is
+             a devices watcher in @burkaloo/leaflet-vue3, and this can move back
+             once that lands. -->
         <leafletMap
-          v-if="userStore.isLoggedIn && deviceStore.hasLoadedOnce"
+          v-if="userStore.isLoggedIn && masterLoading === false"
           :mode="isMapRoute ? isMapRoute : 'track'"
           :devices="deviceStore.deviceMarkers"
           :geos="activeGeofences"

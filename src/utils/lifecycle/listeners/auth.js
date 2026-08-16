@@ -17,6 +17,17 @@ export function registerAuthListeners(session) {
       useBootStore().done('auth');
       iapLogIn(firebaseUser.uid);
 
+      // Leave the auth screen NOW, not after the boot pipeline. startSession
+      // runs region + account sync + server connect + device fetch, and the
+      // route was only replaced once all of that resolved — so /login stayed
+      // mounted underneath the splash for the entire run and showed through as
+      // a flash of the sign-in form. Nothing about leaving early depends on the
+      // session succeeding: a failure surfaces as the <Error/> overlay, which is
+      // route-independent, and the replace below is then a no-op.
+      if (['login', 'signup'].includes(router.currentRoute.value.name)) {
+        router.replace('/');
+      }
+
       const sessionStarted = await session.startSession();
       if (sessionStarted) {
         router.replace('/');

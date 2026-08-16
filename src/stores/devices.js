@@ -111,7 +111,14 @@ export const useDevicesStore = defineStore('devices', () => {
   }
 
   function armLiveWatchdog() {
-    clearLiveWatchdog();
+    // Do NOT restart a watchdog that is already counting. It is armed after every
+    // successful fetch, and the reconnect path re-fetches every ~3s while the
+    // socket is down — so a self-resetting 20s timer could never elapse, and the
+    // one escape from the splash was disarmed by the very retry loop it exists to
+    // escape. Measured 2026-08-16: 27 refetches over 4 minutes, watchdog never
+    // fired, user held on "Loading your devices" with the data already in the
+    // store behind the overlay. The deadline is absolute from the first arm.
+    if (liveWatchdog) return;
     liveWatchdog = setTimeout(() => {
       liveWatchdog = null;
       if (!loading.value) return;
@@ -369,7 +376,10 @@ export const useDevicesStore = defineStore('devices', () => {
     boot.begin('devices');
     loading.value = true;
     error.value = null;
-    clearLiveWatchdog();
+    // Deliberately NOT clearing the live watchdog here. fetchAll runs on every
+    // reconnect attempt, so clearing it made the deadline slide forward once per
+    // retry and never expire. A genuine reset still happens where it should: on
+    // the first socket frame (processSocketData) and on session teardown.
     try {
       // fetchSharedToMe is best-effort and never throws, so an outage there
       // cannot poison Promise.all and turn a successful device fetch into a

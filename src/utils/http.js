@@ -243,9 +243,37 @@ export const request = {
     throw new Error('HTTP 401 — token refresh failed');
   },
 
-  async connectSocket(url, onMessageCallback, onDisconnectCallback) {
+  async connectSocket(url, onMessageCallback, onDisconnectCallback, serverToken = null) {
     const isNative = Capacitor.isNativePlatform();
     let wsUrl = `wss://${url}/api/socket`;
+
+    // WEB: authenticate with the Traccar token rather than the browser cookie.
+    //
+    // The cookie path only ever worked by accident of deployment. Traccar sets
+    // JSESSIONID with no SameSite and no Secure, so Chrome treats it as Lax and
+    // withholds it from any cross-site request — and "same-site" here is
+    // SCHEMEFUL, so http://local.navitag.com -> wss://tserver1.navitag.com is
+    // cross-site too. That is why the socket authenticates from
+    // https://track.navitag.com and from nowhere else: not a bug in the app, a
+    // property of where it happens to be served.
+    //
+    // /api/socket accepts ?token= directly (verified against tserver1: 101
+    // Switching Protocols, followed immediately by a positions frame carrying
+    // both devices), so the token the store already holds is sufficient and the
+    // cookie is not needed at all. This also makes web match native, which has
+    // always passed credentials in the query string.
+    // Falls back to the cookie when no token is available (users.server_token
+    // can be false), so this is strictly additive: production keeps working
+    // exactly as before in that case, and gains an origin-independent path in
+    // every other.
+    if (!isNative) {
+      if (serverToken) {
+        wsUrl += `?token=${encodeURIComponent(serverToken)}`;
+        console.log('🔹 Web WebSocket connecting with Traccar token');
+      } else {
+        console.log('🔹 Web WebSocket connecting with browser cookie (no server token available)');
+      }
+    }
 
     if (isNative) {
       // Prefer the value captured from the Traccar Set-Cookie response, then
@@ -258,9 +286,7 @@ export const request = {
       }
       //else attach cookie to wsurl
       wsUrl += `?session_id=${seshCookie}`;
-      console.log('🔹 Native WebSocket connecting with Session ID', wsUrl);
-    } else {
-      console.log('🔹 Web WebSocket connecting with Browser Cookies', wsUrl);
+      console.log('🔹 Native WebSocket connecting with Session ID');
     }
 
     const socketInstance = new WebSocket(wsUrl);

@@ -154,7 +154,33 @@ export const session = {
     // A reconnect resumes from the Traccar session — auth restore and
     // /user/sync do not re-run — so it gets the shorter warm flow, normalized
     // to reach 100%. Always a fresh run, unlike startSession's ensureFlow.
-    boot.reset('warm');
+    //
+    // ...but ONLY while the user is still on the splash. reset() clears
+    // `stalled`, which is the flag the live-data watchdog sets to let the user
+    // into the app when no socket frame ever arrives. Resetting unconditionally
+    // put the full-screen boot overlay back over a working UI, and because this
+    // runs every few seconds for as long as the socket is down, it did so
+    // forever — the watchdog released the gate and the very next reconnect
+    // re-locked it. A reconnect that happens after the user is already in the
+    // app must stay in the background where they cannot see it.
+    // Reset ONLY for a genuinely fresh run. Two things must both be false:
+    //
+    //   userIsInApp  — they are past the splash. reset() clears `stalled`, the
+    //                  flag the live-data watchdog sets to let them in, so
+    //                  resetting here drops the full-screen overlay back over a
+    //                  working UI, every few seconds, forever.
+    //   bootRunning  — a run is already animating. A reconnect CONTINUES that
+    //                  run; it does not start a new one. Resetting mid-run
+    //                  rewinds the bar and re-normalizes cold(100) to warm(60),
+    //                  so the bar visibly jumps backwards — breaking the
+    //                  "never goes backwards" guarantee in boot.js's own
+    //                  docblock and making progress look unrelated to reality.
+    //
+    // What still resets: a first boot (owned by startSession/ensureFlow) and a
+    // retry after failure or stall, where inProgress is already false.
+    const userIsInApp = deviceStore.hasLoadedOnce && !deviceStore.loading;
+    const bootRunning = boot.inProgress;
+    if (!userIsInApp && !bootRunning) boot.reset('warm');
 
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
 
