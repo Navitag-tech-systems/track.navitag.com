@@ -4,7 +4,9 @@ import { useRouter } from 'vue-router';
 import { useDevicesStore } from '@/stores/devices.js';
 import { useUserStore } from '@/stores/user.js';
 import { request } from '@/utils/http';
+import { baseUrl } from '@/utils/variables';
 import GeofenceLimitModal from '@/components/geofenceLimitModal.vue';
+import InlineLoader from '@/components/InlineLoader.vue';
 
 const router = useRouter();
 const deviceStore = useDevicesStore();
@@ -46,27 +48,31 @@ const performDelete = async () => {
   const id = geofenceToDelete.value;
 
   try {
-    // Attempt 1
-    let response = await request.send({
-      url: `https://${userStore.server_url}/api/geofences/${id}`,
+    await request.send({
+      url: `${baseUrl}/geofence/${id}`,
       method: 'DELETE',
-      isTraccar: true
+      token: userStore.idToken,
     })
 
-    
-    if (response) {
-      delete deviceStore.geofences[id];
-      // Close modal
-      showDeleteModal.value = false;
-      geofenceToDelete.value = null;
-    
-    } else {
-      console.error('Delete failed with status:', response.status);
-      alert('Failed to delete geofence. Please restart the app or log in again.');
-    }
+    // A non-2xx throws, so reaching here IS the success case. The old code
+    // tested the return value and had an else-branch that read `response.status`
+    // off a falsy value — unreachable, and a TypeError if it ever ran.
+    delete deviceStore.geofences[id];
+    showDeleteModal.value = false;
+    geofenceToDelete.value = null;
+
   } catch (error) {
     console.error('Error deleting geofence:', error);
-    alert('An error occurred while deleting the geofence.');
+
+    // Already gone server-side: converge instead of stranding a row the user
+    // cannot remove. 404 also covers "not yours", which is the same outcome here.
+    if (error?.status === 404) {
+      delete deviceStore.geofences[id];
+      showDeleteModal.value = false;
+      geofenceToDelete.value = null;
+      return;
+    }
+    alert(error?.message || 'An error occurred while deleting the geofence.');
   } finally {
     isDeleting.value = false;
   }
@@ -198,8 +204,8 @@ const editGeofence = (id) => {
                 :disabled="isDeleting"
                 class="py-3 px-4 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-sm transition-colors flex items-center justify-center gap-2 outline-none disabled:opacity-70"
               >
-                <i v-if="isDeleting" class="fa-solid fa-circle-notch fa-spin"></i>
-                {{ isDeleting ? 'Deleting...' : 'Delete' }}
+                <InlineLoader v-if="isDeleting" />
+                {{ isDeleting ? 'Deleting…' : 'Delete' }}
               </button>
             </div>
 

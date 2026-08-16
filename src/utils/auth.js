@@ -92,12 +92,20 @@ export const signOut = async () => {
 
 export const sendEmailVerification = async () => {
   try {
-    await auth.sendEmailVerification({
-      actionCodeSettings: {
-        url: 'https://auth.navitag.com/firebase/email-verified',
-        handleCodeInApp: false,
-      }
-    });
+    // No actionCodeSettings on purpose. The only thing it carried was a
+    // continueUrl pointing at https://auth.navitag.com/firebase/email-verified
+    // — a route that does not exist in that app's router, where the SPA rewrite
+    // serves 200 and the catch-all renders "Page Not Found". Nothing ever
+    // dereferenced it (ActionHandler.vue does not read continueUrl; it renders
+    // its own success state and tells the user to close the page), so it was
+    // dead config aimed at a dead route — and a live bug waiting for the day
+    // someone adds a "Continue" button to that handler.
+    //
+    // Dropping it does NOT change where the email link goes: that destination
+    // is the action-handler URL configured in the Firebase console's email
+    // template (auth.navitag.com/action), not this setting. handleCodeInApp
+    // was already Firebase's default of false.
+    await auth.sendEmailVerification();
   } catch (error) {
     console.error('[Email Verification] Error:', error);
     throw error;

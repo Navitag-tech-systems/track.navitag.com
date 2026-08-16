@@ -30,8 +30,11 @@ export const useUserStore = defineStore('user', () => {
   const server_url = ref(null);
   const server_token = ref(null);
   const server_connect = ref(false);
-  const server_group = ref(null);
-  
+  // server_group is gone: the client no longer needs to know its Traccar group
+  // exists. It was only ever read to link a new geofence to that group, and
+  // POST /v1/geofence does the linking server-side now. /user/sync still
+  // returns the field; we simply stop caring about it.
+
   // 2. THIS IS THE CRITICAL FIX: Declare as a shallowRef
   const socket = shallowRef(null);
   
@@ -43,13 +46,25 @@ export const useUserStore = defineStore('user', () => {
   const isLoggedIn = computed(() => user.value !== null && user.value !== false);
 
   const loading = computed(() => {
+    // Auth state not yet resolved by Firebase — we don't know who this is.
     if (user.value === null) {
       return true;
-    } else if (user.value === false) {
-      return countryCode.value === null;
-    } else {
-      return !server_connect.value;
     }
+    // Logged out. The login screen must NEVER wait on the country lookup: this
+    // branch used to return `countryCode.value === null`, which held a
+    // first-time visitor on the full-screen splash for up to 60s (5 attempts x
+    // 8s timeout + 20s of backoff — see fetchCountryCode) before they could
+    // even see a sign-in form.
+    //
+    // Nothing on the logged-out surfaces needs it. Signup reads countryCode
+    // only to PREFILL its country/server picker (views/signup/index.vue), and
+    // the user can set it by hand; the one hard consumer is /user/sync, which
+    // runs after login and is gated in startSession where it belongs.
+    if (user.value === false) {
+      return false;
+    }
+    // Logged in — still connecting to the user's Traccar server.
+    return !server_connect.value;
   });
 
   // --- ACTION: Fetch Country Code ---
@@ -365,9 +380,14 @@ export const useUserStore = defineStore('user', () => {
       }
       if (phone.value) data.phone = phone.value;
       if (user.value.phoneNumber) data.phone = user.value.phoneNumber;
-      // Include email from user object or stored email (for SSO users whose JWT may not have it yet)
+      // Include the Firebase address for SSO users whose JWT carries no email
+      // claim. The backend uses it to provision users.email on first sync, and
+      // afterwards as the drift signal it captures into alt_email.
+      //
+      // Only ever the Firebase value — email.value is the backend's own resolved
+      // answer, and echoing that back up would feed a derived value in as if the
+      // provider had supplied it.
       if (user.value.email) data.email = user.value.email;
-      else if (email.value) data.email = email.value;
 
       const useToken = token || idToken.value;
       if (!useToken) return false;
@@ -381,11 +401,16 @@ export const useUserStore = defineStore('user', () => {
 
       if (syncRes.name) name.value = syncRes.name;
       if (syncRes.phone) phone.value = syncRes.phone;
+      // Backend-resolved identity: alt_email -> users.email -> firebase email.
+      // This is the value the UI shows, so what the user sees matches what the
+      // backend actually holds rather than whatever the Firebase auth object
+      // happens to carry (which drifts on an Apple relay reissue or a Google
+      // email change while the uid stays put).
+      if (syncRes.email) email.value = syncRes.email;
       localStorage.removeItem('apple_pending_name');
 
       server_url.value = syncRes.server_url || false;
       server_token.value = syncRes.server_token || false;
-      server_group.value = syncRes.server_group || null;
       if (server_url.value && !Capacitor.isNativePlatform()) {
         localStorage.setItem('server_url', server_url.value);
       }
@@ -586,7 +611,6 @@ export const useUserStore = defineStore('user', () => {
     server_url.value = null;
     server_token.value = null;
     server_connect.value = false;
-    server_group.value = null;
     email.value = null;
     error.value = false;
   }
@@ -594,7 +618,7 @@ export const useUserStore = defineStore('user', () => {
   return {
     user, idToken, countryCode, loading, isLoggedIn, internet, error,
     setUser, clearUser, traccarLogout, serverConnect, connectSocket, fetchCountryCode, backendSync, disconnectSocket, getFreshToken, initPushNotifications, enablePushFromGesture, disablePushOnThisDevice, checkPushPermission,
-    server_url, server_token, server_connect, server_group, socket, name, phone, email,
+    server_url, server_token, server_connect, socket, name, phone, email,
     fcmToken, pushPermission, showPushEnableToast, pushDisabledLocally
   };
 });

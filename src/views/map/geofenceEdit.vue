@@ -4,7 +4,8 @@ import { useRouter, useRoute } from 'vue-router';
 import { useUserStore } from '@/stores/user.js';
 import { useDevicesStore } from '@/stores/devices.js';
 import { request } from '@/utils/http.js'
-import { LifecycleService } from '@/utils/lifecycle';
+import { baseUrl } from '@/utils/variables';
+import InlineLoader from '@/components/InlineLoader.vue';
 
 const router = useRouter();
 const route = useRoute();
@@ -40,41 +41,50 @@ const nextStep = () => {
 const updateToTraccar = async (latLngs) => {
   if (isSaving.value) return;
   isSaving.value = true;
-  deviceStore.loading = true
+  // Deliberately does NOT touch deviceStore.loading. That flag raises the
+  // global boot splash, and this function set it true on entry with no
+  // matching false on ANY path — so a rejected edit (the 400/404 branch below)
+  // dismissed its alert straight onto a permanent full-screen splash. The
+  // `isSaving` sheet spinner in the template is the correct, scoped feedback.
   try {
     const pointsArray = Array.isArray(latLngs[0]) ? latLngs[0] : latLngs;
 
-    // Preserving the existing working WKT formatting logic
-    let points = pointsArray.map(p => `${p.lat} ${p.lng}`);
-    
-    const first = points[0];
-    const last = points[points.length - 1];
-    if (first !== last) {
-      points.push(first);
-    }
-    
-    const areaString = `POLYGON ((${points.join(', ')}))`;
-
+    // Points, not WKT — the server builds the polygon string (one axis-order
+    // implementation instead of two). It also merges onto the authoritative
+    // Traccar record, so `description` / `calendarId` / `attributes` survive
+    // an edit; this used to PUT a 3-field object and silently clear them.
     await request.send({
-      url: `https://${userStore.server_url}/api/geofences/${geoid}`,
+      url: `${baseUrl}/geofence/${geoid}`,
       method: 'PUT',
-      isTraccar: true,
+      token: userStore.idToken,
       data: {
-        id: Number(geoid),
         name: geofenceName.value.trim(),
-        area: areaString,
+        points: pointsArray.map(p => [p.lat, p.lng]),
       },
     })
 
-    LifecycleService.startSession()
+    // Refetch just the geofences. This used to call
+    // LifecycleService.startSession(), which re-ran the ENTIRE boot pipeline —
+    // /user/sync, Traccar reconnect, full device fetch, socket cycle — to pick
+    // up one edited polygon.
+    deviceStore.fetchGeofences().catch(err => {
+      console.warn('Geofence refetch after edit failed:', err?.message || err);
+    });
 
-    // Success! Update local Pinia store  
+    // Success! Update local Pinia store
     router.replace('/');
 
   } catch (err) {
     console.error('Failed to update geofence:', err);
     isSaving.value = false;
-    
+
+    // A rejected shape or name is the user's to fix, not a dead end — the
+    // global error screen would strand them with no way back to the drawing.
+    if (err?.status === 400 || err?.status === 404) {
+      alert(err.message || 'That geofence could not be updated.');
+      return;
+    }
+
     // Trigger global dead-end error
     userStore.error = true;
   }
@@ -145,8 +155,8 @@ onUnmounted(() => {
 
     <div v-if="step === 2" class="mt-auto pointer-events-auto bg-white rounded-t-3xl shadow-[0_-10px_20px_rgba(0,0,0,0.05)] p-5 pb-8 z-10 text-center">
       <div v-if="isSaving" class="py-4">
-        <i class="fa-solid fa-circle-notch fa-spin text-brand text-2xl mb-3"></i>
-        <p class="text-sm font-bold text-gray-700">Saving to server...</p>
+        <InlineLoader size="2xl" class="text-brand mb-3" />
+        <p class="text-sm font-bold text-gray-700">Saving…</p>
       </div>
       <div v-else>
         <h3 class="font-bold text-gray-800 mb-1">{{ geofenceName }}</h3>

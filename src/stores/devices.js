@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed, reactive } from 'vue';
 import { useUserStore } from '@/stores/user.js';
+import { useBootStore } from '@/stores/boot.js';
 import { useRouter } from 'vue-router';
 import { request } from '@/utils/http';
 import { baseUrl, categoryMapping } from '@/utils/variables';
@@ -37,8 +38,15 @@ function isFresh(lastSeenMs, now = Date.now()) {
   return lastSeenMs > 0 && (now - lastSeenMs) < ONLINE_FRESH_MS;
 }
 
+// How long to wait for the first socket frame after a successful fetch before
+// giving up on it. `loading` is released by processSocketData, so without this
+// a socket that connects but never speaks leaves the app on a permanent
+// full-screen splash with no way out.
+const LIVE_WATCHDOG_MS = 20000;
+
 export const useDevicesStore = defineStore('devices', () => {
   const userStore = useUserStore();
+  const boot = useBootStore();
   const router = useRouter();
 
   // --- State ---
@@ -52,10 +60,30 @@ export const useDevicesStore = defineStore('devices', () => {
   const deviceMarkers = reactive({});
   const activeRoute = ref({ line: [], markers: {} });
 
+  // True once fetchAll has completed at least once this session — including the
+  // zero-device case, which is a real answer, not a pending one. Views use it to
+  // tell "still loading" apart from "no such device"; those two states used to
+  // share one message ("Device not found or loading..."), so a genuinely missing
+  // device showed a loading string forever.
+  const hasLoadedOnce = ref(false);
+
   // Devices shared TO this user by other accounts (from POST /share/tome).
   // Hydrated on every lifecycle entry in parallel with fetchDevices +
   // fetchGeofences. Each entry: { imei, scopes: ['position:live', ...] }.
   const sharedToMe = ref([]);
+
+  // Plan entitlement, as measured by the backend and returned alongside
+  // GET /device/list: { tier, geofence_limit, devices_total, devices_active, error }.
+  //
+  // null means NOT YET MEASURED — never "basic". The distinction is the whole
+  // point: this used to be derived client-side from `plan_level` grafted onto
+  // device objects by a second request, so any failure of that request silently
+  // collapsed a pro user to the basic allowance of 2 and the session-start prune
+  // then deleted their newest 8 geofences.
+  //
+  // Deliberately NOT reset on a failed refresh — the last measured value is a
+  // better answer than "unknown", and clearData() clears it on logout.
+  const entitlement = ref(null);
 
   // Ticking clock (60s) so the recency-gated online status re-evaluates even
   // when a device falls silent and sends no further socket messages. 60s keeps
@@ -68,6 +96,31 @@ export const useDevicesStore = defineStore('devices', () => {
   // Reads `now`, so it expires reactively without needing a new socket message.
   function isDeviceOnline(device) {
     return device?.status === 'online' && isFresh(device?.lastSeenMs || 0, now.value);
+  }
+
+  // --- Live-data watchdog ---
+  // Armed when a fetch succeeds, disarmed by the first socket frame (Traccar or
+  // posbroker — both land in processSocketData).
+  let liveWatchdog = null;
+
+  function clearLiveWatchdog() {
+    if (liveWatchdog) {
+      clearTimeout(liveWatchdog);
+      liveWatchdog = null;
+    }
+  }
+
+  function armLiveWatchdog() {
+    clearLiveWatchdog();
+    liveWatchdog = setTimeout(() => {
+      liveWatchdog = null;
+      if (!loading.value) return;
+      console.warn('[Devices] No live position within 20s — releasing the loading gate.');
+      // Let the user into the app with whatever the fetch returned rather than
+      // holding them on a splash that has nothing left to wait for.
+      loading.value = false;
+      boot.markStalled();
+    }, LIVE_WATCHDOG_MS);
   }
 
   // --- Socket Data Handler ---
@@ -142,22 +195,42 @@ export const useDevicesStore = defineStore('devices', () => {
       });
     }
     console.log('procced socket message', data)
-    setTimeout(()=>{
-      loading.value = false;
-    }, 1000)
+
+    // First frame in — we're live. Both marks are idempotent, which matters
+    // because this runs on every socket message, not just the first.
+    clearLiveWatchdog();
+    boot.done('live');
+
+    // The 1s hold stays for now: it exists so the map has a beat to paint its
+    // first markers instead of flashing empty. Guarded so we don't queue a
+    // timer per socket frame for the rest of the session.
+    if (loading.value) {
+      setTimeout(() => {
+        loading.value = false;
+      }, 1000)
+    }
   }
 
   // --- Actions ---
 
   async function fetchDevices() {
     console.log('[Devices] Fetching devices list...');
-    if (!userStore.server_url) return;
 
     try {
-      const retArr = await request.send({
-        url: `https://${userStore.server_url}/api/devices`,
-        isTraccar: true,
+      // api.navitag.net resolves the caller's devices through Traccar's own
+      // permission graph (?userId=), so this returns exactly what the old
+      // direct-to-Traccar call returned. A Traccar outage comes back as a 502
+      // and throws here — it must never arrive as an empty list, or fetchAll
+      // would read it as "no devices" and bounce the user to the teaser.
+      const res = await request.send({
+        url: `${baseUrl}/device/list`,
+        token: userStore.idToken,
       });
+      const retArr = res?.devices;
+
+      // Set only when present. A response without it (older API build) leaves
+      // the previous measurement in place rather than overwriting it with null.
+      if (res?.entitlement) entitlement.value = res.entitlement;
 
       if (Array.isArray(retArr)) {
         // An empty owned-device list is NOT an error and NOT a teaser
@@ -200,11 +273,17 @@ export const useDevicesStore = defineStore('devices', () => {
 
   async function fetchGeofences() {
     console.log('[Geofences] Fetching geofences...');
-    if (!userStore.server_url) return;
     try {
+      // api.navitag.net lists by the caller's 1:1 Traccar group, which is what
+      // makes a geofence both visible and evaluated. Traccar's array is passed
+      // through unchanged, so the parser below is untouched by the migration.
+      //
+      // A Traccar outage comes back as a 502 and throws here — it must never
+      // arrive as an empty array, or the store would read it as "no geofences"
+      // and the list view would show an empty state over live data.
       const retArr = await request.send({
-        url: `https://${userStore.server_url}/api/geofences`,
-        isTraccar: true,
+        url: `${baseUrl}/geofence`,
+        token: userStore.idToken,
       });
 
       let allgeos = {}
@@ -213,16 +292,25 @@ export const useDevicesStore = defineStore('devices', () => {
           let parsedPoints = [];
           if (g.area && g.area.startsWith('POLYGON')) {
             const coordsString = g.area.replace('POLYGON', '').replace(/[()]/g, '').trim();
+            // Traccar's WKT is "lat lon", NOT the WKT/JTS standard "lon lat" —
+            // so x is the latitude here and Leaflet gets [lat, lng] as it
+            // expects. Do not "correct" this; the server builds WKT in the same
+            // order (Geofence.php buildPolygonWkt) and every stored geofence
+            // uses it. See api.navitag.net/v1/BACKFILL_AND_DEBT.md §E6.
             parsedPoints = coordsString.split(',').map(coord => {
-              const [x, y] = coord.trim().split(/\s+/); 
+              const [x, y] = coord.trim().split(/\s+/);
               return [parseFloat(x), parseFloat(y)];
             });
           }
-          
+
           allgeos[g.id] = { name: g.name, points: parsedPoints };
 
         });
       }
+      // Replace rather than merge: a geofence deleted server-side (by the plan
+      // sweep, or from another device) must disappear here too. Object.assign
+      // alone would leave it resident forever.
+      Object.keys(geofences).forEach(k => { if (!(k in allgeos)) delete geofences[k]; });
       Object.assign(geofences, allgeos)
     } catch (err) {
       console.error('[Geofences] Geofences fetch failed:', err);
@@ -278,14 +366,18 @@ export const useDevicesStore = defineStore('devices', () => {
   }
 
   async function fetchAll() {
+    boot.begin('devices');
     loading.value = true;
     error.value = null;
+    clearLiveWatchdog();
     try {
       // fetchSharedToMe is best-effort and never throws, so an outage there
       // cannot poison Promise.all and turn a successful device fetch into a
       // false return.
       await Promise.all([fetchDevices(), fetchGeofences(), fetchSharedToMe()]);
       mergeSharedToMeIntoDevices();
+      // Both branches below are answers, not pending states.
+      hasLoadedOnce.value = true;
 
       // Teaser decision happens HERE, after the merge, so it accounts for
       // BOTH owned devices and devices shared TO this user. Checking the
@@ -299,14 +391,29 @@ export const useDevicesStore = defineStore('devices', () => {
       if (Object.keys(devices).length === 0) {
         console.log('[Devices] No owned or shared devices, redirecting to teaser.');
         loading.value = false;
+        // No devices means no socket traffic is coming, so the live step would
+        // never land. Close out the run rather than leaving the bar short.
+        boot.completeAll();
         router.push('/linkdevice/teaser');
         return 'no_devices';
       }
 
+      boot.done('devices');
+      // `loading` deliberately stays true here — it is released by the first
+      // socket frame in processSocketData, so the splash covers the gap between
+      // "list fetched" and "positions on the map". The watchdog bounds that wait.
+      boot.begin('live');
+      armLiveWatchdog();
       return true; // Successfully fetched
     } catch (err) {
       console.error('[Devices] fetchAll failed:', err);
       error.value = err.message || 'Failed to fetch tracking data.';
+      // Release the gate on the way out. This used to fall through with
+      // `loading` still true, so any throw from fetchDevices/fetchGeofences
+      // stranded the user on the splash — and the <Error /> overlay that
+      // covered it cleared on retry while the splash underneath did not.
+      loading.value = false;
+      boot.fail('devices');
       return false; // Fetch failed
     }
   }
@@ -360,24 +467,45 @@ export const useDevicesStore = defineStore('devices', () => {
     return _setLockAttribute(deviceId, 'auto_lock', enabled, 'update-auto-lock');
   }
 
-  async function updateDevice(deviceId, payload) {
-    if (!userStore.server_url) return null;
+  // `deviceId` stays the TRACCAR DEVICE ID — the key every store in this file
+  // is built on (fetchDevices, processSocketData, mergeSharedToMeIntoDevices,
+  // deviceSelected). The API route is keyed by IMEI, so the IMEI is derived
+  // from the store row rather than taken as the argument: passing an IMEI in
+  // here would miss `devices[deviceId]`, fall into the create branch, and add a
+  // SECOND row for the same device (both list and map render Object.values),
+  // plus a marker update with latlon undefined.
+  //
+  // `edits` is a partial — { name?, category?, speedLimit? } only. The server
+  // read-modify-writes it onto the authoritative Traccar snapshot, so
+  // groupId/uniqueId/disabled and the lock attributes are no longer ours to send.
+  async function updateDevice(deviceId, edits) {
+    const current = devices[deviceId];
+    if (!current?.uniqueId) {
+      console.error('[Devices] updateDevice: no store row / uniqueId for id', deviceId);
+      return null;
+    }
 
     try {
-      const updated = await request.send({
-        url: `https://${userStore.server_url}/api/devices/${deviceId}`,
+      const res = await request.send({
+        url: `${baseUrl}/device/${current.uniqueId}`,
         method: 'PUT',
-        isTraccar: true,
-        data: payload,
+        data: edits,
+        token: userStore.idToken,
       });
 
+      const updated = res?.status === 'ok' ? res.traccar : null;
       if (!updated) return null;
 
-      if (devices[deviceId]) {
-        Object.assign(devices[deviceId], updated);
-      } else {
-        devices[deviceId] = updated;
+      // Surfaces device_inventory.server_ref disagreeing with the id the store
+      // was built from — the same class of drift as the TEST1/TEST2 uniqueId
+      // mismatch. Keep writing to the known-good store key either way.
+      if (updated.id != null && updated.id !== deviceId) {
+        console.warn(
+          `[Devices] server_ref mismatch: store key ${deviceId} vs Traccar id ${updated.id} for ${current.uniqueId}`
+        );
       }
+
+      Object.assign(devices[deviceId], updated);
 
       const catObj = categoryMapping.find(c => c.server === updated.category)
         ?? categoryMapping.find(c => c.server === null);
@@ -402,31 +530,26 @@ export const useDevicesStore = defineStore('devices', () => {
     }
   }
 
-  async function enforceGeofenceLimit() {
-    if (!userStore.server_url) return;
-    const limit = geofenceLimit.value;
-    const ids = Object.keys(geofences).map(Number).sort((a, b) => b - a);
-    if (ids.length <= limit) return;
-
-    const excess = ids.slice(0, ids.length - limit);
-    console.log(`[Geofences] Over limit (${ids.length}/${limit}). Deleting newest ${excess.length}: ${excess.join(', ')}`);
-
-    await Promise.all(excess.map(id =>
-      request.send({
-        url: `https://${userStore.server_url}/api/geofences/${id}`,
-        method: 'DELETE',
-        isTraccar: true,
-      }).then(() => {
-        delete geofences[id];
-      }).catch(err => console.error(`[Geofences] Failed to delete excess geofence ${id}:`, err))
-    ));
-  }
+  // enforceGeofenceLimit() lived here and ran on every session start, deleting
+  // the user's NEWEST geofences whenever it decided they were over quota. It
+  // computed that limit itself, so one failed /user/device-expiration made a pro
+  // customer look basic and destroyed 8 of their 10 geofences — irreversibly,
+  // with no confirmation and no record.
+  //
+  // Quota is server-side now, in both directions: POST /v1/geofence refuses at
+  // the limit, and GeofenceQuota prunes from the plan-change and expiration
+  // events that actually change an allowance. The client no longer deletes
+  // anything it was not explicitly asked to delete.
 
   function clearData() {
+    clearLiveWatchdog();
+    hasLoadedOnce.value = false;
+    loading.value = false;
     Object.keys(devices).forEach(key => delete devices[key]);
     Object.keys(deviceMarkers).forEach(key => delete deviceMarkers[key]);
     Object.keys(geofences).forEach(key => delete geofences[key]);
     sharedToMe.value = [];
+    entitlement.value = null;
     error.value = null;
     mapUpdate.value = null;
   }
@@ -434,18 +557,26 @@ export const useDevicesStore = defineStore('devices', () => {
   // --- Getters ---
   const deviceMarkerKeys = computed(() => Object.keys(deviceMarkers));
   const deviceSelectedObject = computed(() => (deviceSelected.value && devices[deviceSelected.value]) || null);
-  const hasProPlan = computed(() => Object.values(devices).some(d => d.plan_level?.toLowerCase() === 'pro'));
-  const geofenceLimit = computed(() => hasProPlan.value ? 10 : 2);
+  // The server measures the allowance; the client only renders it. `hasProPlan`
+  // is gone — scanning device objects for plan_level is what made a failed
+  // /user/device-expiration look like a downgrade.
+  //
+  // Falls back to 2 for DISPLAY ONLY when the entitlement has not been measured
+  // yet — it decides whether the create button is enabled, nothing more. No
+  // client code deletes on it: the server refuses at the limit with a 409, and
+  // that refusal is the authority. Guessing low here costs the user one blocked
+  // tap and a clear message; it can no longer cost them a geofence.
+  const geofenceLimit = computed(() => entitlement.value?.geofence_limit ?? 2);
   const canCreateGeofence = computed(() => Object.keys(geofences).length < geofenceLimit.value);
 
   return {
     devices, geofences, loading, error, deviceMarkers, deviceMarkerKeys,
     deviceSelectedObject, deviceSelected, mapUpdate, draftPolygon, activeRoute,
-    sharedToMe, now, isDeviceOnline,
-    hasProPlan, geofenceLimit, canCreateGeofence,
+    sharedToMe, now, isDeviceOnline, hasLoadedOnce,
+    entitlement, geofenceLimit, canCreateGeofence,
     processSocketData,
     fetchDevices, fetchGeofences, fetchDeviceExpirations, fetchSharedToMe, fetchAll, updateDevice,
     setActivityLock, setAutoLock,
-    enforceGeofenceLimit, clearData
+    clearData
   };
 });

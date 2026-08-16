@@ -8,6 +8,7 @@ import { request } from '@/utils/http.js';
 import { baseUrl } from '@/utils/variables';
 import { hasScope } from '@/utils/scopes';
 import SharedBadge from '@/components/SharedBadge.vue';
+import InlineLoader from '@/components/InlineLoader.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -313,7 +314,7 @@ onMounted(() => {
           :disabled="!canSubmit"
           class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-4 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <i v-if="submitting" class="fa-solid fa-circle-notch fa-spin"></i>
+          <InlineLoader v-if="submitting" />
           <i v-else class="fa-solid fa-check"></i>
           {{ submitting ? 'Saving…' : 'Log Refuel' }}
         </button>

@@ -90,12 +90,63 @@ src/utils/lifecycle/
 - Each listener file registers one Capacitor/Firebase listener and delegates to `session`.
 - **Logout:** `stopSession` calls `POST ${baseUrl}/user/logout` with the user's `idToken` before `traccarLogout()`. Wrapped in try/catch — a failure warns but never blocks Traccar teardown, store cleanup, or `/login` redirect.
 
+### Boot progress (`src/stores/boot.js`)
+
+Startup is six discrete phases, but they used to collapse into two booleans (`userStore.loading || deviceStore.loading`) rendered as an indeterminate spinner. `boot.js` records when each phase starts and finishes so the splash can show real progress.
+
+- **A checklist, not a cursor.** Steps are marked independently and may complete out of order — the region lookup starts in `LifecycleService.init()` but is only awaited in `startSession()`, so it can land before or after auth restore. Progress is the sum of completed weights; ordering never matters.
+- **Two flows.** `cold` = `auth, region, account, server, devices, live` (weights sum to 100). `warm` = `server, devices, live`, normalized ×(100/60) so a reconnect still reaches 100%. `startSession` uses `ensureFlow('cold')` (no-op on first boot; resets if a warm run or a failed run preceded it); `checkConnectionAndReconnect` / `reloadAndReconnect` always `reset('warm')`.
+- **Never stalls, never rewinds.** Between milestones the value eases asymptotically toward `settled + inFlight × 0.9` and never reaches it. `ceiling` is strictly increasing because completing a step adds its full weight to `settled` while removing only 90% of it from `inFlight`.
+- **Instrumentation** is ~12 one-line calls at points that already existed: `lifecycle/index.js` (region), `listeners/auth.js` (auth), `session.js` (account, server), `devices.js` (`fetchAll` → devices; `processSocketData` → live). Marking devices/live inside the store means all three `fetchAll` callers get them for free.
+- `degraded` records non-fatal step failures (currently only region); `fail()` is terminal and freezes the bar; `markStalled()` is called by the live watchdog. All three make `inProgress` false, which is what removes the bar from the screen.
+- **Only `begin()` opens a run.** `done()` and `fail()` deliberately do not set `started`. The country lookup resolves on its own timeline and can land after the run was stood down (user sat on the login screen); if `done()` could re-open a run, `inProgress` would never go false and the rAF loop would spin forever behind the login form.
+
+### Boot splash (`src/components/loading.vue`)
+
+Two variants off one store. `cold` = full-screen blocking splash (logo + determinate bar + live step label). `warm` = a 3px line under the safe-area inset that never blocks. The `msg` prop is gone — it existed but `App.vue` never passed it, so every wait rendered the same dead string ("Navitag Track").
+
+- **The cold/warm split is `hasRenderedOnce` in `App.vue`**, a latch set the first time `masterLoading` goes false while logged in **and** `deviceStore.hasLoadedOnce`. It is deliberately **not** `hasLoadedOnce` alone: that flips when the device list arrives, while `masterLoading` stays true through the wait for the first position — using it would tear the splash away at ~85% and drop the user onto an empty map, which is the exact gap the splash exists to cover. The `hasLoadedOnce` half of the condition matters on the failure path: a fetch that threw releases `masterLoading` without ever producing data, and must not count as "we've been up", or the retry would return as a hairline over an empty list instead of a proper splash.
+- **No CSS transition on the bar width** — the store already eases on rAF, and layering a transition on a per-frame update reads as rubber-banding. The `boot-fade` leave transition is what produces the "hold at 100%" beat: the bar has already snapped to 100 by the time the `v-if` flips.
+- **The map is mounted on `deviceStore.hasLoadedOnce`, not `masterLoading`.** The old gate tore the entire Leaflet instance down and rebuilt it — tiles, markers, geoman layers — on **every** foreground self-heal. Mounting early is safe: `leafletMap` watches its device key-set (`leafletMap.vue:752`) and creates markers as `processSocketData` populates them. Side benefit: the map now initialises *behind* the splash, so tiles are already in flight when it lifts.
+- **`showNav` lists the blocking overlays explicitly.** It previously inferred them from `masterLoading`, which happened to be true during a failed reconnect (`server_connect` false) — the only reason the nav wasn't already painting on top of `<Error />`, since it renders later in the DOM at the same `z-50`. `<NoNet />` never got that protection at all. Both, plus the `appGate` block wall, are now handled on purpose.
+
+> ⚠️ **Warm reconnects no longer block the UI.** A foreground self-heal keeps the map and nav live under a hairline progress bar instead of raising a full-screen splash. The tradeoff is that briefly-stale data stays interactive during the reconnect.
+
+### Inline loaders (`src/components/InlineLoader.vue`)
+
+Every in-page busy indicator goes through one component — **41 call sites across 21 files**. There were four idioms before: a bordered `animate-spin` div, a hand-rolled inline `<svg class="animate-spin">`, `fa-circle-notch fa-spin`, and `fa-spinner fa-spin`; `signup/index.vue` had no spinner at all while creating an account (it does now).
+
+- **API is two props**: `label` (omit for the icon-only form) and `size` (the Tailwind text-size suffix verbatim — `xs`…`4xl`). Size is a prop, not a pass-through class, because the inner `<i>` carries its own size and would beat anything inherited.
+- **Colour is inherited** via `currentColor`, so the call site owns it with an ordinary `text-*` class. No `tone` prop to drift from the palette.
+- **Keep it a single root.** Most call sites pass a spacing/colour class through; a `v-if`/`v-else` pair at the root would make it a fragment, which silently disables attribute inheritance and drops all of them.
+- **No stacked/`block` variant**, deliberately. Every stacked site (history report, both geofence sheets) colours the spinner and its caption differently — brand icon, grey caption — which one inherited colour on one root cannot express. Those keep their own `<p>`.
+- **Accessibility**: with a label it is a `role="status"` live region; without one it is `aria-hidden`, because the icon-only form sits inside buttons whose own text already swaps to "Saving…".
+- **Copy normalized**: `…` not `...`, sentence case, bare "Loading…" for passive fetches and verb-specific for user-initiated actions. Gone: `SYNCING...`, `Loading device data...`, `Loading notifications…`, `Saving to server...`, `Creating Account...`, `Scanner Active...`.
+
+### Pre-mount shell (`index.html`)
+
+`#app` was empty, so on web nothing painted until the Vue bundle had downloaded, parsed and mounted — a white flash whose length is set by the user's connection, before any loading UI exists to say otherwise. It now ships a static inline shell (beige `#f7f4ef`, the 192px mark, and an **empty** progress groove) that Vue clears on mount; no teardown code needed.
+
+Geometry mirrors `components/loading.vue` (80px mark, 36px gap, 248px track, 6px groove) so the handover is seamless — the groove stays put and the fill appears inside it. **There is deliberately no fill in the shell**: nothing is measurable before the JS runs, and any non-zero width would have to rewind once the real bar starts from 0. Styles are inline because an external stylesheet is another round trip that would flash identically. Native is unaffected (the storyboard / Android 12 splash already covers this window).
+
+### Loading-state ownership (fixed)
+
+- **`deviceStore.loading` has one owner: `fetchAll`.** It is set on entry and released either by the first socket frame (`processSocketData`, after a 1s hold so the map can paint markers) or by the failure path. It previously fell through the `catch` still `true`, so any throw from `fetchDevices`/`fetchGeofences` stranded the user on the splash — and the `<Error />` overlay covering it cleared on retry while the splash underneath did not.
+- **Live watchdog (20s).** Armed after a successful fetch, disarmed by the first socket frame. A socket that connects but never speaks used to mean a permanent full-screen splash; now the gate is released and `boot.markStalled()` fires.
+- **The geofence views no longer touch `deviceStore.loading`.** `map/geofence.vue` raised the global boot splash over its own "Saving to server…" sheet spinner; `map/geofenceEdit.vue` set it `true` with **no matching `false` on any path**, so a rejected edit dismissed its alert onto a permanent splash. Both now rely on their scoped `isSaving` spinner.
+- **Both geofence views call `deviceStore.fetchGeofences()` after a save**, not `LifecycleService.startSession()` — which re-ran the entire boot pipeline (`/user/sync`, Traccar reconnect, full device fetch, socket cycle) to pick up one polygon, and raced `geofence.vue`'s own `finally` for the loading flag.
+- **`deviceStore.hasLoadedOnce`** separates "still loading" from "no such device". `deviceById.vue`, `deviceSettings.vue` and `deviceShare.vue` shared one message ("Device not found or loading…"), so a genuinely missing device showed a loading string forever.
+- **Retry actually retries.** `retryConnection()` in `App.vue` called `checkConnectionAndReconnect()`, which bails on its own `if (!userStore.server_url) return` guard — and a failed `/user/sync` (the most common route to `<Error />`) is exactly the case where `server_url` was never set. It now falls back to `startSession()` when there is no Traccar session to resume.
+
+> ⚠️ **The country lookup no longer gates the login screen.** `userStore.loading`'s logged-out branch returned `countryCode === null`, holding a first-time visitor on the splash for up to **60s** (5 attempts × 8s timeout + 20s backoff — see `fetchCountryCode`), and `lifecycle/index.js` set `userStore.error = true` on total failure, giving a non-recoverable "refresh the page" screen instead of a sign-in form. The lookup has one hard consumer — `/user/sync`, which assigns a Traccar server to a **new** account — and that runs after login, gated in `startSession`. Signup's manual country picker is the fallback. **Open:** whether `startSession` should hard-require it at all; an existing user's `server_url` does not depend on it.
+
 ### Auth / SSO
 
 - **Providers:** Google SSO, Apple SSO, email/password. (Facebook SSO removed.)
 - **Email is required** for backend user creation (Traccar requires email). All current SSO providers return an email, so the in-app email-collection flow has been removed.
 - **Apple name capture** (`src/utils/auth.js`): Apple only provides the user's display name on the very first sign-in. The name is captured immediately and persisted to `localStorage` (`apple_pending_name`). `backendSync()` in `src/stores/user.js` reads the cached name as a fallback when Pinia state and `firebaseUser.displayName` are both empty, and cleans up the cache after successful sync. The backend (`api.navitag.net` — `User.php`) also sets Firebase `displayName` via the Admin SDK during sync, making the name permanently available on future logins.
 - **Web SSO** uses redirect mode; same-origin Firebase auth handler used for mobile web.
+- **App Check (anti-bot signups)** — `src/firebase.js` initializes Firebase App Check on **web only** (reCAPTCHA v3, guarded off native via `!Capacitor.isNativePlatform()`) to close the public `identitytoolkit accounts:signUp` REST endpoint that bots hit directly (bypassing all frontend validation). Site key ← `VITE_APPCHECK_RECAPTCHA_V3_SITE_KEY` (set in Vercel; no-ops if unset). Localhost passes via a debug token. **Monitor mode only — NOT enforced**: it mints/attaches tokens but blocks nothing yet, because enforcement is project-wide (shared with navitag.com + native) and would reject native logins until native App Check ships. Deployed 2026-07-22 (commit `91d2cc6`). navitag.com (www-v3) shares the same Firebase project and has the matching web App Check.
 
 ### Ecommerce Removed
 
@@ -121,6 +172,8 @@ The physical-device-service framing (the plan is cellular/data connectivity for 
 **⚠️ Verify before shipping:** the RevenueCat → `https://shopapi.navitag.com/hooks/revenuecat` webhook is **built and deployed** — it completes the `pending_cart_id` cart, which flows into the existing `data-renew` fulfillment chain (end-to-end validated via a simulated webhook, order `display_id 46`). Still to confirm on a real device / TestFlight sandbox purchase: (1) `medusa.js` region + variant resolution against live Medusa, (2) that the manual-provider capture emits `order.payment_captured`, and (3) the resulting `device_inventory` plan/expiration update. A completed IAP will charge via Apple, so verify fulfillment before production release.
 
 **App Store Connect:** the 6 consumables are **created, en-US localized, and priced** (PH territory) in App Store Connect, and the Paid Apps Agreement is **active**. The only remaining gate is the **review screenshot** Apple requires for a first IAP submission — it needs the purchase UI in a real build. Resubmit via the `ios-testflight` Codemagic workflow with a bumped build number once the screenshot is captured.
+
+**TestFlight — build 13 (v5.1.0):** the first build carrying the IAP flow is uploaded and `VALID` in App Store Connect (Codemagic `6a60bbdf...`). ⚠️ **NOT yet tested on-device** — no sandbox IAP purchase has been run against it, so the real purchase → webhook → `data-renew` → `device_inventory` chain is still unverified (see "Verify before shipping" above). Next: sandbox-test a purchase on build 13, capture the review screenshot from it, then attach + resubmit.
 
 ### Account Settings
 
@@ -163,7 +216,9 @@ The physical-device-service framing (the plan is cellular/data connectivity for 
 
 ### Link Device (`src/views/linkDevice/link.vue`)
 
-After `POST ${baseUrl}/user/link-device` succeeds, the view routes straight to `/linkdevice/enable/:imei`. The device list and expirations are refreshed by the subsequent enable flow / `startSession`.
+Linking **is** activation — there is no separate enable step. `POST ${baseUrl}/user/link-device` already performs the whole thing server-side in one transaction: Traccar rename + `disabled=false` + join the owner's 1:1 group, `linkUserToDevice` permission, SIM enable (idempotent, skipped for unmanaged providers), expiration from `preloaded_months`, accumulator reset, and the default notification-settings/rules seed — with rollback (unlink + re-disable Traccar + re-disable SIM) if any step fails. On `status === 'success'` the view routes straight to `/linkdevice/success`, which calls `LifecycleService.reloadAndReconnect()` on mount to refresh the device list and expirations.
+
+The old `/linkdevice/enable/:imei` screen (`enable.vue`) was **removed** — it re-ran `POST /device/enable` plus a direct Traccar `GET /api/devices?id=` + `PUT /api/devices/{id}` to flip `disabled`, all of which `link-device` had already done. `Device::enable` detects the no-op (`setTraccarDisabled` → `unchanged`, SIM already enabled) and returns "already enabled; state synced" **without** extending expiration, so the screen only ever added two failure modes and a "Skip for now" path that left users with a linked-but-idle-looking device. `POST /device/enable` itself stays — it still backs the activate/deactivate toggle in Device Settings.
 
 ### History / Daily Route (`src/views/history/dailyRoute.vue`)
 

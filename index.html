@@ -14,9 +14,58 @@
     <meta name="apple-mobile-web-app-title" content="Navitag">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Navitag Track</title>
+    <!--
+      Pre-mount shell. #app was empty, so on web nothing painted until the Vue
+      bundle had downloaded, parsed and mounted — a white flash whose length is
+      set by the user's connection, before any of our loading UI exists to say
+      otherwise.
+
+      Inline on purpose: an external stylesheet would be one more round trip and
+      would flash exactly the same. Vue clears the container's children on mount,
+      so this needs no teardown code.
+
+      Geometry mirrors components/loading.vue (80px mark, 36px gap, 248px track,
+      6px groove) so the handover to the real splash is seamless — the groove
+      stays put and the fill simply appears inside it.
+
+      There is deliberately NO fill here. Nothing is measurable before the JS
+      runs, and any non-zero width would have to rewind once the real bar starts
+      from 0. An empty groove promises nothing and cannot contradict itself.
+    -->
+    <style>
+      html, body { background-color: #f7f4ef; }
+      #boot-shell {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background-color: #f7f4ef;
+      }
+      #boot-shell img {
+        width: 80px;
+        height: 80px;
+        border-radius: 22%;
+        margin-bottom: 36px;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+      }
+      #boot-shell .track {
+        width: 248px;
+        max-width: calc(100vw - 80px);
+        height: 6px;
+        border-radius: 9999px;
+        background-color: rgba(0, 0, 0, 0.06);
+      }
+    </style>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <div id="boot-shell">
+        <img src="/icons/icon-192.png" alt="" />
+        <div class="track"></div>
+      </div>
+    </div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

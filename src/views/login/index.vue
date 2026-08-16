@@ -6,6 +6,7 @@ import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
 
 import { supportedProviders, getErrorMessage, signInWithEmailAndPassword, sendEmailVerification } from '@/utils/auth';
+import InlineLoader from '@/components/InlineLoader.vue';
 
 const forgotPasswordUrl = 'https://www.navitag.com/forgot-password';
 
@@ -33,7 +34,7 @@ function setFeedback(msg, error = false) {
 // Email Login
 const handleLogin = async () => {
   loading.value = true;
-  setFeedback('Signing in...');
+  setFeedback('Signing in…');
   try {
     const user = await signInWithEmailAndPassword(email.value, password.value);
 
@@ -53,7 +54,7 @@ const handleLogin = async () => {
 // Provider Login (Google/Apple)
 const handleProviderLogin = async (providerHandler) => {
   loading.value = true;
-  setFeedback('Signing in...');
+  setFeedback('Signing in…');
   try {
     await providerHandler();
     setFeedback('Signed in successfully.');
@@ -92,8 +93,8 @@ const handleProviderLogin = async (providerHandler) => {
         </div>
         
         <button type="submit" :disabled="loading" class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-2 px-4 rounded transition disabled:opacity-50 flex items-center justify-center gap-2">
-          <svg v-if="loading" class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
-          {{ loading ? 'Signing in...' : 'Sign In' }}
+          <InlineLoader v-if="loading" />
+          {{ loading ? 'Signing in…' : 'Sign In' }}
         </button>
       </form>
 

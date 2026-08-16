@@ -12,6 +12,7 @@ import { hasScope } from '@/utils/scopes';
 import QrScanner from '@/components/QrScanner.vue';
 import SharedBadge from '@/components/SharedBadge.vue';
 import PlanPurchaseSheet from '@/components/PlanPurchaseSheet.vue';
+import InlineLoader from '@/components/InlineLoader.vue';
 import { isIapUiEnabled } from '@/utils/iap';
 
 const route = useRoute();
@@ -356,28 +357,20 @@ const saveDevice = async () => {
   successMsg.value = '';
 
   try {
-    const nextAttributes = { ...(device.value.attributes || {}) };
-    if (noSpeedLimit.value) {
-      delete nextAttributes.speedLimit;
-    } else {
-      nextAttributes.speedLimit = kphNum * KNOTS_PER_KPH;
-    }
+    // Send ONLY what this screen edits. The API read-modify-writes these onto
+    // the live Traccar snapshot, so groupId / uniqueId / phone / model / contact
+    // are no longer ours to echo back — sending a stale copy of those is exactly
+    // what could clobber live state. `disabled` is owned by /device/enable and
+    // /device/disable (see toggleDevice), not by this call.
+    const edits = {
+      name: name.value.trim(),
+      category: category.value ?? null,
+      // null clears the limit; the server merges into attributes rather than
+      // replacing them, so activity_lock / auto_lock survive untouched.
+      speedLimit: noSpeedLimit.value ? null : kphNum * KNOTS_PER_KPH,
+    };
 
-    // Traccar expects the full device object on PUT
-    const updatedDevice = {
-      "id": deviceId,
-      "name": name.value.trim(),
-      "uniqueId": device.value.uniqueId,
-      "disabled": !isActive.value,
-      "groupId": device.value.groupId,
-      "phone": device.value.phone,
-      "model": device.value.model,
-      "contact": device.value.contact,
-      "category": category.value,
-      "attributes": nextAttributes
-    }
-
-    const update = await deviceStore.updateDevice(deviceId, updatedDevice);
+    const update = await deviceStore.updateDevice(deviceId, edits);
 
     if (update) {
       router.push("/")
@@ -430,7 +423,8 @@ watch(isActive, async (nv, ov) => {
     <div class="p-4 space-y-6 max-w-md mx-auto w-full pb-safe-bottom">
       
       <div v-if="!device" class="text-center text-gray-500 py-10">
-        <p>Loading device data...</p>
+        <p v-if="!deviceStore.hasLoadedOnce">Loading…</p>
+        <p v-else>Device not found.</p>
       </div>
 
       <div v-else-if="device.shared" class="text-center text-xs text-gray-500 leading-snug px-6 py-2">
@@ -521,8 +515,8 @@ watch(isActive, async (nv, ov) => {
             :disabled="loading || !isProfileDirty"
             class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-4 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed outline-none mt-4"
           >
-            <i v-if="loading" class="fa-solid fa-circle-notch fa-spin"></i>
-            {{ loading ? 'Saving...' : 'Save Changes' }}
+            <InlineLoader v-if="loading" />
+            {{ loading ? 'Saving…' : 'Save Changes' }}
           </button>
         </form>
       </div>
@@ -605,7 +599,7 @@ watch(isActive, async (nv, ov) => {
 
         <div class="flex items-center justify-between p-4 border rounded-lg">
           <span class="text-sm text-gray-500">Expiration</span>
-          <span class="text-sm font-bold" :class="device.expiration ? 'text-gray-800' : 'text-red-500'">{{ device.expiration ? new Date(device.expiration).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A' }}</span>
+          <span class="text-sm font-bold" :class="device.expiration ? 'text-gray-800' : 'text-red-500'">{{ device.expiration ? new Date(device.expiration).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A' }}</span>
         </div>
 
         <button
@@ -656,7 +650,7 @@ watch(isActive, async (nv, ov) => {
             <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-brand-light rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand"></div>
             <span class="text-md font-medium text-gray-900 flex items-center gap-2">
               Auto
-              <i v-if="autoLockBusy" class="fa-solid fa-circle-notch fa-spin text-xs text-gray-400"></i>
+              <InlineLoader v-if="autoLockBusy" size="xs" class="text-gray-400" />
             </span>
           </label>
         </div>
@@ -672,7 +666,7 @@ watch(isActive, async (nv, ov) => {
             activityLock ? 'bg-red-500 hover:bg-red-600' : 'bg-gray-400 hover:bg-gray-500',
           ]"
         >
-          <i v-if="activityLockBusy" class="fa-solid fa-circle-notch fa-spin text-4xl"></i>
+          <InlineLoader v-if="activityLockBusy" size="4xl" />
           <i v-else :class="activityLock ? 'fa-solid fa-lock' : 'fa-solid fa-lock-open'" class="text-4xl"></i>
         </button>
 
@@ -710,7 +704,7 @@ watch(isActive, async (nv, ov) => {
             aria-label="Add emergency contact"
             class="w-9 h-9 flex items-center justify-center rounded-full bg-brand text-white hover:bg-brand-dark transition-colors shadow-sm active:scale-[0.96] disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <i v-if="addingContact" class="fa-solid fa-circle-notch fa-spin text-sm"></i>
+            <InlineLoader v-if="addingContact" />
             <i v-else class="fa-solid fa-plus text-sm"></i>
           </button>
         </div>
@@ -718,7 +712,7 @@ watch(isActive, async (nv, ov) => {
         <QrScanner ref="contactScannerRef" @scanned="onContactScanned" @error="onContactScanError" />
 
         <div v-if="contactsLoading" class="flex items-center justify-center p-3 text-gray-400 text-sm">
-          <i class="fa-solid fa-circle-notch fa-spin mr-2"></i>Loading…
+          <InlineLoader label="Loading…" />
         </div>
 
         <div v-else-if="contacts.length === 0" class="text-center text-sm text-gray-500 py-2 leading-snug">
@@ -751,7 +745,7 @@ watch(isActive, async (nv, ov) => {
                 aria-label="Delete contact"
                 class="w-9 h-9 flex items-center justify-center rounded-full text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <i v-if="deletingUids.has(c.auth_uid)" class="fa-solid fa-circle-notch fa-spin text-sm"></i>
+                <InlineLoader v-if="deletingUids.has(c.auth_uid)" />
                 <i v-else class="fa-solid fa-trash text-sm"></i>
               </button>
             </div>
@@ -774,8 +768,7 @@ watch(isActive, async (nv, ov) => {
 
         <template v-if="notificationsExpanded">
           <div v-if="!notifStore.loaded && notifStore.loading" class="flex items-center justify-center p-6 text-gray-400 text-sm">
-            <i class="fa-solid fa-circle-notch fa-spin mr-2"></i>
-            Loading notifications…
+            <InlineLoader label="Loading…" />
           </div>
 
           <div v-else-if="!eventTypesForDevice.length" class="text-center text-gray-500 text-sm py-6">
@@ -799,10 +792,7 @@ watch(isActive, async (nv, ov) => {
                 <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-brand-light rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand"></div>
                 <span class="text-md font-medium text-gray-900 flex items-center gap-2">
                   {{ humanizeEvent(ev) }}
-                  <i
-                    v-if="ruleBusy.has(ev)"
-                    class="fa-solid fa-circle-notch fa-spin text-xs text-gray-400"
-                  ></i>
+                  <InlineLoader v-if="ruleBusy.has(ev)" size="xs" class="text-gray-400" />
                 </span>
               </label>
             </div>

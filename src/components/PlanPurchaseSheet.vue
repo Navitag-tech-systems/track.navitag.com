@@ -2,6 +2,7 @@
 import { ref, shallowRef, computed, watch } from 'vue';
 import { useDevicesStore } from '@/stores/devices.js';
 import { getPlanOffering, purchasePlan, isIapPreview } from '@/utils/iap';
+import InlineLoader from '@/components/InlineLoader.vue';
 
 // True only in the localhost web review (`npm run dev` in a browser). Used to
 // show a "simulated purchase" badge and to fake the plan update so the flow can
@@ -153,7 +154,10 @@ function estimatedExpiration(entry) {
     const remainingDays = Math.max(0, Math.floor((current.getTime() - now.getTime()) / 86400000));
     result.setDate(result.getDate() + Math.floor(remainingDays * (curPrice / tgtPrice)));
   }
-  return result.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  // Locale left to the system (api-migrate Phase 5) rather than hardcoded
+  // 'en-US'; the conversion math above is main's and supersedes api-migrate's
+  // simpler months-only version, which predates tier changes.
+  return result.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 async function loadOffering() {
@@ -306,11 +310,10 @@ function close() {
           <div v-if="showStatus" class="flex flex-col items-center text-center py-6 space-y-5">
             <!-- Paying / extending: spinner + (blue) processing feedback -->
             <template v-if="purchasingId || phase === 'processing'">
-              <i class="fa-solid fa-circle-notch fa-spin text-4xl text-brand"></i>
+              <InlineLoader size="4xl" class="text-brand" />
               <p v-if="purchasingId" class="text-sm text-gray-500">Processing your purchase…</p>
               <div v-else class="w-full bg-blue-50 text-blue-600 text-sm p-3 rounded-xl border border-blue-100 flex items-center justify-center gap-2">
-                <i class="fa-solid fa-circle-notch fa-spin"></i>
-                Payment received — extending your plan…
+                <InlineLoader label="Payment received — extending your plan…" />
               </div>
             </template>
 
@@ -320,7 +323,7 @@ function close() {
               <div class="w-full bg-green-50 text-green-600 text-sm p-3 rounded-xl border border-green-100 flex items-center justify-center gap-2">
                 <i class="fa-solid fa-circle-check"></i>
                 <span>Top-up complete! Your plan now runs to
-                {{ device?.expiration ? new Date(device.expiration).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'the new date' }}.</span>
+                {{ device?.expiration ? new Date(device.expiration).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'the new date' }}.</span>
               </div>
             </template>
 
@@ -379,7 +382,7 @@ function close() {
               <span class="text-sm font-bold text-gray-800 capitalize">
                 {{ device.plan_level || 'N/A' }}
                 <span v-if="device.expiration" class="font-normal text-gray-500">
-                  · expires {{ new Date(device.expiration).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }}
+                  · expires {{ new Date(device.expiration).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) }}
                 </span>
               </span>
             </div>
@@ -395,8 +398,7 @@ function close() {
             </div>
 
             <div v-if="loadingOffering" class="flex items-center justify-center p-10 text-gray-400 text-sm">
-              <i class="fa-solid fa-circle-notch fa-spin mr-2"></i>
-              Loading plans…
+              <InlineLoader label="Loading plans…" />
             </div>
 
             <template v-else>

@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router';
 import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
 import QrScanner from '@/components/QrScanner.vue';
+import InlineLoader from '@/components/InlineLoader.vue';
 
 const props = defineProps({
   showBack: { type: Boolean, default: true },
@@ -120,9 +121,9 @@ const openShop = async () => {
           :disabled="isScanning"
           class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-4 px-4 rounded-xl flex items-center justify-center transition cursor-pointer text-lg shadow-md active:scale-[0.98] disabled:opacity-50"
         >
-          <i v-if="isScanning" class="fa-solid fa-circle-notch fa-spin mr-3 text-xl"></i>
+          <InlineLoader v-if="isScanning" size="xl" class="mr-3" />
           <i v-else class="fa-solid fa-camera mr-3 text-xl"></i>
-          {{ isScanning ? 'Scanner Active...' : 'Start Camera' }}
+          {{ isScanning ? 'Scanner active…' : 'Start Camera' }}
         </button>
         <button
           @click="showCameraOption = false; errorMsg = ''"

@@ -8,6 +8,7 @@ import { request } from '@/utils/http';
 import { hasScope } from '@/utils/scopes';
 
 import VT100MapProcessor from '@/utils/reportProcessor.js';
+import InlineLoader from '@/components/InlineLoader.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -171,7 +172,7 @@ const changeDate = async (offset) => {
 const formatTime = (isoString) => {
   if (!isoString) return '--:--';
   const date = new Date(isoString);
-  return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
 };
 
 // --- INTERACTION LOGIC ---
@@ -248,8 +249,8 @@ onUnmounted(() => {
         </div>
 
         <div v-if="loading" class="flex flex-col items-center justify-center py-10 text-gray-400">
-          <i class="fa-solid fa-circle-notch fa-spin text-3xl mb-3 text-brand"></i>
-          <p class="text-sm font-semibold">Generating report...</p>
+          <InlineLoader size="3xl" class="mb-3 text-brand" />
+          <p class="text-sm font-semibold">Generating report…</p>
         </div>
 
         <div v-else-if="unauthorizedMsg" class="bg-amber-50 border border-amber-200 rounded-xl p-5 text-center">

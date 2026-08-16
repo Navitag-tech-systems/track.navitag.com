@@ -7,6 +7,7 @@ import { useToastStore } from '@/stores/toast.js';
 import { request } from '@/utils/http.js';
 import { baseUrl } from '@/utils/variables';
 import { GRANTABLE_SCOPES, SCOPE_LABELS } from '@/utils/scopes';
+import InlineLoader from '@/components/InlineLoader.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -87,6 +88,7 @@ function formatDate(value) {
     year: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
+    hour12: false,
   });
 }
 
@@ -368,14 +370,15 @@ onMounted(() => {
           :disabled="!canSendInvite"
           class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-3 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <i v-if="inviteSending" class="fa-solid fa-circle-notch fa-spin"></i>
+          <InlineLoader v-if="inviteSending" />
           <i v-else class="fa-solid fa-paper-plane"></i>
           {{ inviteSending ? 'Sending…' : 'Send Invite' }}
         </button>
       </div>
 
       <div v-if="!device" class="text-center text-gray-500 py-10">
-        <p>Loading device data...</p>
+        <p v-if="!deviceStore.hasLoadedOnce">Loading…</p>
+        <p v-else>Device not found.</p>
       </div>
 
       <div v-if="device" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
@@ -387,8 +390,7 @@ onMounted(() => {
         </div>
 
         <div v-if="loading" class="flex items-center justify-center p-6 text-gray-400 text-sm">
-          <i class="fa-solid fa-circle-notch fa-spin mr-2"></i>
-          Loading…
+          <InlineLoader label="Loading…" />
         </div>
 
         <div v-else-if="errorMsg" class="bg-red-50 text-red-600 text-sm p-3 rounded-xl border border-red-100 flex items-center gap-2">
@@ -461,7 +463,7 @@ onMounted(() => {
                   :disabled="!isDirty(g.grantee_auth_uid) || savingUids.has(g.grantee_auth_uid) || revokingUids.has(g.grantee_auth_uid)"
                   class="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-bold flex items-center gap-1.5 hover:bg-brand-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <i v-if="savingUids.has(g.grantee_auth_uid)" class="fa-solid fa-circle-notch fa-spin"></i>
+                  <InlineLoader v-if="savingUids.has(g.grantee_auth_uid)" size="xs" />
                   {{ savingUids.has(g.grantee_auth_uid) ? 'Saving…' : 'Save' }}
                 </button>
                 <button
@@ -470,7 +472,7 @@ onMounted(() => {
                   :disabled="savingUids.has(g.grantee_auth_uid) || revokingUids.has(g.grantee_auth_uid)"
                   class="px-3 py-1.5 rounded-lg bg-red-500 text-white text-xs font-bold flex items-center gap-1.5 hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <i v-if="revokingUids.has(g.grantee_auth_uid)" class="fa-solid fa-circle-notch fa-spin"></i>
+                  <InlineLoader v-if="revokingUids.has(g.grantee_auth_uid)" size="xs" />
                   <i v-else class="fa-solid fa-trash"></i>
                   {{ revokingUids.has(g.grantee_auth_uid) ? 'Revoking…' : 'Revoke' }}
                 </button>
@@ -489,8 +491,7 @@ onMounted(() => {
         </div>
 
         <div v-if="pendingLoading" class="flex items-center justify-center p-6 text-gray-400 text-sm">
-          <i class="fa-solid fa-circle-notch fa-spin mr-2"></i>
-          Loading…
+          <InlineLoader label="Loading…" />
         </div>
 
         <div v-else-if="pendingError" class="bg-red-50 text-red-600 text-sm p-3 rounded-xl border border-red-100 flex items-center gap-2">

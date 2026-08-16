@@ -38,7 +38,7 @@ import { useUserStore } from '@/stores/user';
 import { useDevicesStore } from '@/stores/devices';
 
 const BROKER_URL = 'wss://posbroker.navitag.com';
-const KEEPALIVE_SEC = 60;
+const KEEPALIVE_SEC = 30;
 const PING_INTERVAL_MS = (KEEPALIVE_SEC - 5) * 1000; // send PINGREQ a bit before the broker's idle cut-off
 const RECONNECT_DELAY_MS = 500;                      // matches Traccar's session.handleSocketDisconnect cadence
 

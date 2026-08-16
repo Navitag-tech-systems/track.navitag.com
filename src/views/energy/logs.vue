@@ -7,6 +7,7 @@ import { request } from '@/utils/http.js';
 import { baseUrl } from '@/utils/variables';
 import { hasScope } from '@/utils/scopes';
 import SharedBadge from '@/components/SharedBadge.vue';
+import InlineLoader from '@/components/InlineLoader.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -23,13 +24,15 @@ const canWriteEnergy = computed(() => hasScope(device.value, 'energy:write'));
 // Mirrors deviceSettings.vue: entry buttons need both read AND write.
 const canLogEnergy   = computed(() => hasEnergyRead.value && canWriteEnergy.value);
 
-// Month is stored as a YYYY-MM string anchored in UTC, since the backend
-// queries by UTC month per the API doc.
-function toUtcMonthString(d = new Date()) {
-  return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0');
+// Month is a YYYY-MM string in the USER'S LOCAL calendar. The backend resolves
+// the local month to a UTC range (it receives the `timezone` sent below), so the
+// report reflects the user's own month rather than a UTC month.
+function toMonthString(d = new Date()) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
 }
+const userTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-const currentMonth = ref(toUtcMonthString());
+const currentMonth = ref(toMonthString());
 const items = ref([]);
 const truncated = ref(false);
 const loading = ref(false);
@@ -38,20 +41,19 @@ const errorMsg = ref('');
 const monthLabel = computed(() => {
   const [y, m] = currentMonth.value.split('-').map(Number);
   if (!y || !m) return currentMonth.value;
-  return new Date(Date.UTC(y, m - 1, 1)).toLocaleString(undefined, {
+  return new Date(y, m - 1, 1).toLocaleString(undefined, {
     month: 'long',
     year: 'numeric',
-    timeZone: 'UTC',
   });
 });
 
-const isCurrentMonth = computed(() => currentMonth.value === toUtcMonthString());
+const isCurrentMonth = computed(() => currentMonth.value === toMonthString());
 
 function shiftMonth(delta) {
   const [y, m] = currentMonth.value.split('-').map(Number);
   if (!y || !m) return;
-  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
-  currentMonth.value = toUtcMonthString(d);
+  const d = new Date(y, m - 1 + delta, 1);
+  currentMonth.value = toMonthString(d);
 }
 
 function formatTime(value) {
@@ -63,6 +65,7 @@ function formatTime(value) {
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
+    hour12: false,
   });
 }
 
@@ -86,7 +89,7 @@ async function fetchLogs() {
     const res = await request.send({
       url: `${baseUrl}/energy/logs/${deviceImei.value}`,
       method: 'GET',
-      params: { month: currentMonth.value },
+      params: { month: currentMonth.value, ...(userTz ? { timezone: userTz } : {}) },
       token: userStore.idToken,
     });
     items.value = Array.isArray(res?.items) ? res.items : [];
@@ -201,8 +204,7 @@ const kindMeta = {
       </div>
 
       <div v-if="loading" class="flex items-center justify-center p-6 text-gray-400 text-sm">
-        <i class="fa-solid fa-circle-notch fa-spin mr-2"></i>
-        Loading…
+        <InlineLoader label="Loading…" />
       </div>
 
       <div v-else-if="errorMsg" class="bg-red-50 text-red-600 text-sm p-3 rounded-xl border border-red-100 flex items-center gap-2">
