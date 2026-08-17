@@ -18,6 +18,7 @@
       "@capacitor-firebase/authentication",
       "@capacitor-firebase/messaging",
       "@capacitor/app",
+      "@capacitor/app-launcher",
       "@capacitor/barcode-scanner",
       "@capacitor/browser",
       "@capacitor/geolocation",

@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, watch, useTemplateRef } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { Capacitor } from '@capacitor/core';
-import { Browser } from '@capacitor/browser';
+import { AppLauncher } from '@capacitor/app-launcher';
 import { useDevicesStore } from '@/stores/devices.js';
 import { useUserStore } from '@/stores/user.js';
 import { useNotificationsStore } from '@/stores/notifications.js';
@@ -315,8 +315,29 @@ async function openTopUp() {
     return;
   }
   const url = `https://www.navitag.com/top-up/${device.value.uniqueId}`
+
+  // Native (Android in practice — iOS always takes the IAP sheet above) opens
+  // the REAL browser app, not an in-app view. Three things had to line up:
+  //
+  //   Browser.open()  is a Chrome Custom Tab on Android — styled to look
+  //                   external, but still inside our task. Checkout should be
+  //                   somewhere the user can see the address bar, use a saved
+  //                   password, and keep the tab after leaving the app.
+  //   window.open()   would not have escaped either: Capacitor's Android layer
+  //                   defines no onCreateWindow, so '_blank' falls through to
+  //                   shouldOverrideUrlLoading.
+  //   that check      only fires ACTION_VIEW when the host does NOT match
+  //                   allowNavigation (Bridge.java) — and www.navitag.com
+  //                   matches our '*.navitag.com' entry, so a plain navigation
+  //                   loads INSIDE the webview. Narrowing allowNavigation to
+  //                   force it out would change routing for every navitag.com
+  //                   URL in the app, which is far too blunt for one button.
+  //
+  // AppLauncher.openUrl is the surgical version: Intent.ACTION_VIEW on Android,
+  // UIApplication.open on iOS. It hands off to the system browser and nothing
+  // else changes.
   if (Capacitor.isNativePlatform()) {
-    await Browser.open({ url })
+    await AppLauncher.openUrl({ url })
   } else {
     window.open(url, '_blank')
   }
