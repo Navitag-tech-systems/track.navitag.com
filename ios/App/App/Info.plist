@@ -40,10 +40,23 @@
 	<key>NSCameraUsageDescription</key>
 	<string>We need camera access to scan QR codes for linking devices to your account</string>
 	<!--
-		Location usage strings removed: the app tracks external GPS devices via the
-		backend, not the phone's own location (the only consumer was an orphaned
-		LocationPicker that is never mounted). Re-add NSLocationWhenInUseUsageDescription
-		if phone GPS is ever wired up.
+		NO LOCATION USAGE STRINGS, AND NO LOCATION PLUGIN. The app tracks external
+		GPS devices through the backend; it never reads the phone's own position.
+
+		Removing the strings alone was not enough and caused Apple to return
+		ITMS-90683 on upload: @capacitor/geolocation stayed in package.json, so the
+		binary still linked CoreLocation and Apple saw a protected framework with no
+		declared purpose. The plugin's JavaScript was not even in the bundle — its
+		only importer, an orphaned LocationPicker component, was tree-shaken out —
+		so the app was carrying the liability for a feature it could not invoke.
+		Both the plugin and that component are now deleted.
+
+		If phone GPS is ever wired up, BOTH halves come back: reinstall
+		@capacitor/geolocation (adding it to android.includePlugins in
+		capacitor.config.json, which check-android-plugins.mjs enforces) AND add
+		NSLocationWhenInUseUsageDescription here. Adding the string on its own would
+		silence the warning while declaring a capability the app does not use, which
+		invites review questions and a privacy-manifest obligation for nothing.
 	-->
 
 

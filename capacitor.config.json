@@ -21,7 +21,6 @@
       "@capacitor/app-launcher",
       "@capacitor/barcode-scanner",
       "@capacitor/browser",
-      "@capacitor/geolocation",
       "@capacitor/network",
       "@capacitor/preferences",
       "@capacitor/share"
