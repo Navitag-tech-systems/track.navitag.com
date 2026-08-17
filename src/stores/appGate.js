@@ -2,7 +2,7 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
-import { Browser } from '@capacitor/browser';
+import { AppLauncher } from '@capacitor/app-launcher';
 import { request } from '@/utils/http';
 import { baseUrl } from '@/utils/variables';
 
@@ -12,8 +12,8 @@ import { baseUrl } from '@/utils/variables';
  * Asks GET /app/config (public, unauthenticated) what to do with THIS build and
  * stores the verdict. App.vue renders a non-dismissible wall on 'block'.
  *
- * THE SERVER DECIDES. We send platform + build and receive an action; there is
- * deliberately no version comparison in here. Anything this file computes is
+ * THE SERVER DECIDES. We send platform + version and receive an action; there
+ * is deliberately no version comparison in here. Anything this file computes is
  * frozen into the binary forever, and the users this gate exists to reach are
  * precisely the ones who can never receive a fix for it. Keeping the rule
  * server-side means a mistake is an sftp upload away from being corrected —
@@ -31,6 +31,9 @@ export const useAppGateStore = defineStore('appGate', () => {
   const action = ref('ok');
   const message = ref('');
   const storeUrl = ref('');
+  // App-scheme variant (market:// , itms-apps://) tried before storeUrl so the
+  // store app opens without a chooser. Server-supplied; see openStore().
+  const storeUrlApp = ref('');
   const checked = ref(false);
 
   // What this binary IS. Filled in by check() and shown on the wall, because
@@ -89,6 +92,7 @@ export const useAppGateStore = defineStore('appGate', () => {
       action.value = res.action;
       message.value = res.message || '';
       storeUrl.value = res.store_url || '';
+      storeUrlApp.value = res.store_url_app || '';
     } catch (error) {
       // Deliberately swallowed. An unreachable or misbehaving gate endpoint
       // must never be the reason a user cannot open the app.
@@ -98,15 +102,43 @@ export const useAppGateStore = defineStore('appGate', () => {
     }
   }
 
+  /**
+   * Sends the user to the store LISTING in the store APP.
+   *
+   * This used to be Browser.open(), which is an in-app view — a Chrome Custom
+   * Tab on Android, SFSafariViewController on iOS. That renders the store's
+   * WEB page, so the one action on a non-dismissible wall left the user on a
+   * page inside the app they were just told they cannot use, needing another
+   * tap to reach the store itself. AppLauncher hands off to the OS instead
+   * (Intent.ACTION_VIEW / UIApplication.open), which is what actually resolves
+   * these URLs to App Store and Play.
+   *
+   * Two URLs are tried in order, both supplied by the server so the listing
+   * stays fixable without a release:
+   *   store_url_app  market:// or itms-apps:// — claimed by exactly one app,
+   *                  so it opens the store directly with no chooser dialog
+   *   store_url      https — universal fallback; the only one that works on a
+   *                  device with no Play Store
+   *
+   * NOTE the success test is `completed`, NOT a thrown error. AppLauncher's
+   * Android openUrl does not reject when nothing handles the intent — its
+   * canLaunchIntent() calls startActivity and returns a boolean, so a failed
+   * launch resolves with {completed: false}. A try/catch alone would treat that
+   * as success and silently strand the user on the wall.
+   */
   async function openStore() {
-    if (!storeUrl.value) return;
-    try {
-      await Browser.open({ url: storeUrl.value });
-    } catch {
-      // Browser plugin unavailable for any reason — fall back to the webview's
-      // own navigation rather than leaving a dead button.
-      window.open(storeUrl.value, '_system');
+    for (const url of [storeUrlApp.value, storeUrl.value]) {
+      if (!url) continue;
+      try {
+        const res = await AppLauncher.openUrl({ url });
+        if (res?.completed !== false) return;
+      } catch {
+        // Plugin missing or URL malformed — fall through to the next candidate.
+      }
     }
+
+    // Everything above failed. Better a web page than a dead button.
+    if (storeUrl.value) window.open(storeUrl.value, '_system');
   }
 
   function dismissWarn() {
@@ -114,7 +146,7 @@ export const useAppGateStore = defineStore('appGate', () => {
   }
 
   return {
-    action, message, storeUrl, checked,
+    action, message, storeUrl, storeUrlApp, checked,
     currentVersion, currentBuild,
     check, openStore, dismissWarn,
   };
