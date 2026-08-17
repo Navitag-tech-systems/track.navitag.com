@@ -562,14 +562,10 @@ export const useUserStore = defineStore('user', () => {
 
     try {
       // Add 'await' so we get the actual WebSocket, not a Promise
-      // server_token is the web socket's credential now (native still uses the
-      // session id). It is already populated by serverConnect, which either
-      // reused the stored token or minted a fresh one via /server/token.
       const socketInstance = await request.connectSocket(
         server_url.value,
         onMessageCallback,
-        onDisconnectCallback,
-        server_token.value
+        onDisconnectCallback
       );
 
       if (socketInstance) {

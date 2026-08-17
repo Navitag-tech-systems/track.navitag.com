@@ -243,36 +243,31 @@ export const request = {
     throw new Error('HTTP 401 — token refresh failed');
   },
 
-  async connectSocket(url, onMessageCallback, onDisconnectCallback, serverToken = null) {
+  async connectSocket(url, onMessageCallback, onDisconnectCallback) {
     const isNative = Capacitor.isNativePlatform();
     let wsUrl = `wss://${url}/api/socket`;
 
-    // WEB: authenticate with the Traccar token rather than the browser cookie.
+    // WEB: the browser cookie is the credential. /api/socket also accepts
+    // ?token=<server_token>, and this once passed it — on the theory that the
+    // cookie only reached Traccar from track.navitag.com by accident of
+    // deployment. That theory was wrong, and the token is not needed:
     //
-    // The cookie path only ever worked by accident of deployment. Traccar sets
-    // JSESSIONID with no SameSite and no Secure, so Chrome treats it as Lax and
-    // withholds it from any cross-site request — and "same-site" here is
-    // SCHEMEFUL, so http://local.navitag.com -> wss://tserver1.navitag.com is
-    // cross-site too. That is why the socket authenticates from
-    // https://track.navitag.com and from nowhere else: not a bug in the app, a
-    // property of where it happens to be served.
+    // JSESSIONID is set with no SameSite (so: Lax) and no Secure, but
+    // track.navitag.com and tserver1.navitag.com are the same SITE — both are
+    // navitag.com — so a Lax cookie is sent on the wss:// handshake. Only the
+    // SCHEME broke it: same-site is schemeful, so http://local.navitag.com was
+    // cross-site and the cookie was withheld. That was a local-dev artifact,
+    // never a production problem.
     //
-    // /api/socket accepts ?token= directly (verified against tserver1: 101
-    // Switching Protocols, followed immediately by a positions frame carrying
-    // both devices), so the token the store already holds is sufficient and the
-    // cookie is not needed at all. This also makes web match native, which has
-    // always passed credentials in the query string.
-    // Falls back to the cookie when no token is available (users.server_token
-    // can be false), so this is strictly additive: production keeps working
-    // exactly as before in that case, and gains an origin-independent path in
-    // every other.
+    // Verified 2026-08-17 by serving the built app over real HTTPS at
+    // https://local.navitag.com:4443 (self-signed cert trusted in
+    // CurrentUser\Root; see scripts/local-dev/vite.preview.https.mjs): with the
+    // token suppressed, the socket connected and streamed positions, and a
+    // second boot's GET /api/session found the existing session, proving the
+    // cookie crossed origins. So local dev needs HTTPS, not a token in the URL
+    // — which also keeps the credential out of proxy access logs.
     if (!isNative) {
-      if (serverToken) {
-        wsUrl += `?token=${encodeURIComponent(serverToken)}`;
-        console.log('🔹 Web WebSocket connecting with Traccar token');
-      } else {
-        console.log('🔹 Web WebSocket connecting with browser cookie (no server token available)');
-      }
+      console.log('🔹 Web WebSocket connecting with Browser Cookies', wsUrl);
     }
 
     if (isNative) {

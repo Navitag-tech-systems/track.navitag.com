@@ -87,7 +87,24 @@ watch(() => userStore.isLoggedIn, (loggedIn) => {
   if (!loggedIn) hasRenderedOnce.value = false;
 });
 
-const showColdSplash = computed(() => masterLoading.value && !hasRenderedOnce.value);
+// Gated on the BOOT RUN, not only on masterLoading.
+//
+// masterLoading is `deviceStore.loading || userStore.loading`, and neither is
+// held across the whole boot: userStore.loading is a computed that is true only
+// while `user.value === null` (so it drops the instant auth resolves), and
+// deviceStore.loading is raised inside fetchAll(). Between serverConnect
+// finishing and fetchAll starting, BOTH are false — so the cold splash
+// unmounted and then remounted a beat later, fading out and back in over the
+// empty app shell. Measured on a real sign-in: splash up at 58.9s, torn down at
+// 62.44s, re-faded 0→1 by 62.64s, with the router view still empty behind it.
+//
+// boot.inProgress is exactly the right signal: it spans one run start to
+// finish, which is what a splash is for. Kept AND-ed with isLoggedIn so the
+// logged-out surfaces are untouched — on /login isLoggedIn is false, this falls
+// back to masterLoading alone, and the sign-in form is never covered.
+const showColdSplash = computed(() =>
+  (masterLoading.value || (userStore.isLoggedIn && boot.inProgress)) && !hasRenderedOnce.value
+);
 
 // Driven by the boot run rather than masterLoading, so the bar spans the whole
 // reconnect (including the serverConnect leg, where neither loading flag is

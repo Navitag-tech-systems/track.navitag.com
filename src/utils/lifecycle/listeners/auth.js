@@ -13,20 +13,28 @@ export function registerAuthListeners(session) {
     if (firebaseUser) {
       console.log('✅ Auth State: Logged In');
 
-      await userStore.setUser(firebaseUser);
-      useBootStore().done('auth');
-      iapLogIn(firebaseUser.uid);
-
-      // Leave the auth screen NOW, not after the boot pipeline. startSession
-      // runs region + account sync + server connect + device fetch, and the
-      // route was only replaced once all of that resolved — so /login stayed
-      // mounted underneath the splash for the entire run and showed through as
-      // a flash of the sign-in form. Nothing about leaving early depends on the
-      // session succeeding: a failure surfaces as the <Error/> overlay, which is
-      // route-independent, and the replace below is then a no-op.
+      // Leave the auth screen in THIS tick — before any await.
+      //
+      // setUser() assigns `user.value = firebaseUser` on its first line, i.e.
+      // synchronously, and that assignment is the only thing router.beforeEach
+      // inspects (`userStore.user === false`). Everything after it —
+      // getFreshToken(), setUserId() — is network work the guard does not care
+      // about. Awaiting the whole function before navigating therefore held
+      // /login mounted for the duration of a token round-trip: measured at
+      // 369 ms, during which the cold splash began its 260 ms fade-in on top of
+      // the still-mounted sign-in form, which is exactly the flash.
+      //
+      // So: kick setUser off, navigate on the synchronous part, then await the
+      // rest. Nothing below depends on the navigation having finished, and a
+      // session failure surfaces as <Error/>, which is route-independent.
+      const userReady = userStore.setUser(firebaseUser);
       if (['login', 'signup'].includes(router.currentRoute.value.name)) {
         router.replace('/');
       }
+
+      await userReady;
+      useBootStore().done('auth');
+      iapLogIn(firebaseUser.uid);
 
       const sessionStarted = await session.startSession();
       if (sessionStarted) {
