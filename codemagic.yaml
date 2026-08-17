@@ -169,7 +169,18 @@ workflows:
         script: npm run build
       - name: Sync Capacitor (iOS)
         script: npx cap sync ios
-      - name: Set iOS build number (above the latest already in App Store Connect)
+      - name: Set iOS marketing version + build number
+        # The marketing version comes from package.json, exactly as the `release`
+        # workflow does it. Without this line the build fell back to whatever
+        # MARKETING_VERSION happened to be committed in project.pbxproj, which
+        # drifts silently: it sat at 5.1.0 while package.json said 5.2.0, so this
+        # workflow would have produced a brand-new binary labelled 5.1.0.
+        #
+        # That is not cosmetic. The update gate compares MARKETING VERSIONS and
+        # ignores build numbers (api.navitag.net AppConfig.php), so the version
+        # string IS the app's identity — a new build reporting an old version is
+        # indistinguishable from a genuinely stale install and gets walled by any
+        # threshold aimed at the releases it actually postdates.
         script: |
           set -e
           if [ -n "$APP_STORE_APP_ID" ]; then
@@ -177,8 +188,11 @@ workflows:
           else
             LATEST=$BUILD_NUMBER
           fi
+          APP_VERSION=$(node -p "require('./package.json').version")
           cd ios/App
+          agvtool new-marketing-version "$APP_VERSION"
           agvtool new-version -all $(($LATEST + 1))
+          echo "iOS -> version=$APP_VERSION build=$(($LATEST + 1))"
       - name: Set up code signing (creates the cert + App Store profile if missing)
         script: |
           set -e   # without this, a fetch-signing-files failure silently passed the step

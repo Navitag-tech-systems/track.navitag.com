@@ -40,6 +40,21 @@ App-store releases run through **Codemagic** (`codemagic.yaml`, free tier, macOS
 
 **v5.0.3 (build 7)** — joint release: fix geofence drawing-step layout regression — with the top bar gone, the `justify-between` root parked the bottom sheet at the top; `mt-auto` pins it back to the bottom.
 
+### Live channel state (verified 2026-08-17, not inferred)
+
+| channel | version | build / versionCode |
+| --- | --- | --- |
+| App Store (public) | **5.1.0** | 17 |
+| TestFlight | **6.0.2** | 19 |
+| Google Play production | **5.0.5** | 10 |
+| Google Play internal | **6.0.2** | 19 |
+
+Pulled live from the App Store Connect API and the Play Developer API — see `scripts/app-gate/asc_build_state.py` and `scripts/app-gate/play_track_state.py`. The Play reader opens a throwaway edit because the API cannot read track releases without one; it never commits and deletes the edit in a `finally`.
+
+Two things this corrects and is worth not re-deriving:
+- **The two stores are on different versions.** iOS production is 5.1.0, Android production is 5.0.5. Anything reasoning about "the shipped version" has to say which platform.
+- **Neither production release contains the update gate.** It first appears in `ad96e73` (2026-07-27), well after both. So an armed `MIN_VERSION` currently reaches *no* production user on either platform while walling the 6.0.2 testers — see the arming notes in `AppConfig.php`.
+
 Requirements baked into the workflows (do not regress): **Node 22** (Capacitor 8 CLI), **JDK 21** (Capacitor 8 compiles to source release 21), an **executable `gradlew`**, and an iOS distribution **certificate private key** passed to `fetch-signing-files --create`. Trigger a release locally with `node secrets/cm-run.mjs release main`. All signing material lives in gitignored `secrets/` + `.env`.
 
 > **Follow-up:** the iOS `CERTIFICATE_PRIVATE_KEY` is injected at API trigger time, so iOS builds started from the **Codemagic UI** will fail signing until that key is also added as a persistent Codemagic environment variable.
