@@ -37,5 +37,13 @@ const appGate = useAppGateStore();
         Update Now
       </button>
     </div>
+
+    <!-- The running release, stated plainly. This screen is a dead end: the
+         only thing left for a user who cannot update is to contact support,
+         and a screenshot of a bare "Update Required" identifies nothing.
+         "5.1.0 (17)" identifies the binary exactly. -->
+    <p v-if="appGate.currentVersion" class="mt-6 text-xs text-gray-400">
+      Installed: {{ appGate.currentVersion }} ({{ appGate.currentBuild }})
+    </p>
   </div>
 </template>

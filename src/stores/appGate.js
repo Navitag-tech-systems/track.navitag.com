@@ -33,30 +33,54 @@ export const useAppGateStore = defineStore('appGate', () => {
   const storeUrl = ref('');
   const checked = ref(false);
 
+  // What this binary IS. Filled in by check() and shown on the wall, because
+  // the wall is a dead end where the user's only remaining channel is support —
+  // and "Update Required" with nothing else on screen tells support nothing.
+  // A screenshot carrying "5.1.0 (17)" identifies the release exactly.
+  //
+  // currentVersion is also what gets SENT; currentBuild is display-only, since
+  // the gate compares marketing versions and ignores build numbers entirely.
+  const currentVersion = ref('');
+  const currentBuild = ref('');
+
   async function check() {
     try {
       // Web is never gated: the browser always loads the current bundle, so
       // there is no stale build to gate against.
       if (!Capacitor.isNativePlatform()) return;
 
-      // Dev builds are exempt. This is a COMPILE-TIME flag, not a build-number
-      // test, on purpose: ios/App/App.xcodeproj carries CURRENT_PROJECT_VERSION
-      // = 1 and android/app/build.gradle defaults versionCode to 1 — both are
-      // placeholders Codemagic overwrites at build time. A locally built app
-      // therefore reports build 1 and would be blocked by any armed threshold.
-      // Exempting on import.meta.env.DEV keeps that convenience out of release
-      // binaries entirely, where a build-number exemption would have shipped as
-      // a permanent bypass.
+      // Dev builds are exempt, and gating on version rather than build number
+      // makes this MORE load-bearing, not less. A local build takes its version
+      // straight from package.json, so it is indistinguishable from a shipped
+      // release of that same version: arm MIN_VERSION at 5.2.0 while developing
+      // on 5.1.0 and every developer's own build walls itself off.
+      //
+      // import.meta.env.DEV is a COMPILE-TIME flag, so the exemption is dead
+      // code in a release binary. That is the point — any runtime exemption
+      // (a version allow-list, a debug flag) would ship as a permanent bypass
+      // of the one mechanism that can reach an unpatchable install.
       if (import.meta.env.DEV) return;
 
       const info = await App.getInfo();
-      const build = String(info?.build ?? '').trim();
-      if (!build) return;
+      const version = String(info?.version ?? '').trim();
 
+      // Build number is read for DISPLAY ONLY (see the wall) and is not sent —
+      // the gate compares marketing versions. Its absence must not stop the
+      // check, so it is deliberately not part of the guard below.
+      currentBuild.value = String(info?.build ?? '').trim();
+      currentVersion.value = version;
+
+      // No version, nothing to ask about. The server would answer 'ok' anyway;
+      // returning here just skips a pointless round trip.
+      if (!version) return;
+
+      // Only platform + version go out, and no comparison happens here. The
+      // server holds every rule — anything this file computed would be frozen
+      // into the binary for precisely the users who can never receive a fix.
       const res = await request.send({
         url: `${baseUrl}/app/config`,
         method: 'GET',
-        params: { platform: Capacitor.getPlatform(), build },
+        params: { platform: Capacitor.getPlatform(), version },
       });
 
       if (!res || typeof res !== 'object') return;
@@ -89,5 +113,9 @@ export const useAppGateStore = defineStore('appGate', () => {
     if (action.value === 'warn') action.value = 'ok';
   }
 
-  return { action, message, storeUrl, checked, check, openStore, dismissWarn };
+  return {
+    action, message, storeUrl, checked,
+    currentVersion, currentBuild,
+    check, openStore, dismissWarn,
+  };
 });
