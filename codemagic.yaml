@@ -52,6 +52,12 @@ workflows:
           NEXT=$(node scripts/next-build-number.mjs)
           echo "BUILD_NUMBER=$NEXT" >> $CM_ENV
           echo "Android versionCode -> $NEXT"
+      - name: Verify Android plugin allow-list (keeps RevenueCat/IAP off Android)
+        # android.includePlugins is an ALLOW-list that replaces the dependency
+        # scan, so a newly added plugin is silently missing from Android only —
+        # the AAB still builds and the app throws "not implemented on android"
+        # on a device. Fail here instead.
+        script: node scripts/check-android-plugins.mjs
       - name: Sync Capacitor (Android)
         script: npx cap sync android
       - name: Point Gradle at the Codemagic Android SDK
@@ -109,6 +115,12 @@ workflows:
           NEXT=$(node scripts/next-build-number.mjs)
           echo "BUILD_NUMBER=$NEXT" >> $CM_ENV
           echo "Android versionCode -> $NEXT"
+      - name: Verify Android plugin allow-list (keeps RevenueCat/IAP off Android)
+        # android.includePlugins is an ALLOW-list that replaces the dependency
+        # scan, so a newly added plugin is silently missing from Android only —
+        # the AAB still builds and the app throws "not implemented on android"
+        # on a device. Fail here instead.
+        script: node scripts/check-android-plugins.mjs
       - name: Sync Capacitor (Android)
         script: npx cap sync android
       - name: Point Gradle at the Codemagic Android SDK
@@ -259,6 +271,12 @@ workflows:
           echo "APP_VERSION=$VERSION" >> $CM_ENV
           echo "BUILD_NUMBER=$NEXT" >> $CM_ENV
           echo "Aligned -> version=$VERSION  build=$NEXT  (android_next=$ANDROID_NEXT testflight=$TF)"
+      - name: Verify Android plugin allow-list (keeps RevenueCat/IAP off Android)
+        # android.includePlugins is an ALLOW-list that replaces the dependency
+        # scan, so a newly added plugin is silently missing from Android only —
+        # the AAB still builds and the app throws "not implemented on android"
+        # on a device. Fail here instead.
+        script: node scripts/check-android-plugins.mjs
       - name: Sync Capacitor (both platforms)
         script: |
           npx cap sync android

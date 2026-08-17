@@ -12,7 +12,19 @@
     ]
   },
   "android": {
-    "adjustMarginsForEdgeToEdge": "auto"
+    "adjustMarginsForEdgeToEdge": "auto",
+    "includePlugins": [
+      "@capacitor-firebase/analytics",
+      "@capacitor-firebase/authentication",
+      "@capacitor-firebase/messaging",
+      "@capacitor/app",
+      "@capacitor/barcode-scanner",
+      "@capacitor/browser",
+      "@capacitor/geolocation",
+      "@capacitor/network",
+      "@capacitor/preferences",
+      "@capacitor/share"
+    ]
   },
   "plugins": {
     "FirebaseAuthentication": {
