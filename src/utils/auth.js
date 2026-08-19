@@ -89,7 +89,7 @@ export const supportedProviders = [
       id: 'microsoft',
       name: 'Microsoft',
       color: 'bg-[#0078d4]',
-      icon: 'fa-brands fa-microsoft',
+      icon: 'fa-brands fa-windows',
       handler: async () => {
         try {
           console.log('[Microsoft SSO] Starting sign-in');
