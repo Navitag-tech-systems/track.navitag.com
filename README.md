@@ -59,6 +59,38 @@ Requirements baked into the workflows (do not regress): **Node 22** (Capacitor 8
 
 > **Follow-up:** the iOS `CERTIFICATE_PRIVATE_KEY` is injected at API trigger time, so iOS builds started from the **Codemagic UI** will fail signing until that key is also added as a persistent Codemagic environment variable.
 
+### Microsoft SSO
+
+Live on both web surfaces and enabled for native. Firebase project `track-navitag-com` is shared
+by all of them, so the provider is enabled once — but **each surface sends its own `redirect_uri`,
+and Entra matches it as an exact string**. That is the whole reason this took more than one
+attempt, and it is the thing to check first if a Microsoft button ever fails with
+`AADSTS invalid_request`:
+
+| surface | sends as `redirect_uri` | derived from |
+| --- | --- | --- |
+| track.navitag.com (web) | `https://track.navitag.com/__/auth/handler` | `authDomain` in `src/firebase.js` |
+| navitag.com (web, www-v3) | `https://navitag.com/__/auth/handler` | that app's own `authDomain` |
+| iOS + Android | `https://track-navitag-com.firebaseapp.com/__/auth/handler` | `PROJECT_ID`, **not** `authDomain` |
+
+Native reads `GoogleService-Info.plist` / `google-services.json`, which carry no `authDomain`, so
+it falls back to the `firebaseapp.com` default rather than the custom domain the browser uses. All
+three must be registered as **Web**-platform redirect URIs on the Entra app registration (the
+plugin's setup guide is explicit that even the native flows use the `Web` platform type).
+
+The Firebase console shows only the `firebaseapp.com` default when you enable the provider, which
+is why registering just that one is the easy mistake — it satisfies native and breaks both webs.
+
+**Transport differs by surface, deliberately.** track uses `signInWithRedirect` in production
+(popup is unreliable on mobile — backgrounded tabs get evicted mid-OAuth) but **popup in dev**,
+because redirect can only return the credential when the app origin equals `authDomain`, and
+`localhost:5173` is cross-origin to `track.navitag.com`. `import.meta.env.DEV` is compiled out of
+production bundles. navitag.com uses popup for all providers, which predates Microsoft.
+
+Native needed no source changes beyond the provider entry: iOS requires a URL scheme equal to
+`REVERSED_CLIENT_ID`, which `Info.plist` has carried since Google sign-in, and Android requires
+nothing further.
+
 ### iOS map-tile loading (RESOLVED)
 
 iOS builds rendered **blank map tiles** while Android worked. **Root cause: LocationIQ's HTTP-referrer allow-list.** iOS WKWebView sends **no `Referer`** for the app's local `https://localhost` origin, so LocationIQ rejected the tile `<img>` requests with **403** (Android's Chromium sends `https://localhost`, which matched the `*localhost*` entry). Confirmed on-device with a temporary diagnostic build (eruda + `window.netcheck()`): OSM tiles loaded in the webview, LIQ tiles 403'd on **both** the native (CapacitorHttp) and webview paths, and forcing `<meta name="referrer" content="unsafe-url">` did **not** help — WKWebView won't attach a referrer at all. This also ruled out `WKAppBoundDomains` (per Apple WWDC20 #10188 it gates *interaction*, not resource *loading*).

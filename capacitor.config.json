@@ -31,7 +31,8 @@
       "skipNativeAuth": false,
       "providers": [
         "google.com",
-        "apple.com"
+        "apple.com",
+        "microsoft.com"
       ]
     },
     "FirebaseMessaging": {

@@ -77,34 +77,36 @@ export const supportedProviders = [
       }
     }
   },
-  // Microsoft is WEB-ONLY, and the spread below is what enforces that. Native
-  // has none of the setup it would need: capacitor.config.json's
-  // FirebaseAuthentication.providers list is google.com + apple.com only, and
-  // the iOS/Android SDKs would each also need the Microsoft OAuth redirect URI
-  // registered against the app's custom scheme. Rendering the button inside the
-  // native shell would hand those users a button that can only ever throw, so
-  // it is dropped from the array entirely rather than shown and disabled.
-  ...(Capacitor.isNativePlatform() ? [] : [
-    {
-      id: 'microsoft',
-      name: 'Microsoft',
-      color: 'bg-[#0078d4]',
-      icon: 'fa-brands fa-windows',
-      handler: async () => {
-        try {
-          console.log('[Microsoft SSO] Starting sign-in');
-          const result = await auth.signInWithMicrosoft({
-            scopes: ['openid', 'email', 'profile'],
-            mode: signInMode,
-          });
-          return result.user;
-        } catch (error) {
-          console.error('[Microsoft SSO] Error:', error);
-          throw error;
-        }
+  // Microsoft shipped web-only first; native was enabled once the platform
+  // prerequisites were confirmed present. Both were already satisfied, which is
+  // why this needed no native source changes: iOS wants a URL scheme equal to
+  // REVERSED_CLIENT_ID, which Info.plist has carried since Google sign-in was
+  // added, and Android needs nothing beyond the provider entry. The one piece
+  // that is NOT in this repo is the Entra app registration, which must list
+  // https://track-navitag-com.firebaseapp.com/__/auth/handler as a *Web*
+  // redirect URI -- native derives that handler from PROJECT_ID in
+  // GoogleService-Info.plist / google-services.json, not from the JS
+  // authDomain, so it is the firebaseapp.com default rather than the custom
+  // track.navitag.com the browser sends.
+  {
+    id: 'microsoft',
+    name: 'Microsoft',
+    color: 'bg-[#0078d4]',
+    icon: 'fa-brands fa-windows',
+    handler: async () => {
+      try {
+        console.log('[Microsoft SSO] Starting sign-in');
+        const result = await auth.signInWithMicrosoft({
+          scopes: ['openid', 'email', 'profile'],
+          mode: signInMode,
+        });
+        return result.user;
+      } catch (error) {
+        console.error('[Microsoft SSO] Error:', error);
+        throw error;
       }
     }
-  ]),
+  },
 ];
 
 export const signInWithEmailAndPassword = async (email, password) => {
