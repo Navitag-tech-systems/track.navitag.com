@@ -6,7 +6,23 @@ import { Capacitor } from '@capacitor/core';
 // On web (desktop + mobile), use redirect — popup is unreliable on mobile
 // because backgrounded tabs get evicted mid-OAuth. On native, the option
 // is ignored (native SDKs handle the flow).
-const signInMode = Capacitor.isNativePlatform() ? undefined : 'redirect';
+//
+// DEV IS THE EXCEPTION, and it is a limitation of Firebase, not of this app.
+// signInWithRedirect can only hand the credential back when the app is served
+// from the same origin as authDomain. In production that holds — the app and
+// authDomain are both track.navitag.com — but a dev server on localhost:5173 is
+// cross-origin to it, so the handler completes on track.navitag.com and cannot
+// return the session to localhost. The visible symptom is a full round trip
+// through the IdP that dumps you back on the login screen, signed in nowhere.
+// Popup has no such limit: the credential comes back by postMessage to the
+// opener, so it works cross-origin. This affects Google and Apple identically —
+// it is not specific to any one provider. Prod builds are untouched: DEV is
+// false for `vite build`, so shipped bundles still use redirect.
+const signInMode = Capacitor.isNativePlatform()
+  ? undefined
+  : import.meta.env.DEV
+    ? 'popup'
+    : 'redirect';
 /* ------------------------------------------------------------------
  * Auth providers
  * ------------------------------------------------------------------ */
@@ -60,7 +76,35 @@ export const supportedProviders = [
         throw error;
       }
     }
-  }
+  },
+  // Microsoft is WEB-ONLY, and the spread below is what enforces that. Native
+  // has none of the setup it would need: capacitor.config.json's
+  // FirebaseAuthentication.providers list is google.com + apple.com only, and
+  // the iOS/Android SDKs would each also need the Microsoft OAuth redirect URI
+  // registered against the app's custom scheme. Rendering the button inside the
+  // native shell would hand those users a button that can only ever throw, so
+  // it is dropped from the array entirely rather than shown and disabled.
+  ...(Capacitor.isNativePlatform() ? [] : [
+    {
+      id: 'microsoft',
+      name: 'Microsoft',
+      color: 'bg-[#0078d4]',
+      icon: 'fa-brands fa-microsoft',
+      handler: async () => {
+        try {
+          console.log('[Microsoft SSO] Starting sign-in');
+          const result = await auth.signInWithMicrosoft({
+            scopes: ['openid', 'email', 'profile'],
+            mode: signInMode,
+          });
+          return result.user;
+        } catch (error) {
+          console.error('[Microsoft SSO] Error:', error);
+          throw error;
+        }
+      }
+    }
+  ]),
 ];
 
 export const signInWithEmailAndPassword = async (email, password) => {
