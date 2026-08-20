@@ -266,7 +266,12 @@ export const useDevicesStore = defineStore('devices', () => {
       token: userStore.idToken
     });
     if (exps && exps.status == "success") {
-      exps.message.forEach((el) => {
+      // The payload key was renamed `message` -> `devices` on 2026-08-20 so
+      // this endpoint stops being the only one shipping data under the key
+      // everyone else uses for error text. Both are read because the frontend
+      // and the API deploy separately — whichever lands first, this works.
+      const rows = exps.devices ?? exps.message ?? [];
+      rows.forEach((el) => {
         if (devices[el.server_ref]) {
           devices[el.server_ref].expiration = el.expiration;
           devices[el.server_ref].plan_level = normalizePlanLevel(el.plan_level);
