@@ -9,6 +9,8 @@ import { hasScope } from '@/utils/scopes';
 
 import VT100MapProcessor from '@/utils/reportProcessor.js';
 import InlineLoader from '@/components/InlineLoader.vue';
+import { Capacitor } from '@capacitor/core';
+import { buildPositionsCsv, csvFilename, downloadCsv } from '@/utils/positionsCsv.js';
 
 const route = useRoute();
 const router = useRouter();
@@ -178,6 +180,20 @@ const formatTime = (isoString) => {
 // --- INTERACTION LOGIC ---
 
 // 1. User clicks an item in the list -> Update the global deviceSelected
+// Web only. Inside the Capacitor shell an object-URL download has nowhere to
+// land — native would need @capacitor/filesystem plus a share sheet, which is a
+// separate feature. Better to not offer the button than to offer one that does
+// nothing on a phone.
+const canDownload = computed(() => Capacitor.getPlatform() === 'web');
+
+const downloadReport = () => {
+  if (!positions.value.length) return;
+  downloadCsv(
+    csvFilename({ imei, name: device.value?.name, date: currentDate.value }),
+    buildPositionsCsv(positions.value)
+  );
+};
+
 const selectEvent = (markerId) => {
   deviceStore.deviceSelected = markerId; 
 };
@@ -279,9 +295,20 @@ onUnmounted(() => {
           </div>
 
           <div v-else class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col mb-3">
-            
-            <div 
-              @click="isTimelineOpen = !isTimelineOpen" 
+
+            <div v-if="canDownload" class="px-3 pt-3 flex justify-end">
+              <button
+                @click="downloadReport"
+                class="text-xs font-bold py-1.5 px-3 rounded-lg bg-surface hover:bg-gray-100 text-gray-700 border border-gray-200 transition-colors flex items-center gap-1.5 cursor-pointer"
+                :title="`Download ${positions.length} position(s) as CSV`"
+              >
+                <i class="fa-solid fa-file-arrow-down text-brand"></i>
+                Download report
+              </button>
+            </div>
+
+            <div
+              @click="isTimelineOpen = !isTimelineOpen"
               class="p-3 border-b border-gray-100 bg-surface flex justify-between items-center text-gray-700 cursor-pointer select-none transition-colors hover:bg-gray-100"
             >
               <div class="flex items-center">
