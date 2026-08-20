@@ -35,6 +35,11 @@ const userTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const currentMonth = ref(toMonthString());
 const items = ref([]);
 const truncated = ref(false);
+// Entries the API accepted but could not process. Writes return 200 and are
+// handled after the response, so without this a permanent failure produced no
+// row, no error and no notification — the user had already been told it saved.
+const failedEntries = ref([]);
+const pendingCount = ref(0);
 const loading = ref(false);
 const errorMsg = ref('');
 
@@ -94,11 +99,15 @@ async function fetchLogs() {
     });
     items.value = Array.isArray(res?.items) ? res.items : [];
     truncated.value = !!res?.truncated;
+    failedEntries.value = Array.isArray(res?.issues?.failed) ? res.issues.failed : [];
+    pendingCount.value = Number(res?.issues?.pending) || 0;
   } catch (err) {
     console.error('Failed to fetch energy logs:', err);
     errorMsg.value = err?.message || 'Failed to load energy logs.';
     items.value = [];
     truncated.value = false;
+    failedEntries.value = [];
+    pendingCount.value = 0;
   } finally {
     loading.value = false;
   }
@@ -111,6 +120,18 @@ onMounted(() => {
     errorMsg.value = 'Device not found.';
   }
 });
+
+// Plain-language copy for the backend's stable reason codes. Mapping on the code
+// rather than the raw last_error keeps internal strings off the screen.
+const FAILURE_COPY = {
+  no_position_for_date: 'The tracker had not reported a position near that date, so there was no distance reading to record against it.',
+  gave_up_retrying: 'This could not be processed after several attempts.',
+  invalid_entry: 'This entry could not be read.',
+  processing_failed: 'This entry could not be processed.',
+};
+const failureCopy = (e) => FAILURE_COPY[e?.reason_code] || FAILURE_COPY.processing_failed;
+
+const kindLabel = { fuel: 'Refuel', charge: 'Charge', odometer: 'Odometer' };
 
 const kindMeta = {
   fuel:     { icon: 'fa-gas-pump', tint: 'text-brand bg-brand-light' },
@@ -180,6 +201,50 @@ const kindMeta = {
         >
           <i class="fa-solid fa-oil-can"></i> Tank size
         </button>
+        <button
+          type="button"
+          @click="router.push(`/energy/forms/battery-capacity/${deviceId}`)"
+          :disabled="!canLogEnergy"
+          class="col-span-2 flex items-center justify-center gap-2 bg-white text-gray-600 py-3 rounded-xl text-sm font-bold cursor-pointer hover:bg-gray-100 transition-colors active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white"
+        >
+          <i class="fa-solid fa-car-battery"></i> Battery size
+        </button>
+      </div>
+
+      <!--
+        Entries the API accepted but could not turn into a log row. This is the
+        only place they surface: writes are processed AFTER the 200 response, so
+        the app has already shown a success toast by the time one of these dies.
+        Sits above the month navigator because it is about entries the user
+        believes they made, not about the month they are browsing.
+      -->
+      <div v-if="pendingCount > 0" class="bg-blue-50 text-blue-700 text-sm p-3 rounded-xl border border-blue-100 flex items-start gap-2">
+        <i class="fa-solid fa-hourglass-half mt-0.5"></i>
+        <div>
+          {{ pendingCount }} {{ pendingCount === 1 ? 'entry is' : 'entries are' }} still being processed
+          and will appear here shortly.
+        </div>
+      </div>
+
+      <div v-if="failedEntries.length" class="bg-red-50 rounded-2xl border border-red-100 overflow-hidden">
+        <div class="px-4 py-3 border-b border-red-100 flex items-center gap-2">
+          <i class="fa-solid fa-circle-exclamation text-red-500"></i>
+          <span class="font-bold text-sm text-red-700">
+            {{ failedEntries.length }} {{ failedEntries.length === 1 ? 'entry was not saved' : 'entries were not saved' }}
+          </span>
+        </div>
+        <div class="divide-y divide-red-100">
+          <div v-for="e in failedEntries" :key="e.id" class="px-4 py-3">
+            <div class="flex items-center justify-between gap-3">
+              <span class="text-sm font-bold text-red-700">{{ kindLabel[e.kind] || e.kind }}</span>
+              <span class="text-[11px] text-red-500 shrink-0">{{ formatTime(e.submitted_at) }}</span>
+            </div>
+            <p class="text-xs text-red-600 mt-1 leading-snug">{{ failureCopy(e) }}</p>
+          </div>
+        </div>
+        <p class="px-4 py-2 text-[11px] text-red-500 leading-snug border-t border-red-100">
+          Re-enter these using the buttons above. Nothing was recorded for them.
+        </p>
       </div>
 
       <div class="flex items-center justify-between bg-white rounded-2xl border border-gray-100 px-3 py-2">

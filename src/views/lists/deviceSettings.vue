@@ -577,6 +577,14 @@ watch(isActive, async (nv, ov) => {
           >
             <i class="fa-solid fa-oil-can"></i> Tank size
           </button>
+          <button
+            type="button"
+            @click="router.push(`/energy/forms/battery-capacity/${deviceId}`)"
+            :disabled="!canLogEnergy"
+            class="col-span-2 flex items-center justify-center gap-2 bg-surface text-gray-600 py-3 rounded-xl text-sm font-bold hover:bg-gray-100 transition-colors active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-surface"
+          >
+            <i class="fa-solid fa-car-battery"></i> Battery size
+          </button>
         </div>
         <button
           type="button"

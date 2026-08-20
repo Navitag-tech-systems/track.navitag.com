@@ -22,6 +22,7 @@ import EnergyRefuel from '@/views/energy/forms/refuel.vue'
 import EnergyRecharge from '@/views/energy/forms/recharge.vue'
 import EnergyOdometer from '@/views/energy/forms/odometer.vue'
 import EnergyTankCapacity from '@/views/energy/forms/tankCapacity.vue'
+import EnergyBatteryCapacity from '@/views/energy/forms/batteryCapacity.vue'
 import EnergyLogs from '@/views/energy/logs.vue'
 
 import ListDevices from '@/views/lists/devices.vue'
@@ -161,6 +162,12 @@ const router = createRouter({
       path: '/energy/forms/tank-capacity/:id',
       name: 'energy-tank-capacity',
       component: EnergyTankCapacity,
+      meta: {requiresAuth: true, activeTab: 'list'}
+    },
+    {
+      path: '/energy/forms/battery-capacity/:id',
+      name: 'energy-battery-capacity',
+      component: EnergyBatteryCapacity,
       meta: {requiresAuth: true, activeTab: 'list'}
     },
     {

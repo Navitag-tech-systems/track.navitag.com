@@ -93,13 +93,28 @@ const costPerKmAvg = computed(() => formatNumber(device.value?.attributes?.cost_
 const costPerLiterAvg = computed(() => formatNumber(device.value?.attributes?.cost_per_liter_avg));
 const costPerKwhAvg = computed(() => formatNumber(device.value?.attributes?.cost_per_kwh_avg));
 
+// The backend has always computed and mirrored these three, and nothing read
+// them — so a third of the cost metrics were paid for and thrown away, and the
+// screen showed only year averages for cost while showing both variants for
+// efficiency.
+const costPerKmInterval = computed(() => formatNumber(device.value?.attributes?.cost_per_km_interval));
+const costPerLiterInterval = computed(() => formatNumber(device.value?.attributes?.cost_per_liter_interval));
+const costPerKwhInterval = computed(() => formatNumber(device.value?.attributes?.cost_per_kwh_interval));
+
 const hasAnyEnergyData = computed(() =>
   hasFuelBaseline.value ||
   hasChargeBaseline.value ||
   tankCapacity.value != null ||
   batteryCapacity.value != null ||
   kmPerLiterAvg.value != null ||
-  kmPerKwhAvg.value != null
+  kmPerKwhAvg.value != null ||
+  // An alert only ever exists because a log row exists. Without this the card
+  // told a user who had just logged one or two refuels that nothing had been
+  // logged: with no tank capacity set, has_fuel_baseline is still 0 (only the
+  // baseline form or a >=3-refuel inference sets it) and every average is null,
+  // so every other clause here was false while 'insufficient data' sat in the
+  // alert map waiting to be shown.
+  Object.keys(energyAlerts.value).length > 0
 );
 
 // Which warning tooltip is currently visible. Single ref so only one tooltip
@@ -324,7 +339,18 @@ async function toggleActivityLock() {
           </button>
         </div>
 
-        <div v-if="!hasAnyEnergyData" class="p-4 text-center text-sm text-gray-500 leading-snug">
+        <!--
+          Gated on canReadEnergy, not just on having data. These figures are
+          mirrored onto the Traccar device, so they ride along with the device
+          object for every user it is shared with — meaning a share WITHOUT
+          energy:read was refused the itemised log while being shown the
+          aggregate computed from it.
+        -->
+        <div v-if="!canReadEnergy" class="p-4 text-center text-sm text-gray-500 leading-snug">
+          This device was shared without access to energy data.
+        </div>
+
+        <div v-else-if="!hasAnyEnergyData" class="p-4 text-center text-sm text-gray-500 leading-snug">
           No fuel or charge events logged yet. Use the actions below to start tracking efficiency and cost.
         </div>
 
@@ -542,6 +568,84 @@ async function toggleActivityLock() {
               </span>
             </span>
             <span class="font-bold text-gray-800">{{ costPerKwhAvg }}</span>
+          </div>
+          <div v-if="costPerLiterInterval != null" class="flex justify-between p-3 text-sm">
+            <span class="text-gray-500 flex items-center gap-1.5">
+              Latest cost per liter
+              <span v-if="alertFor('cost_per_liter_interval')" class="relative">
+                <button
+                  type="button"
+                  tabindex="-1"
+                  @mouseenter="openAlertKey = 'cost_per_liter_interval'"
+                  @mouseleave="openAlertKey = null"
+                  aria-label="Alert"
+                  class="text-amber-500 hover:text-amber-600 transition-colors cursor-help"
+                >
+                  <i class="fa-solid fa-triangle-exclamation text-xs"></i>
+                </button>
+                <div
+                  v-if="openAlertKey === 'cost_per_liter_interval'"
+                  role="tooltip"
+                  class="absolute top-full left-0 mt-2 w-max max-w-[240px] p-2 text-xs text-white bg-gray-900 rounded-md shadow-lg z-20 leading-snug pointer-events-none"
+                >
+                  {{ alertFor('cost_per_liter_interval') }}
+                  <div class="absolute -top-1 left-2 w-2 h-2 bg-gray-900 rotate-45"></div>
+                </div>
+              </span>
+            </span>
+            <span class="font-bold text-gray-800">{{ costPerLiterInterval }}</span>
+          </div>
+          <div v-if="costPerKwhInterval != null" class="flex justify-between p-3 text-sm">
+            <span class="text-gray-500 flex items-center gap-1.5">
+              Latest cost per kWh
+              <span v-if="alertFor('cost_per_kwh_interval')" class="relative">
+                <button
+                  type="button"
+                  tabindex="-1"
+                  @mouseenter="openAlertKey = 'cost_per_kwh_interval'"
+                  @mouseleave="openAlertKey = null"
+                  aria-label="Alert"
+                  class="text-amber-500 hover:text-amber-600 transition-colors cursor-help"
+                >
+                  <i class="fa-solid fa-triangle-exclamation text-xs"></i>
+                </button>
+                <div
+                  v-if="openAlertKey === 'cost_per_kwh_interval'"
+                  role="tooltip"
+                  class="absolute top-full left-0 mt-2 w-max max-w-[240px] p-2 text-xs text-white bg-gray-900 rounded-md shadow-lg z-20 leading-snug pointer-events-none"
+                >
+                  {{ alertFor('cost_per_kwh_interval') }}
+                  <div class="absolute -top-1 left-2 w-2 h-2 bg-gray-900 rotate-45"></div>
+                </div>
+              </span>
+            </span>
+            <span class="font-bold text-gray-800">{{ costPerKwhInterval }}</span>
+          </div>
+          <div v-if="costPerKmInterval != null" class="flex justify-between p-3 text-sm">
+            <span class="text-gray-500 flex items-center gap-1.5">
+              Latest cost per km
+              <span v-if="alertFor('cost_per_km_interval')" class="relative">
+                <button
+                  type="button"
+                  tabindex="-1"
+                  @mouseenter="openAlertKey = 'cost_per_km_interval'"
+                  @mouseleave="openAlertKey = null"
+                  aria-label="Alert"
+                  class="text-amber-500 hover:text-amber-600 transition-colors cursor-help"
+                >
+                  <i class="fa-solid fa-triangle-exclamation text-xs"></i>
+                </button>
+                <div
+                  v-if="openAlertKey === 'cost_per_km_interval'"
+                  role="tooltip"
+                  class="absolute top-full left-0 mt-2 w-max max-w-[240px] p-2 text-xs text-white bg-gray-900 rounded-md shadow-lg z-20 leading-snug pointer-events-none"
+                >
+                  {{ alertFor('cost_per_km_interval') }}
+                  <div class="absolute -top-1 left-2 w-2 h-2 bg-gray-900 rotate-45"></div>
+                </div>
+              </span>
+            </span>
+            <span class="font-bold text-gray-800">{{ costPerKmInterval }}</span>
           </div>
           <div v-if="costPerKmAvg != null" class="flex justify-between p-3 text-sm">
             <span class="text-gray-500 flex items-center gap-1.5">

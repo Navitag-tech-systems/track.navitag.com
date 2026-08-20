@@ -1,4 +1,19 @@
 <script setup>
+/**
+ * Battery capacity — the EV counterpart to tankCapacity.vue.
+ *
+ * WHY THIS EXISTS. `POST /energy/baselines/{imei}` has always accepted
+ * `battery_capacity_kwh`, and computeChargeMetrics needs it to convert a
+ * battery-percentage delta into kWh — exactly as tank capacity converts a fuel
+ * gauge into liters. But nothing in the app ever sent it: there was no route and
+ * no form, only "Tank size".
+ *
+ * The one remaining path was self-inference, which requires a charge log
+ * carrying `starting_battery_pct` with a >= 20 point delta — and that field is
+ * optional on the charge form. So an EV owner who left it blank saw "battery
+ * capacity needed for accurate reporting" with nothing in the product able to
+ * resolve it.
+ */
 import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useDevicesStore } from '@/stores/devices.js';
@@ -22,35 +37,43 @@ const deviceImei = computed(() => device.value?.uniqueId || '');
 
 const canWriteEnergy = computed(() => hasScope(device.value, 'energy:write'));
 
-const tankLiters = ref('');
+const batteryKwh = ref('');
 
 const submitting = ref(false);
 const errorMsg = ref('');
 
-const existingTank = computed(() => {
-  const v = device.value?.attributes?.tank_capacity;
+const existingBattery = computed(() => {
+  const v = device.value?.attributes?.battery_capacity;
   if (v == null) return null;
   const n = Number(v);
   return Number.isFinite(n) && n > 0 ? n : null;
 });
-// Provenance, for wording only — NOT a lock. A user-entered capacity used to
-// disable this form permanently, so a typo could never be corrected and an
-// *inferred* estimate blocked the manufacturer figure too. The backend now
-// treats a user value as always winning, in both directions.
-const isUserSet = computed(() => device.value?.attributes?.tank_capacity_intervals === -1);
 
-const tankNum = computed(() => {
-  const raw = String(tankLiters.value).trim();
+// The backend annotates an inferred capacity through energy_metric_alerts rather
+// than a sentinel, so read that rather than inventing a second convention.
+const isEstimated = computed(() => {
+  const raw = device.value?.attributes?.energy_metric_alerts;
+  if (!raw) return false;
+  try {
+    const parsed = typeof raw === 'object' ? raw : JSON.parse(raw);
+    return typeof parsed?.battery_capacity === 'string';
+  } catch {
+    return false;
+  }
+});
+
+const battNum = computed(() => {
+  const raw = String(batteryKwh.value).trim();
   if (raw === '') return null;
   const n = Number(raw);
   return Number.isFinite(n) ? n : null;
 });
-const isTankValid = computed(() => tankNum.value !== null && tankNum.value > 0 && tankNum.value <= 500);
+// Matches the backend's (0, 500] validation on battery_capacity_kwh.
+const isBattValid = computed(() => battNum.value !== null && battNum.value > 0 && battNum.value <= 500);
 
 const canSubmit = computed(() =>
-  !submitting.value && !!deviceImei.value && canWriteEnergy.value && isTankValid.value
-  // Saving the same number back is a no-op round trip through the queue.
-  && Number(tankNum.value) !== Number(existingTank.value)
+  !submitting.value && !!deviceImei.value && canWriteEnergy.value && isBattValid.value
+  && Number(battNum.value) !== Number(existingBattery.value)
 );
 
 async function submit() {
@@ -61,14 +84,14 @@ async function submit() {
     await request.send({
       url: `${baseUrl}/energy/baselines/${deviceImei.value}`,
       method: 'POST',
-      data: { tank_capacity_liters: tankNum.value },
+      data: { battery_capacity_kwh: battNum.value },
       token: userStore.idToken,
     });
-    toast.show('Tank capacity saved.', { variant: 'success' });
+    toast.show('Battery capacity saved.', { variant: 'success' });
     router.back();
   } catch (err) {
-    console.error('Failed to set tank capacity:', err);
-    errorMsg.value = err?.message || 'Failed to save tank capacity.';
+    console.error('Failed to set battery capacity:', err);
+    errorMsg.value = err?.message || 'Failed to save battery capacity.';
   } finally {
     submitting.value = false;
   }
@@ -79,9 +102,7 @@ onMounted(() => {
     errorMsg.value = 'Device not found.';
     return;
   }
-  // Prefill so the field shows what is in force and can be edited, rather than
-  // presenting an empty box next to a value the user cannot see.
-  if (existingTank.value != null) tankLiters.value = String(existingTank.value);
+  if (existingBattery.value != null) batteryKwh.value = String(existingBattery.value);
 });
 </script>
 
@@ -95,14 +116,14 @@ onMounted(() => {
       >
         <i class="fa-solid fa-arrow-left text-lg"></i>
       </button>
-      <h1 class="text-lg font-bold text-gray-800 truncate">Tank Capacity</h1>
+      <h1 class="text-lg font-bold text-gray-800 truncate">Battery Capacity</h1>
     </div>
 
     <div class="p-4 space-y-6 max-w-md mx-auto w-full pb-safe-bottom">
 
       <div v-if="device" class="bg-white rounded-2xl border border-gray-100 px-4 py-3 flex items-center gap-3">
         <div class="w-10 h-10 rounded-full bg-brand-light flex items-center justify-center text-brand">
-          <i class="fa-solid fa-oil-can"></i>
+          <i class="fa-solid fa-car-battery"></i>
         </div>
         <div class="min-w-0">
           <div class="flex items-center gap-1.5">
@@ -124,45 +145,45 @@ onMounted(() => {
       <form v-if="!device || canWriteEnergy" @submit.prevent="submit" class="space-y-6">
 
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
-          <h2 class="text-lg font-bold text-gray-800">Fuel tank size</h2>
+          <h2 class="text-lg font-bold text-gray-800">Battery pack size</h2>
 
-          <div v-if="isUserSet" class="bg-blue-50 text-blue-700 text-sm p-3 rounded-xl border border-blue-100 flex items-start gap-2">
-            <i class="fa-solid fa-circle-info mt-0.5"></i>
-            <div>
-              Currently set to <span class="font-bold">{{ existingTank }} L</span>.
-              Edit the value below to correct it.
-            </div>
-          </div>
-
-          <div v-else-if="existingTank" class="bg-amber-50 text-amber-700 text-sm p-3 rounded-xl border border-amber-100 flex items-start gap-2">
+          <div v-if="existingBattery && isEstimated" class="bg-amber-50 text-amber-700 text-sm p-3 rounded-xl border border-amber-100 flex items-start gap-2">
             <i class="fa-solid fa-triangle-exclamation mt-0.5"></i>
             <div>
               An <span class="font-bold">estimated</span> capacity of
-              <span class="font-bold">{{ existingTank }} L</span> is in use, worked out from your
-              refuel history. Entering the manufacturer figure replaces it.
+              <span class="font-bold">{{ existingBattery }} kWh</span> is in use, worked out from your
+              charge history. Entering the manufacturer figure replaces it.
+            </div>
+          </div>
+
+          <div v-else-if="existingBattery" class="bg-blue-50 text-blue-700 text-sm p-3 rounded-xl border border-blue-100 flex items-start gap-2">
+            <i class="fa-solid fa-circle-info mt-0.5"></i>
+            <div>
+              Currently set to <span class="font-bold">{{ existingBattery }} kWh</span>.
+              Edit the value below to correct it.
             </div>
           </div>
 
           <div>
             <label class="block text-sm font-bold text-gray-700 mb-2">Capacity <span class="text-red-500">*</span></label>
             <div class="relative">
-              <i class="fa-solid fa-oil-can absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              <i class="fa-solid fa-car-battery absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
               <input
-                v-model="tankLiters"
+                v-model="batteryKwh"
                 type="text"
                 inputmode="decimal"
-                placeholder="e.g. 50"
+                placeholder="e.g. 64"
                 :disabled="submitting"
                 class="w-full pl-11 pr-16 py-3 bg-surface border border-gray-200 rounded-xl text-sm font-medium text-gray-700 focus:bg-white focus:border-brand focus:ring-2 focus:ring-brand-light transition-all outline-none disabled:opacity-60 disabled:cursor-not-allowed"
               />
-              <span class="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400 uppercase tracking-wider">L</span>
+              <span class="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400 uppercase tracking-wider">kWh</span>
             </div>
-            <p v-if="tankLiters !== '' && !isTankValid" class="text-xs text-red-500 mt-1.5">
-              Enter a value between 0 and 500 L.
+            <p v-if="batteryKwh !== '' && !isBattValid" class="text-xs text-red-500 mt-1.5">
+              Enter a value between 0 and 500 kWh.
             </p>
             <p class="text-xs text-gray-500 mt-2 leading-snug">
-              Check your owner's manual. Used to convert fuel-gauge readings into liters,
-              so fuel efficiency is only as accurate as this number.
+              Use the usable pack size from your owner's manual. Used to convert battery-level
+              readings into kWh, so charge efficiency is only as accurate as this number.
             </p>
           </div>
         </div>
