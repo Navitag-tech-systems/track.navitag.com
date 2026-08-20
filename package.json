@@ -1,6 +1,6 @@
 {
   "name": "track.navitag.com",
-  "version": "6.0.2",
+  "version": "6.0.5",
   "private": true,
   "type": "module",
   "engines": {
