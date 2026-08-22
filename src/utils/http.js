@@ -139,6 +139,16 @@ export const request = {
     // If 'simple' is true, we force the Web/ky path to avoid CapacitorHttp overhead/CORS issues on public APIs
     if (isNative && !simple) {
       // --- CAPACITOR NATIVE PATH ---
+      // iOS reuses cached GET responses for minutes: CapacitorHttp goes through
+      // URLSession with the default cache policy, and a response that carries
+      // no Cache-Control is eligible for reuse. In production that meant the
+      // refetch after POST /geofence and POST /user/link-device never reached
+      // the server (TASKS.md #14) — the new geofence/device stayed invisible
+      // until a restart. Native only: on web this header is not CORS-safelisted
+      // and the API's Access-Control-Allow-Headers does not list it, so it
+      // would fail every browser preflight.
+      headers['Cache-Control'] = 'no-cache';
+
       const httpOptions = {
         url,
         method: method.toUpperCase(),
