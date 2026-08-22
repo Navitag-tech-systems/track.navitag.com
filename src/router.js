@@ -34,6 +34,8 @@ import historyRoute from '@/views/history/dailyRoute.vue'
 
 import account from '@/views/account/index.vue'
 
+import dashcam from '@/views/dashcam/index.vue'
+
 const router = createRouter({
   // createWebHistory works for Capacitor apps (http://localhost or capacitor://)
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -174,6 +176,12 @@ const router = createRouter({
       path: '/energy/logs/:id',
       name: 'energy-logs',
       component: EnergyLogs,
+      meta: {requiresAuth: true, activeTab: 'list'}
+    },
+    {
+      path: '/dashcam/:deviceId',
+      name: 'dashcam',
+      component: dashcam,
       meta: {requiresAuth: true, activeTab: 'list'}
     },
     {

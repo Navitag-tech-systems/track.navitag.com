@@ -41,6 +41,11 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (id.includes('node_modules')) {
+            // 0. hls.js is only dynamic-imported by the dashcam player; keep
+            //    it out of `vendor` so it stays an on-demand chunk.
+            if (id.includes('hls.js')) {
+              return 'hls';
+            }
             // 1. Group Vue ecosystem
             if (id.includes('vue') || id.includes('pinia')) {
               return 'vue-vendor';

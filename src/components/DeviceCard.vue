@@ -11,6 +11,7 @@ import SharedBadge from '@/components/SharedBadge.vue';
 import { hasScope } from '@/utils/scopes';
 import { getSignalLevel, getBatteryPercentage, getGpsQuality, getWarnings, formatDate } from '@/utils/deviceMetrics';
 import InlineLoader from '@/components/InlineLoader.vue';
+import { isDashcam } from '@/utils/dashcam';
 
 const props = defineProps({
   device: { type: Object, required: true },
@@ -26,6 +27,7 @@ const toast = useToastStore();
 const online = computed(() => deviceStore.isDeviceOnline(props.device));
 const warnings = computed(() => getWarnings(props.device));
 const gps = computed(() => getGpsQuality(props.device));
+const dashcam = computed(() => isDashcam(props.device));
 
 const lockBusy = ref(false);
 const toggleLock = async () => {
@@ -46,6 +48,7 @@ const toggleLock = async () => {
 const goToHistory = () => router.push(`/history/${props.device.uniqueId}`);
 const goToDetails = () => router.push(`/devices/${props.device.id}`);
 const goToSettings = () => router.push(`/device/settings/${props.device.id}`);
+const goToVideo = () => router.push(`/dashcam/${props.device.id}`);
 </script>
 
 <template>
@@ -176,6 +179,15 @@ const goToSettings = () => router.push(`/device/settings/${props.device.id}`);
       <button @click.stop="goToDetails" class="flex-1 flex flex-col items-center justify-center bg-surface hover:bg-gray-100 py-2 rounded-lg transition-colors group">
         <i class="fa-solid fa-circle-info text-lg text-gray-500 group-hover:text-brand mb-1"></i>
         <span class="text-[10px] font-bold text-gray-600 group-hover:text-brand">Details</span>
+      </button>
+
+      <button
+        v-if="dashcam"
+        @click.stop="goToVideo"
+        class="flex-1 flex flex-col items-center justify-center bg-surface hover:bg-gray-100 py-2 rounded-lg transition-colors group"
+      >
+        <i class="fa-solid fa-video text-lg text-gray-500 group-hover:text-brand mb-1"></i>
+        <span class="text-[10px] font-bold text-gray-600 group-hover:text-brand">Video</span>
       </button>
 
       <button

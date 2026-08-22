@@ -286,6 +286,15 @@ The old `/linkdevice/enable/:imei` screen (`enable.vue`) was **removed** — it 
 - Date picker enforces plan-based min date (Basic: 31 days, Pro: 90 days)
 - Dynamically updates based on selected device's `plan_level`
 
+### Dashcam video (`src/views/dashcam/index.vue`, branch `feat/dashcam-video`)
+
+- Route `/dashcam/:deviceId` with Live | Clips | Settings tabs; entry is the **Video** button on `DeviceCard.vue`, shown only for dashcam-capable devices (`protocol === 'jt808'` or `attributes.videoChannels`).
+- Everything goes through the user's own Traccar session: `POST /api/commands/send` (`videoStart`/`videoStop` on the sub-stream, plus `custom` JT/T 1078 bodies `9205` clip list, `9201`/`9202` remote playback, `8300` hub-WiFi text) and HLS from `/api/stream/{id}/{ch}/live.m3u8`. Builders are pure in `src/utils/dashcam.js` with a Vitest spec.
+- The `9205` answer arrives as a Traccar position carrying `attributes.mediaList`; `stores/devices.js` copies it to `device.mediaList` from the socket, and `ClipBrowser` also polls `/api/positions` as a fallback.
+- Clip playback: synced mp4 from `DASHCAM_MEDIA_BASE` (`https://broker.navitag.com/dashcam/<uniqueId>/<ch>/<start>_<end>.mp4`, HEAD-checked) else remote playback from the device over the same HLS URL.
+- `hls.js` is lazy-imported (own `hls` chunk) for Android/Chrome; Safari/iOS play `.m3u8` natively.
+- Settings persist to `attributes.dashcam` via `PUT /api/devices/{id}`; the WiFi password is never stored — it goes to the device only via `applyHubWifi()` (0x8300 transport **unverified on the device**, single seam for an SMS swap).
+
 ### Navigation & Auth Architecture
 
 - `utils/lifecycle/`: Split into `session.js` (orchestration + locks) and `listeners/{auth,appState,network}.js`. `index.js` exposes the `LifecycleService` facade (`init`, `startSession`, `stopSession`, `checkConnectionAndReconnect`, `reloadAndReconnect`). Lock flags (`isStartingSession`, `isReconnecting`) and the reconnect timer live on the `session` singleton. Single authority for post-auth navigation.

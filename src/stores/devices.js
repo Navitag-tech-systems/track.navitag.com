@@ -154,7 +154,21 @@ export const useDevicesStore = defineStore('devices', () => {
       data.positions.forEach((pos) => {
         const deviceId = pos.deviceId;
         const device = devices[deviceId];
-        if (!device) return; 
+        if (!device) return;
+
+        // Dashcam clip list (JT/T 1078 0x1205 answer). The patched Traccar
+        // stores it as a position with attributes.mediaList; keep the raw
+        // string + arrival time so ClipBrowser can pick it up live instead
+        // of polling /api/positions for it.
+        if (pos.attributes?.mediaList !== undefined) {
+          device.mediaList = {
+            raw: pos.attributes.mediaList,
+            serial: pos.attributes.mediaSerial ?? null,
+            count: pos.attributes.mediaCount ?? null,
+            receivedMs: toMs(pos.serverTime) || Date.now(),
+            positionId: pos.id,
+          };
+        }
 
         Object.assign(device, {
           ignition: pos.attributes?.ignition || false,
