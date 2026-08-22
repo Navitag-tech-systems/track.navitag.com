@@ -30,7 +30,10 @@ function goToMap() {
 </script>
 
 <template>
-  <div class="flex flex-col min-h-screen bg-surface flex-1">
+  <!-- min-h-full, not min-h-screen: this view renders inside <main>, which
+       reserves 48px + safe-area for the fixed bottom nav. A full-viewport
+       minimum ignored that reservation, so the MAP button sat under the nav. -->
+  <div class="flex flex-col min-h-full bg-surface flex-1">
     <div class="bg-white p-4 shadow-sm flex items-center">
       <h1 class="text-xl font-bold text-gray-800 mx-auto">Setup Complete</h1>
     </div>
