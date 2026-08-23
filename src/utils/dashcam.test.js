@@ -93,7 +93,7 @@ describe('waitForHls', () => {
   it('resolves once the probe succeeds', async () => {
     const probe = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(false).mockResolvedValueOnce(true);
     const sleep = vi.fn().mockResolvedValue();
-    await expect(waitForHls('u', 10_000, { intervalMs: 1000, probe, sleep })).resolves.toBe(true);
+    await expect(waitForHls('u', 10_000, { intervalMs: 1000, probe, sleep, minSegments: 1 })).resolves.toBe(true);
     expect(probe).toHaveBeenCalledTimes(3);
     expect(sleep).toHaveBeenCalledTimes(2);
   });
@@ -107,6 +107,56 @@ describe('waitForHls', () => {
     const ctl = new AbortController();
     ctl.abort();
     await expect(waitForHls('u', 1000, { probe: async () => false, signal: ctl.signal })).rejects.toThrow('aborted');
+  });
+
+  // Manifests as single-line strings: waitForHls only inspects them for a
+  // segment token (#EXTINF / .ts) and body equality, so newlines are irrelevant.
+  const M0 = '#EXTM3U #EXT-X-TARGETDURATION:2 (no segments yet)';
+  const STALE = '#EXTM3U #EXT-X-MEDIA-SEQUENCE:42 #EXTINF:2.0, seg00042.ts';
+  const FRESH1 = '#EXTM3U #EXT-X-MEDIA-SEQUENCE:0 #EXTINF:2.0, seg00000.ts';
+  const FRESH2 = '#EXTM3U #EXT-X-MEDIA-SEQUENCE:0 #EXTINF:2.0, seg00000.ts #EXTINF:2.0, seg00001.ts';
+
+  it('does NOT latch a stale manifest that never changes (times out)', async () => {
+    const probe = vi.fn().mockResolvedValue(STALE);
+    const sleep = vi.fn().mockResolvedValue();
+    await expect(waitForHls('u', 100, { intervalMs: 1000, probe, sleep })).rejects.toThrow(/did not start/);
+  });
+  it('resolves after absent -> segmented (cold start)', async () => {
+    const probe = vi.fn()
+      .mockResolvedValueOnce(null)      // dir cleared, no manifest yet
+      .mockResolvedValueOnce(M0)        // manifest present but empty
+      .mockResolvedValueOnce(FRESH1);   // first fresh segment
+    const sleep = vi.fn().mockResolvedValue();
+    await expect(waitForHls('u', 10_000, { intervalMs: 1000, probe, sleep, minSegments: 1 })).resolves.toBe(true);
+    expect(probe).toHaveBeenCalledTimes(3);
+  });
+  it('resolves when a stale playlist advances to a changed one (cross-session)', async () => {
+    const probe = vi.fn()
+      .mockResolvedValueOnce(STALE)     // old session still up: baseline, do not latch
+      .mockResolvedValueOnce(STALE)     // unchanged: still not ready
+      .mockResolvedValueOnce(FRESH2);   // changed body -> this session is producing
+    const sleep = vi.fn().mockResolvedValue();
+    await expect(waitForHls('u', 10_000, { intervalMs: 1000, probe, sleep, minSegments: 1 })).resolves.toBe(true);
+    expect(probe).toHaveBeenCalledTimes(3);
+  });
+  it('requireFresh:false keeps the old "any segment" behavior', async () => {
+    const probe = vi.fn().mockResolvedValue(STALE);
+    const sleep = vi.fn().mockResolvedValue();
+    await expect(waitForHls('u', 10_000, { intervalMs: 1000, probe, sleep, requireFresh: false })).resolves.toBe(true);
+    expect(probe).toHaveBeenCalledTimes(1);
+  });
+  it('waits for maturity: does not resolve until >= minSegments clean segments', async () => {
+    // Burst then growth: absent -> 1 seg (burst) -> ... -> 4 segs. minSegments:4.
+    const seg = (n) => '#EXTM3U #EXT-X-MEDIA-SEQUENCE:0 ' + Array.from({length:n},(_,i)=>'#EXTINF:2.0, seg'+i+'.ts').join(' ');
+    const probe = vi.fn()
+      .mockResolvedValueOnce(null)       // absent -> sawAbsent
+      .mockResolvedValueOnce(seg(1))     // fresh but only 1 seg (burst) -> not ready
+      .mockResolvedValueOnce(seg(2))     // still maturing
+      .mockResolvedValueOnce(seg(3))     // still maturing
+      .mockResolvedValueOnce(seg(4));    // >= minSegments -> ready
+    const sleep = vi.fn().mockResolvedValue();
+    await expect(waitForHls('u', 20_000, { intervalMs: 1000, probe, sleep, minSegments: 4 })).resolves.toBe(true);
+    expect(probe).toHaveBeenCalledTimes(5);
   });
 });
 

@@ -36,6 +36,26 @@ async function attach(src) {
 
   const isHls = !props.native && /\.m3u8(\?|$)/i.test(src);
   if (!isHls || v.canPlayType('application/vnd.apple.mpegurl')) {
+    // Cross-origin segments need the Traccar cookie; use-credentials makes
+    // Safari's native HLS send it (matches hls.js xhr.withCredentials below).
+    v.crossOrigin = 'use-credentials';
+    // The native player (iOS Safari) otherwise fails silently — surface the real
+    // MediaError code so a field failure is diagnosable (2=network, 3=decode,
+    // 4=src-not-supported/format). Retry ONCE without CORS credentials in case
+    // use-credentials is the blocker (segments are same-site; the cookie still flows).
+    let triedPlain = false;
+    v.addEventListener('error', () => {
+      const e = v.error;
+      if (!triedPlain && e && (e.code === 2 || e.code === 4)) {
+        triedPlain = true;
+        v.removeAttribute('crossorigin');
+        v.src = src;
+        v.load();
+        v.play().catch(() => {});
+        return;
+      }
+      emit('error', `Playback failed (native code ${e ? e.code : '?'}${e && e.message ? ': ' + String(e.message).slice(0, 40) : ''}).`);
+    });
     v.src = src;
     v.play().catch(() => { /* autoplay may need a gesture; the controls are visible */ });
     return;
@@ -53,20 +73,34 @@ async function attach(src) {
     return;
   }
   hls = new Hls({
-    lowLatencyMode: true,
-    liveSyncDurationCount: 2,
+    // Traccar serves PLAIN live HLS (no LL-HLS parts / blocking reload). With
+    // lowLatencyMode:true hls.js issues _HLS_msn blocking-reload requests and
+    // expects partial segments the server never sends, which fatals the LIVE
+    // stream (bounded SD playback was unaffected). Standard live playback works.
+    lowLatencyMode: false,
+    liveSyncDurationCount: 3,
+    maxBufferLength: 20,
+    nudgeMaxRetry: 30,
     // Send the Traccar session cookie with manifest/segment requests.
     xhrSetup: (xhr) => { xhr.withCredentials = true; },
   });
+  let recoveries = 0;
+  // A LIVE session runs for minutes; transient fatals (a dropped segment fetch,
+  // a momentary unbufferable frame) are normal and hls.js recovers from them.
+  // Reset the counter whenever a fragment buffers successfully, so only a run of
+  // CONSECUTIVE unrecovered fatals (a genuinely dead stream) gives up. The old
+  // lifetime cap of 3 killed healthy streams after a few blips spread over time.
+  hls.on(Hls.Events.FRAG_BUFFERED, () => { recoveries = 0; });
   hls.on(Hls.Events.ERROR, (_e, data) => {
     if (!data?.fatal) return;
-    if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-      hls.startLoad();
-    } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-      hls.recoverMediaError();
-    } else {
-      emit('error', 'Playback failed.');
+    if (recoveries < 6 && data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+      recoveries++; hls.startLoad(); return;
     }
+    if (recoveries < 6 && data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+      recoveries++; hls.recoverMediaError(); return;
+    }
+    // Every fatal path now names the hls.js detail on-screen.
+    emit('error', `Playback failed (${data?.details || data?.type || 'unknown'}).`);
   });
   hls.on(Hls.Events.MANIFEST_PARSED, () => {
     v.play().catch(() => { /* gesture needed */ });
@@ -92,6 +126,5 @@ onBeforeUnmount(destroy);
     :muted="muted"
     @playing="emit('playing')"
     @ended="emit('ended')"
-    @error="emit('error', 'Playback failed.')"
   ></video>
 </template>

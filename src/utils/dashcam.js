@@ -33,6 +33,22 @@ export const DEFAULT_CHANNELS = [
 export const JT1078_HOST = 'tserver1.navitag.com';
 export const JT1078_PORT = 5263;
 
+// LIVE goes through the medusa ffmpeg re-mux, NOT Traccar's native HLS: Traccar's
+// live segments have a cross-segment DTS discontinuity that MSE rejects
+// ("CHUNK_DEMUXER_ERROR_APPEND_FAILED: Parsed buffers not in DTS sequence"), so
+// live never played in-browser. The device is told (0x9101) to push JT1078 to
+// this receiver; ffmpeg regenerates clean, continuous timestamps and serves HLS.
+// (Recorded playback via 0x9201 stays on Traccar — it's already continuous.)
+export const LIVE_MEDIA_IP = '159.65.135.101';        // medusa public IP (device dials over cellular)
+export const LIVE_MEDIA_PORT = 7801;
+export const LIVE_HLS_URL = 'https://mcp.navitag.com/live/stream.m3u8';
+
+// 0x9101 live AV request: ipLen(1)+ip+tcpPort(2)+udpPort(2)+ch(1)+dataType(1)+streamType(1)
+export function body9101({ ip = LIVE_MEDIA_IP, tcpPort = LIVE_MEDIA_PORT, udpPort = 0, ch, dataType = 0, streamType = 1 }) {
+  const ipHex = utf8Hex(ip);
+  return hex1(ipHex.length / 2) + ipHex + hex2(tcpPort) + hex2(udpPort) + hex1(ch) + hex1(dataType) + hex1(streamType);
+}
+
 // Hub WiFi auth codes for the *#396* text command. Keys are the values the
 // DashcamConfig security <select> emits.
 export const WIFI_AUTH = Object.freeze({
@@ -186,6 +202,11 @@ export function videoStartCommand(ch) {
   return { type: 'videoStart', attributes: { index: Number(ch), streamType: 1 } };
 }
 
+// Live via the medusa re-mux path (custom 0x9101 -> LIVE_MEDIA_IP:LIVE_MEDIA_PORT).
+export function liveStartCommand(ch) {
+  return customCommand('9101', body9101({ ch: Number(ch) }));
+}
+
 export function videoStopCommand(ch) {
   return { type: 'videoStop', attributes: { index: Number(ch) } };
 }
@@ -275,11 +296,52 @@ export async function waitForHls(url, timeoutMs = 45000, {
   probe = defaultProbe,
   sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
   signal = null,
+  requireFresh = true,
+  minSegments = 6,
 } = {}) {
   const deadline = Date.now() + timeoutMs;
+  // Readiness needs TWO things, not just "a manifest with a segment exists":
+  //
+  // 1. FRESHNESS. Every start() makes the medusa re-mux clear its HLS dir and
+  //    restart ffmpeg from media-sequence 0, so a stale manifest from the prior
+  //    session can still be on disk when we begin polling. Latching it hands
+  //    hls.js segments the restarting ffmpeg is about to delete (native code 4).
+  //    We only trust a manifest seen ABSENT/empty then segmented, or changed from
+  //    the first segmented body - both only happen for the new session.
+  //
+  // 2. MATURITY. The device dumps a buffered BURST when the video conn opens, so
+  //    the first one or two segments are irregular (short/odd EXTINF). hls.js
+  //    starts a LIVE stream near the edge (edge minus liveSyncDurationCount); if
+  //    we hand it the playlist while those burst segments are still the newest
+  //    content, it fatals on them and LiveStream stops the whole session. Waiting
+  //    for >= minSegments clean segments pushes the edge-anchored start past the
+  //    burst. A mature stream (verified) plays this exact hls.js config flawlessly.
+  let baseline = null;      // first manifest BODY that already listed a segment
+  let sawAbsent = false;    // observed no manifest / empty playlist since polling began
+  let sawFresh = false;     // established the manifest belongs to THIS session
+  const segCount = (m) => (m.match(/#EXTINF/g) || []).length;
   while (true) {
     if (signal?.aborted) throw new Error('aborted');
-    if (await probe(url)) return true;
+    const r = await probe(url);
+    if (typeof r !== 'string') {
+      // Back-compat: a boolean-returning probe (injected in tests) resolves as before.
+      if (r) return true;
+      sawAbsent = true;
+    } else {
+      const n = segCount(r);
+      if (n === 0) {
+        sawAbsent = true;                         // manifest present but empty = not up yet
+      } else if (!requireFresh) {
+        return true;
+      } else {
+        if (!sawFresh) {
+          if (sawAbsent) sawFresh = true;         // absent -> segmented: definitely this session
+          else if (baseline === null) baseline = r; // first segmented body: could be stale, don't latch
+          else if (r !== baseline) sawFresh = true; // playlist advanced: a live session is producing
+        }
+        if (sawFresh && n >= minSegments) return true;
+      }
+    }
     if (Date.now() + intervalMs > deadline) {
       throw new Error(`Stream did not start within ${Math.round(timeoutMs / 1000)} s`);
     }
@@ -289,12 +351,15 @@ export async function waitForHls(url, timeoutMs = 45000, {
 
 async function defaultProbe(url) {
   try {
-    await request.send({ url, isTraccar: true, raw: true });
-    return true;
+    // Return the manifest BODY (or null) so waitForHls can judge freshness, not
+    // just presence - medusa answers the manifest immediately, sometimes with a
+    // stale or empty playlist, and hls.js fatals on those.
+    const text = await request.send({ url, isTraccar: true, raw: true });
+    return typeof text === 'string' ? text : null;
   } catch (err) {
     // 404 = not up yet; anything else is also "not yet" until the deadline.
     if (err?.status && err.status !== 404) console.warn('[dashcam] HLS probe', err.status);
-    return false;
+    return null;
   }
 }
 

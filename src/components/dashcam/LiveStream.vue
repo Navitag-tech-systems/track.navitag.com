@@ -9,7 +9,7 @@ import { useToastStore } from '@/stores/toast.js';
 import InlineLoader from '@/components/InlineLoader.vue';
 import HlsVideo from './HlsVideo.vue';
 import {
-  videoChannels, videoStartCommand, videoStopCommand, hlsUrl,
+  videoChannels, liveStartCommand, videoStopCommand, LIVE_HLS_URL,
   sendCommand, waitForHls, SUB_STREAM_KBPS, estimateDataMB,
 } from '@/utils/dashcam';
 
@@ -66,7 +66,7 @@ async function start() {
   abort = new AbortController();
 
   try {
-    await sendCommand(server.value, props.device.id, videoStartCommand(ch));
+    await sendCommand(server.value, props.device.id, liveStartCommand(ch));
   } catch (err) {
     activeChannel = null;
     state.value = 'error';
@@ -76,7 +76,7 @@ async function start() {
     return;
   }
 
-  const url = hlsUrl(server.value, props.device.id, ch);
+  const url = LIVE_HLS_URL;
   try {
     await waitForHls(url, 45_000, { signal: abort.signal });
   } catch (err) {
