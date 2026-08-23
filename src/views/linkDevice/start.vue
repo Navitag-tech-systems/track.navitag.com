@@ -27,8 +27,6 @@ const manualCode = ref('');
 const showCameraOption = ref(true);
 const qrScanner = useTemplateRef('qrScanner');
 
-const IMEI_REGEX = /^\d{15}$/;
-
 const startScan = async () => {
   errorMsg.value = '';
   isScanning.value = true;
@@ -62,13 +60,22 @@ const submitManualCode = () => {
   processDeviceCode(manualCode.value);
 };
 
+// No format guard here on purpose. The old /^\d{15}$/ check assumed every unit
+// carries a 15-digit IMEI, which locked out hardware whose identifier is a
+// different shape — the Yuwei V5-C dashcam registers as the 12-char BCD id
+// 001318110808, and that is also the exact string device_inventory holds for it.
+// The real validation belongs to the API, which resolves the code against
+// device_inventory and answers 400 "Device not found" for anything that is not a
+// row (junk, empty, over-long, quoting attempts — the lookup is parameterized,
+// so it matches literally). Trim only: leading/trailing whitespace is a paste
+// artifact, never part of the code.
 const processDeviceCode = (code) => {
-  const cleanCode = code.trim();
-  if (!IMEI_REGEX.test(cleanCode)) {
-    errorMsg.value = 'Invalid code. Please enter a 15-digit numeric IMEI.';
+  const cleanCode = String(code ?? '').trim();
+  if (cleanCode === '') {
+    errorMsg.value = 'Please enter a device code.';
     return;
   }
-  router.push(`/linkdevice/link/${cleanCode}`);
+  router.push(`/linkdevice/link/${encodeURIComponent(cleanCode)}`);
 };
 
 const openShop = async () => {
