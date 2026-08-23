@@ -254,11 +254,22 @@ workflows:
     environment:
       node: 22.17.0
       java: 21
+      xcode: 26.3                               # pinned to match ios-testflight: 26.4.1 crashes resolving the
+                                                #   SPM graph after RevenueCat was added (IDESwiftPackageCore
+                                                #   off-by-one, Abort trap 6). Unpinned, this workflow was
+                                                #   handed 26.4.1 by the image default.
       android_signing:
         - navitag_upload_keystore
       groups:
         - github_packages
         - google_play
+        - ios_signing                         # CERTIFICATE_PRIVATE_KEY (2048-bit RSA) — REQUIRED by the
+                                                #   signing step below. Its absence failed the 2026-08-23
+                                                #   6.0.7 build: fetch-signing-files could not expand
+                                                #   @env:CERTIFICATE_PRIVATE_KEY, minted no profile, and with
+                                                #   no `set -e` passed anyway — surfacing only at archive as
+                                                #   "requires a provisioning profile with the Push
+                                                #   Notifications and Sign In with Apple features".
       vars:
         BUNDLE_ID: "com.navitag.track"
         XCODE_PROJECT: "ios/App/App.xcodeproj"
@@ -309,13 +320,35 @@ workflows:
           agvtool new-version -all "$BUILD_NUMBER"
       - name: Set up iOS code signing
         script: |
+          set -e   # without this, a fetch-signing-files failure silently passed the step and the
+                   # build died 2 steps later at archive with a misleading provisioning-profile error
           keychain initialize
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
             --certificate-key @env:CERTIFICATE_PRIVATE_KEY \
-            --create
+            --create \
+            --delete-stale-profiles
           keychain add-certificates
           xcode-project use-profiles
+      - name: Resolve Swift packages (SPM pre-resolve; RevenueCat pulls purchases-ios remotely)
+        # Capacitor 8 is SPM-based. `xcode-project build-ipa` runs
+        # `xcodebuild -showBuildSettings` first, which fails ("Failed to show
+        # build settings", exit 250) if the packages aren't resolved yet — and
+        # it swallows the real error. Resolving here both surfaces any genuine
+        # resolution error in the log AND lets the subsequent showBuildSettings
+        # succeed. Mirrors ios-testflight, which had this while `release` did not.
+        script: |
+          set -e
+          echo "=== xcode in use ===" && xcodebuild -version
+          # A STALE Package.resolved (committed pre-RevenueCat) whose entry count no
+          # longer matches the live graph makes Xcode 16+/26 crash in
+          # IDESwiftPackageCore ("count of array (N) differs from index set (N-1)").
+          # Capacitor regenerates Package.swift every build, so any committed
+          # Package.resolved is unreliable — wipe it (+ DerivedData) for a clean resolve.
+          find ios -name "Package.resolved" -print -delete 2>/dev/null || true
+          rm -rf "$HOME/Library/Developer/Xcode/DerivedData" 2>/dev/null || true
+          echo "--- resolving Swift package dependencies (clean) ---"
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -resolvePackageDependencies
       - name: Build signed iOS IPA
         script: |
           xcode-project build-ipa \
