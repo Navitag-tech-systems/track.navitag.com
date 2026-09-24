@@ -184,9 +184,17 @@ export async function createTopUpCart({ device, tier, months }) {
   const cartId = cartRes?.cart?.id;
   if (!cartId) throw new Error('Failed to create cart.');
 
+  // ref1 = the owner-assigned name, as the web top-up stamps it. The broker
+  // reads it as device_name for the order-paid email (Brevo template 10).
+  // The API mirrors the Traccar name into device_inventory.ref1 (varchar 40).
+  // An '@@' prefix marks a shelf state, not a name, so it is not sent.
+  const ref1 = String(device.name || '').trim().slice(0, 40);
+  const itemMeta = { imei };
+  if (ref1 && !ref1.startsWith('@@')) itemMeta.ref1 = ref1;
+
   await medusaRequest(`/store/carts/${cartId}/line-items`, {
     method: 'POST',
-    data: { variant_id: variantId, quantity: 1, metadata: { imei } },
+    data: { variant_id: variantId, quantity: 1, metadata: itemMeta },
   });
 
   await medusaRequest(`/store/carts/${cartId}/shipping-methods`, {
