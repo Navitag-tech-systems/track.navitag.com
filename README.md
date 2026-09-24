@@ -162,10 +162,14 @@ present — `NSLocationWhenInUseUsageDescription`, `ACCESS_FINE_LOCATION` / `ACC
 + `android.hardware.location.gps` (`required="false"`), and `@capacitor/geolocation` in
 `android.includePlugins` (enforced by `scripts/check-android-plugins.mjs`).
 
-**No background location:** no `ACCESS_BACKGROUND_LOCATION`, no `NSLocationAlwaysAndWhenInUse…`,
-no location background mode. The watch is dropped on `appStateChange → background` and re-armed on
-foreground (`src/utils/lifecycle/listeners/appState.js`), so "when in use" is literally true rather
-than merely enforced by the OS.
+**No background location:** no `ACCESS_BACKGROUND_LOCATION`, no location background mode. The
+watch is dropped on `appStateChange → background` and re-armed on foreground
+(`src/utils/lifecycle/listeners/appState.js`), so "when in use" is literally true rather than
+merely enforced by the OS. `NSLocationAlwaysAndWhenInUseUsageDescription` IS present, but only
+because Apple returned ITMS-90683 on build 23 demanding it: `@capacitor/geolocation` only ever
+calls `requestWhenInUseAuthorization`, yet its `ion-ios-geolocation` dependency links
+`requestAlwaysAuthorization`, and a referenced symbol needs a purpose string regardless. The key
+does not change the prompt or grant background access; its text says so for the reviewer.
 
 **Verified on web 2026-09-24** (`https://local.navitag.com:4443`, `navigator.geolocation` stubbed):
 toggle on → "Me" marker added (15 → 16 DOM markers, button lit, `aria-pressed`), a watch fix moved

@@ -41,6 +41,8 @@
 	<string>We need camera access to scan QR codes for linking devices to your account</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Your location is used only to show where you are on the map alongside your trackers. It stays on this device and is never sent to Navitag.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Navitag Track only uses your location while the app is open, to show where you are on the map. It does not track your location in the background, and your location is never sent to Navitag.</string>
 	<!--
 		LOCATION IS BACK, DELIBERATELY, AND BOTH HALVES ARE PRESENT.
 
@@ -56,11 +58,19 @@
 		listed in android.includePlugins in capacitor.config.json (enforced by
 		check-android-plugins.mjs), and the usage string above is set.
 
-		When-in-use ONLY. There is no Always string and no location background
-		mode: the watch runs while the toggle is on and the app is in the
-		foreground, and nothing reads position in the background. Do not add
-		NSLocationAlwaysAndWhenInUseUsageDescription without a feature that needs
-		it — it is a much harder review conversation.
+		When-in-use ONLY in behaviour: there is no location background mode, the
+		watch runs while the toggle is on and the app is in the foreground, and
+		nothing reads position in the background. The plugin only ever calls
+		requestWhenInUseAuthorization (GeolocationPlugin.swift, `.whenInUse`).
+
+		The Always string above exists ONLY because Apple demands it: build 23
+		(6.1.0) drew ITMS-90683 "should contain a
+		NSLocationAlwaysAndWhenInUseUsageDescription key" — the plugin's
+		ion-ios-geolocation dependency links requestAlwaysAuthorization, and a
+		referenced symbol needs a purpose string whether the app calls it or not.
+		The key does not change the permission prompt (that is decided by which
+		request the code makes) and does not grant background access. Its text
+		says so explicitly for the reviewer.
 
 		The position is used on-device to draw one marker and is never transmitted,
 		so it is not "collected" for the App Privacy questionnaire. That answer
