@@ -41,7 +41,7 @@ function isFresh(lastSeenMs, now = Date.now()) {
 // Marker palette. Priority: alarm > online > offline. Green no longer requires
 // ignition, and offline is grey rather than the old catch-all red (both were
 // deliberate visual changes, 2026-09-24; see README "Resume / offline fix").
-export const MARKER_ALARM = '#ff0000';
+export const MARKER_ALARM = '#fc3a3a';
 export const MARKER_ONLINE = '#57f491';
 export const MARKER_OFFLINE = '#d1d5db';
 

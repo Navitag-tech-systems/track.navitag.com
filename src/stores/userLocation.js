@@ -21,7 +21,7 @@ export const SELF_MARKER_ID = 'me';
 // Restoring it from storage would mean an app that reads location on boot
 // because of a tap the user may not remember making.
 
-// Blue, so it reads as "you" against the tracker palette (#ff0000 alarm,
+// Blue, so it reads as "you" against the tracker palette (#fc3a3a alarm,
 // #57f491 online, #d1d5db offline — see markerColor in stores/devices.js).
 // 'circle' is the package's default glyph — a plain
 // bubble, deliberately not a vehicle or person shape, so it reads as a position
