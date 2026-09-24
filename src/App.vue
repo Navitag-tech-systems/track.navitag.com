@@ -7,6 +7,7 @@ import { useInstallStore, INSTALL_TOAST_ENABLED } from '@/stores/install.js';
 import { useToastStore } from '@/stores/toast.js';
 import { useAppGateStore } from '@/stores/appGate.js';
 import { useBootStore } from '@/stores/boot.js';
+import { useUserLocationStore, SELF_MARKER_ID } from '@/stores/userLocation.js';
 import BottomNav from './components/bottomNav.vue';
 import Loading from '@/components/loading.vue';
 import Error from '@/components/error.vue';
@@ -14,7 +15,6 @@ import NoNet from './components/noNet.vue';
 import UpdateRequired from '@/components/updateRequired.vue';
 import { getPlatformInfo, liqKey } from './utils/variables';
 import { leafletMap } from '@burkaloo/leaflet-vue3'
-import { LifecycleService } from '@/utils/lifecycle'
 import { Capacitor } from '@capacitor/core';
 
 const PUSH_DISMISS_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
@@ -26,6 +26,7 @@ const installStore = useInstallStore();
 const toastStore = useToastStore();
 const appGate = useAppGateStore();
 const boot = useBootStore();
+const userLocation = useUserLocationStore();
 const route = useRoute();
 const router = useRouter();
 
@@ -129,6 +130,53 @@ const showNav = computed(() => {
   return userStore.isLoggedIn && route.meta.requiresAuth === true && route.meta.activeTab !== false;
 });
 
+// The self-location marker rides in the same `devices` object as the trackers.
+// @burkaloo/leaflet-vue3 has no notion of a user position, and its marker layer
+// is keyed by whatever this object is keyed by — so one extra entry is the whole
+// integration. SELF_MARKER_ID is non-numeric and the tracker keys are Traccar
+// device ids, so they cannot collide.
+const mapDevices = computed(() => (
+  userLocation.marker
+    ? { ...deviceStore.deviceMarkers, [SELF_MARKER_ID]: userLocation.marker }
+    : deviceStore.deviceMarkers
+));
+
+// Since @burkaloo/leaflet-vue3 2.3.6 the map also MOVES existing markers from
+// `devices` (a new object per entry is what it detects), so mapDevices above
+// is the primary channel for both the trackers and the self marker. The
+// `deviceUpdate` courier below is kept as the fallback for ≤ 2.3.5, where
+// `devices` only created and destroyed markers; the package applies whichever
+// of the two lands first and ignores the duplicate.
+//
+// Two writers, last-write-wins within a tick: if a socket frame and a GPS fix
+// land in the same flush, one of the two courier moves is dropped — and on
+// 2.3.6 the `devices` watcher still applies it, so nothing is lost.
+const mapUpdate = ref(null);
+watch(() => deviceStore.mapUpdate, (v) => { if (v) mapUpdate.value = v; });
+watch(() => userLocation.marker, (m) => { if (m) mapUpdate.value = m; });
+
+// Sign-out kills the watch. The toggle is never restored automatically — it
+// starts off on every launch (see stores/userLocation.js) — so this exists only
+// to stop a live watch when the session ends, rather than leaving GPS running
+// behind the login screen with nothing on screen to justify it.
+watch(() => userStore.isLoggedIn, (loggedIn) => {
+  if (!loggedIn) userLocation.disable();
+});
+
+// The self marker is not a device: no store row, no bottom sheet. The package
+// has already centred the map on it by the time this fires, so all that is left
+// is to clear any device selection so its sheet does not linger over the marker
+// the user just tapped. Real ids keep the original `+id` coercion, null
+// included (+null === 0, which reads as "nothing selected" downstream).
+function onMarkerSelect(data) {
+  const raw = Array.isArray(data) ? data[0] : data;
+  if (raw === SELF_MARKER_ID) {
+    deviceStore.deviceSelected = null;
+    return;
+  }
+  deviceStore.deviceSelected = +raw;
+}
+
 const activeGeofences = computed(() => {
   return { ...deviceStore.geofences };
 });
@@ -146,20 +194,6 @@ function trackMapMode(mode){
     } else if (route.path.startsWith('/editgeo')) {
       router.replace('/list/geofences');
     }
-  }
-}
-
-async function retryConnection() {
-  userStore.error = false;
-  // The most common way to reach <Error /> is a failed /user/sync — which
-  // means server_url was never set, and checkConnectionAndReconnect bails on
-  // its own `if (!userStore.server_url) return` guard before doing anything.
-  // Retry was silently a no-op in exactly the case users hit most. Fall back
-  // to a full cold restart when there is no Traccar session to resume.
-  if (userStore.server_url) {
-    await LifecycleService.checkConnectionAndReconnect();
-  } else {
-    await LifecycleService.startSession();
   }
 }
 
@@ -337,34 +371,32 @@ function dismissInstallToast() {
              the time the user sees it. Safe to mount with an empty marker set:
              leafletMap watches its device key-set and creates markers as
              processSocketData populates them. -->
-        <!-- MOUNT LATE, ON PURPOSE (reverted 2026-08-16).
-             This was briefly `deviceStore.hasLoadedOnce`, to mount behind the
-             splash so tiles were already in flight. That broke map centring:
-             hasLoadedOnce flips when the device LIST arrives, which is before
-             any position does, so the map initialised with an EMPTY marker set.
-             leafletMap only fits bounds on a mode change or a `geos` change —
-             never when devices/markers change — so the one fit that ran had
-             nothing to fit, and nothing re-fitted once positions landed. The
-             map sat at the package's default centre (Sheridan, WY) with the
-             user's devices off-screen in Manila.
-             masterLoading stays true until the first socket frame, so gating on
-             it means the map mounts WITH markers and fits to them, which is the
-             behaviour main ships today. The tile-preload win is not worth
-             shipping a map that never finds the user's devices; the real fix is
-             a devices watcher in @burkaloo/leaflet-vue3, and this can move back
-             once that lands. -->
+        <!-- FIRST MOUNT LATE, THEN STAY MOUNTED.
+             The first mount still waits for masterLoading: hasLoadedOnce flips
+             when the device LIST arrives, before any position, and leafletMap
+             only fits bounds on a mode or `geos` change — so mounting earlier
+             fitted an empty marker set and left the map at the package's
+             default centre (Sheridan, WY) with the devices off-screen in
+             Manila (reverted 2026-08-16). masterLoading stays true until the
+             first socket frame, so the first mount has markers to fit to.
+             After that the map is latched on hasRenderedOnce. It used to
+             unmount on every reconnect (fetchAll raises `loading`), which
+             threw away tiles, markers and the user's view, and redrew every
+             marker from a stale deviceMarkers on remount. The warm reconnect
+             no longer raises `loading` at all; this latch covers the retry
+             paths that still do. -->
         <leafletMap
-          v-if="userStore.isLoggedIn && masterLoading === false"
+          v-if="userStore.isLoggedIn && (hasRenderedOnce || masterLoading === false)"
           :mode="isMapRoute ? isMapRoute : 'track'"
-          :devices="deviceStore.deviceMarkers"
+          :devices="mapDevices"
           :geos="activeGeofences"
           :liqkey="liqKey"
           :route="deviceStore.activeRoute"
           tileLayer="liq"
-          :deviceUpdate="deviceStore.mapUpdate"
+          :deviceUpdate="mapUpdate"
           :activeId="deviceStore.deviceSelected === null ? null : deviceStore.deviceSelected+''"
           @poly-save="(data) => deviceStore.draftPolygon = data"
-          @marker-select="(data) => deviceStore.deviceSelected = Array.isArray(data) ? +data[0]: +data"
+          @marker-select="onMarkerSelect"
           @mode-change="trackMapMode"
         />
       </div>

@@ -10,17 +10,19 @@ export function registerNetworkListener(session) {
   // every NetworkCapabilities change (validation, signal, metered…), so
   // connected:true repeats constantly (worse on aggressive OEMs like ColorOS).
   // Without this guard, each repeat rebuilds the whole Traccar session + WS.
-  let wasOnline = null;
-
+  //
+  // Lives on `session` (not in this closure) because the resume handler and
+  // the overlay Reconnect button also re-read the status and must update the
+  // same baseline, or their upgrade to online is read here as a transition.
   Network.getStatus().then(status => {
     userStore.internet = status.connected;
-    if (wasOnline === null) wasOnline = status.connected;
+    if (session.wasOnline === null) session.wasOnline = status.connected;
   });
 
   Network.addListener('networkStatusChange', async (status) => {
     const nowOnline = status.connected;
-    const stateChanged = nowOnline !== wasOnline;
-    wasOnline = nowOnline;
+    const stateChanged = nowOnline !== session.wasOnline;
+    session.wasOnline = nowOnline;
     userStore.internet = nowOnline;
 
     // Ignore the repeated "still online" events that drive the churn — only

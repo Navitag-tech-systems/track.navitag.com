@@ -6,7 +6,7 @@ import { Capacitor, CapacitorCookies } from '@capacitor/core';
 import { setUserId } from '@/utils/analytics';
 import { baseUrl } from '@/utils/variables';
 import { auth } from '@/firebase'; 
-import { request } from '@/utils/http'; 
+import { request, RECONNECT_TIMEOUT_MS, CONNECT_TIMEOUT_MS } from '@/utils/http'; 
 import { useRouter } from 'vue-router'
 
 export const useUserStore = defineStore('user', () => {
@@ -344,7 +344,15 @@ export const useUserStore = defineStore('user', () => {
   // Actions
   async function getFreshToken() {
     try {
-      const result = await auth.getIdToken({ forceRefresh: true });
+      // Bounded: this is the one call on the reconnect path that does not go
+      // through request.send, so it gets its own deadline. A hung Firebase
+      // refresh otherwise holds the reconnect lock indefinitely.
+      const result = await Promise.race([
+        auth.getIdToken({ forceRefresh: true }),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Firebase token refresh timed out')), CONNECT_TIMEOUT_MS)
+        ),
+      ]);
       idToken.value = result.token;
       return result.token;
     } catch (err) {
@@ -434,8 +442,9 @@ export const useUserStore = defineStore('user', () => {
         const data = await request.send({
           url: `https://${server_url.value}/api/session`,
           isTraccar: true,
+          timeout: RECONNECT_TIMEOUT_MS,
         });
-        
+
         return data && data.id;
       } catch (e) {
         return false;
@@ -450,6 +459,7 @@ export const useUserStore = defineStore('user', () => {
           url: `https://${server_url.value}/api/session`,
           params: { token: token },
           isTraccar: true,
+          timeout: RECONNECT_TIMEOUT_MS,
         });
         
         return data && data.id;
@@ -467,7 +477,8 @@ export const useUserStore = defineStore('user', () => {
           url: `${baseUrl}/server/token`,
           method: 'POST',
           data: {server_url: server_url.value},
-          token: idToken.value
+          token: idToken.value,
+          timeout: RECONNECT_TIMEOUT_MS,
         });
 
         if("server_token" in tokenRes){

@@ -37,7 +37,7 @@ export function registerAuthListeners(session) {
       iapLogIn(firebaseUser.uid);
 
       const sessionStarted = await session.startSession();
-      if (sessionStarted) {
+      if (sessionStarted === 'ok') {
         router.replace('/');
       }
     } else {

@@ -3,6 +3,7 @@ import { ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '@/stores/user.js';
 import { useDevicesStore } from '@/stores/devices.js';
+import { useUserLocationStore } from '@/stores/userLocation.js';
 import ShareModal from '@/components/ShareModal.vue';
 import SharedBadge from '@/components/SharedBadge.vue';
 import { hasScope } from '@/utils/scopes';
@@ -10,6 +11,7 @@ import { hasScope } from '@/utils/scopes';
 const router = useRouter();
 const deviceStore = useDevicesStore();
 const userStore = useUserStore();
+const userLocation = useUserLocationStore();
 
 const showShareModal = ref(false);
 
@@ -115,7 +117,32 @@ const getGpsQuality = (device) => {
 <template>
   <div class="h-full flex flex-col pointer-events-none">
     
-    <div class="pointer-events-auto ms-auto relative mt-3 me-2" :style="{width: '250px'}">
+    <div class="pointer-events-auto ms-auto mt-3 me-2 flex items-start gap-2">
+
+      <!-- Self-location toggle. Sits OUTSIDE the search box's positioning
+           context on purpose: the dropdown below is absolutely positioned
+           against that box, so widening it to hold this button would drag the
+           results list left with it. -->
+      <button
+        type="button"
+        @click="userLocation.toggle()"
+        :disabled="userLocation.requesting"
+        :aria-pressed="userLocation.enabled"
+        :title="userLocation.enabled ? 'Hide my location' : 'Show my location'"
+        aria-label="Toggle my location on the map"
+        class="shrink-0 w-[38px] h-[38px] flex items-center justify-center rounded-xl border shadow-sm backdrop-blur-sm text-sm cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-wait focus:outline-none focus:ring-2 focus:ring-brand"
+        :class="userLocation.enabled
+          ? 'bg-brand border-brand text-white'
+          : 'bg-white/95 border-gray-200 text-gray-500 hover:text-brand'"
+      >
+        <i
+          :class="userLocation.requesting
+            ? 'fa-solid fa-spinner fa-spin'
+            : 'fa-solid fa-location-crosshairs'"
+        ></i>
+      </button>
+
+      <div class="relative" :style="{width: '250px'}">
         <div>
           <i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
           <input 
@@ -156,6 +183,7 @@ const getGpsQuality = (device) => {
             </li>
           </ul>
         </div>
+      </div>
     </div>
 
     <div 

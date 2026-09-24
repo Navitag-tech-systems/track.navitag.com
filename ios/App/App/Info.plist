@@ -39,24 +39,32 @@
 
 	<key>NSCameraUsageDescription</key>
 	<string>We need camera access to scan QR codes for linking devices to your account</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Your location is used only to show where you are on the map alongside your trackers. It stays on this device and is never sent to Navitag.</string>
 	<!--
-		NO LOCATION USAGE STRINGS, AND NO LOCATION PLUGIN. The app tracks external
-		GPS devices through the backend; it never reads the phone's own position.
+		LOCATION IS BACK, DELIBERATELY, AND BOTH HALVES ARE PRESENT.
 
-		Removing the strings alone was not enough and caused Apple to return
-		ITMS-90683 on upload: @capacitor/geolocation stayed in package.json, so the
-		binary still linked CoreLocation and Apple saw a protected framework with no
-		declared purpose. The plugin's JavaScript was not even in the bundle — its
-		only importer, an orphaned LocationPicker component, was tree-shaken out —
-		so the app was carrying the liability for a feature it could not invoke.
-		Both the plugin and that component are now deleted.
+		History: the strings and @capacitor/geolocation were both stripped after
+		Apple returned ITMS-90683 on upload — the plugin had stayed in
+		package.json, so the binary linked CoreLocation while no usage string
+		declared a purpose, and the plugin's only importer (an orphaned
+		LocationPicker) had been tree-shaken out anyway. The rule that came out of
+		that: the plugin and the usage string ship together or neither ships.
 
-		If phone GPS is ever wired up, BOTH halves come back: reinstall
-		@capacitor/geolocation (adding it to android.includePlugins in
-		capacitor.config.json, which check-android-plugins.mjs enforces) AND add
-		NSLocationWhenInUseUsageDescription here. Adding the string on its own would
-		silence the warning while declaring a capability the app does not use, which
-		invites review questions and a privacy-manifest obligation for nothing.
+		The "show me on the map" toggle (map search bar, left of the input) is the
+		real consumer. So: @capacitor/geolocation is a dependency again, it is
+		listed in android.includePlugins in capacitor.config.json (enforced by
+		check-android-plugins.mjs), and the usage string above is set.
+
+		When-in-use ONLY. There is no Always string and no location background
+		mode: the watch runs while the toggle is on and the app is in the
+		foreground, and nothing reads position in the background. Do not add
+		NSLocationAlwaysAndWhenInUseUsageDescription without a feature that needs
+		it — it is a much harder review conversation.
+
+		The position is used on-device to draw one marker and is never transmitted,
+		so it is not "collected" for the App Privacy questionnaire. That answer
+		stops being true the moment anything POSTs it.
 	-->
 
 

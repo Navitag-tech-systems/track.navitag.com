@@ -26,6 +26,10 @@ Vue 3 + Capacitor 8 mobile app for GPS device tracking. Connects to `api.navitag
 
 ## Project Status
 
+### Resume / offline fix (2026-09-24, in working tree, not committed or deployed)
+
+Fixes two resume bugs — stale markers after foregrounding (map unmounted during reconnect, marker positions never written back to the store) and a permanent OFFLINE screen after a network change while backgrounded (missed `networkStatusChange`, no re-read on resume, no way to retry). Behaviour change summary: the map stays mounted across reconnects (`hasRenderedOnce` latch); a warm reconnect opens the socket before the refetch and never raises `deviceStore.loading`, so the thin warm bar is the only feedback; `processSocketData` replaces `deviceMarkers[id]` on every position and `fetchDevices` merges rows, so markers and addresses survive a reconnect; marker colours are alarm red `#ffcbd1` > online green `#57f491` > offline grey `#d1d5db` (offline was red, green required ignition) and re-evaluate on the 60 s tick; resume re-reads `Network.getStatus()`; `<NoNet />` and `<Error />` carry a Reconnect button (`src/utils/lifecycle/reconnect.js`); `startSession` / `checkConnectionAndReconnect` return `'ok' | 'no_devices' | 'failed' | 'offline' | 'busy'`; native requests on the reconnect path get `connectTimeout` 15 s / `readTimeout` 30 s. Requires `@burkaloo/leaflet-vue3` ^2.3.6 (published; `package.json` and the lockfile are both updated). Codemagic's `GITHUB_PACKAGES_TOKEN` must hold the renewed GitHub Packages token or `npm ci` fails. Not done, optional: treating an OPEN socket with no recent frame as dead on resume — Traccar's socket has no heartbeat, so any window shorter than the slowest reporting interval forces a needless reconnect. Tests: `src/stores/devices.resume.test.js`. Verified in the browser on the local HTTPS origin (warm reconnect from a dead socket on foreground, missed-online-event recovery via Reconnect, "Still offline"); native untested.
+
 ### Deployment (CI/CD via Codemagic)
 
 App-store releases run through **Codemagic** (`codemagic.yaml`, free tier, macOS M2) — no Mac required. Workflows:
@@ -117,6 +121,66 @@ Diagnostics removed for the 5.1.0 release (`VITE_DEBUG_CONSOLE` dropped from `io
 ### Manifest / Play data safety
 
 - `android/app/src/main/AndroidManifest.xml` strips the advertising-ID permissions auto-merged by Firebase Analytics (`com.google.android.gms.permission.AD_ID` and `android.permission.ACCESS_ADSERVICES_AD_ID`) via `tools:node="remove"`. We don't use the advertising ID, so the Play Console advertising-ID declaration is answered **"No"** (verified gone from the merged release manifest).
+
+### Self-location marker ("show me on the map")
+
+A toggle to the **left of the map search bar** (`fa-location-crosshairs`, `src/views/map/index.vue`)
+draws the phone's own position as one extra marker among the trackers — the package's
+default `circle` glyph in brand blue, labelled **"Me"**.
+
+- **Default off, never persisted.** The toggle starts off on every launch and the choice is not
+  written to storage — an app that reads location on boot because of a tap the user may not
+  remember making is a worse default than one extra tap. Sign-out kills any live watch.
+- **State:** `src/stores/userLocation.js`. Native reads `@capacitor/geolocation`; web/PWA reads
+  `navigator.geolocation` directly (the plugin's web shim wraps the same API, so going through it
+  would ship bundle for no gain). One `getCurrentPosition` on enable so the marker appears
+  immediately, then a `watchPosition` while the toggle is on. **Cadence: 3s** (`interval` +
+  `minimumUpdateInterval`), which is Google Maps' browsing-grade rate — and Android-only, since iOS
+  is distance-driven and web fires on whatever the OS reports. The plugin defaults are much slower
+  than they look (`interval` falls back to `timeout` = 15s, floor 5s), so both are set explicitly.
+- **Rendering:** the marker is merged into the same `devices` prop the trackers use
+  (`mapDevices` in `App.vue`) under the non-numeric key `me` — tracker keys are numeric Traccar
+  device ids, so they cannot collide. `@burkaloo/leaflet-vue3` has no user-location concept; this
+  needs no package change. Since 2.3.6 the map moves existing markers from `devices`, so a new
+  marker object per fix is the primary channel; the shared `deviceUpdate` courier (`mapUpdate` in
+  `App.vue`) is kept as the ≤ 2.3.5 fallback and the package ignores the duplicate.
+- **Known cosmetic limit:** the package coerces a missing bearing to `0` in both the key-set watcher
+  and `updateMarkerOptions`, so the self marker always carries a direction pointer. It is fed the
+  real compass heading when the OS supplies one and otherwise points north. Suppressing it needs a
+  `bearing: null` that survives inside the package.
+- **Clicking it** clears any device selection (no store row, no bottom sheet) — the map has already
+  centred on it by then, so the tap doubles as "centre on me".
+- **Never transmitted.** Nothing POSTs the coordinate; it exists only to draw a marker. That is what
+  keeps the App Store privacy answer ("not collected") and the Play data-safety form correct — any
+  change that sends it has to revisit both.
+
+**Permissions — when-in-use only, both halves present.** Location was stripped from this app once
+(ITMS-90683: `@capacitor/geolocation` stayed in `package.json` while the usage strings were removed,
+so the binary linked CoreLocation with no declared purpose). The rule from that episode: the plugin,
+the Android manifest entries and the iOS usage string ship together or none of them do. Now all
+present — `NSLocationWhenInUseUsageDescription`, `ACCESS_FINE_LOCATION` / `ACCESS_COARSE_LOCATION`
++ `android.hardware.location.gps` (`required="false"`), and `@capacitor/geolocation` in
+`android.includePlugins` (enforced by `scripts/check-android-plugins.mjs`).
+
+**No background location:** no `ACCESS_BACKGROUND_LOCATION`, no `NSLocationAlwaysAndWhenInUse…`,
+no location background mode. The watch is dropped on `appStateChange → background` and re-armed on
+foreground (`src/utils/lifecycle/listeners/appState.js`), so "when in use" is literally true rather
+than merely enforced by the OS.
+
+**Verified on web 2026-09-24** (`https://local.navitag.com:4443`, `navigator.geolocation` stubbed):
+toggle on → "Me" marker added (15 → 16 DOM markers, button lit, `aria-pressed`), a watch fix moved
+the DOM marker and set bearing 135, toggle off → marker removed and the watch cleared. Unit tests:
+`src/stores/userLocation.test.js` (enable/watch/suspend/resume/disable, denied permission, watch
+error, non-finite fix). `npx cap sync android` registered the plugin in `capacitor.settings.gradle`
+/ `capacitor.build.gradle`; `npx cap update ios` added it to `CapApp-SPM/Package.swift` (Windows
+backslash paths, same as the existing entries — Codemagic's `cap sync ios` regenerates the file).
+
+**Still needed before release:** a native build on a device (permission prompt, Android 3 s cadence,
+background suspend/resume), the App Store Connect App Privacy answer and the Play data-safety form
+(location: **not collected** — on-device only), and publishing the privacy-policy change. The
+policy lives ONLY on navitag.com (`www-v3/app/pages/privacy-policy.vue`, updated 2026-09-24 with
+the on-device-only paragraph, uncommitted) — this repo carries no legal pages; www-v3 must be live
+before the store release.
 
 ### Lifecycle Service
 

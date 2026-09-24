@@ -1,9 +1,9 @@
 import { defineStore } from 'pinia';
-import { ref, computed, reactive } from 'vue';
+import { ref, computed, reactive, watch } from 'vue';
 import { useUserStore } from '@/stores/user.js';
 import { useBootStore } from '@/stores/boot.js';
 import { useRouter } from 'vue-router';
-import { request } from '@/utils/http';
+import { request, RECONNECT_TIMEOUT_MS } from '@/utils/http';
 import { baseUrl, categoryMapping } from '@/utils/variables';
 import { OWNER_SENTINEL } from '@/utils/scopes';
 
@@ -36,6 +36,22 @@ function toMs(ts) {
 }
 function isFresh(lastSeenMs, now = Date.now()) {
   return lastSeenMs > 0 && (now - lastSeenMs) < ONLINE_FRESH_MS;
+}
+
+// Marker palette. Priority: alarm > online > offline. Green no longer requires
+// ignition, and offline is grey rather than the old catch-all red (both were
+// deliberate visual changes, 2026-09-24; see README "Resume / offline fix").
+export const MARKER_ALARM = '#ffcbd1';
+export const MARKER_ONLINE = '#57f491';
+export const MARKER_OFFLINE = '#d1d5db';
+
+// Single source of truth for a marker's colour. `alarm` is the raw Traccar
+// position attribute, stored per position, so it clears on the device's next
+// normal report. Freshness is the same recency gate as isDeviceOnline.
+export function markerColor(device, now = Date.now()) {
+  if (device?.alarm) return MARKER_ALARM;
+  if (device?.status === 'online' && isFresh(device?.lastSeenMs || 0, now)) return MARKER_ONLINE;
+  return MARKER_OFFLINE;
 }
 
 // How long to wait for the first socket frame after a successful fetch before
@@ -98,6 +114,22 @@ export const useDevicesStore = defineStore('devices', () => {
     return device?.status === 'online' && isFresh(device?.lastSeenMs || 0, now.value);
   }
 
+  // Re-derive one marker's colour from its device row. Replaces the entry (a
+  // new object) only when the colour actually changed, so the map's `devices`
+  // watcher sees exactly one changed field and does not rebuild the icon.
+  function refreshMarkerColor(id, at = Date.now()) {
+    const marker = deviceMarkers[id];
+    if (!marker) return;
+    const color = markerColor(devices[id], at);
+    if (color !== marker.color) deviceMarkers[id] = { ...marker, color };
+  }
+
+  // A device that falls silent sends nothing, so its marker would stay green
+  // forever. The 60 s tick re-evaluates every marker; expiry lands within ~6 min.
+  watch(now, (at) => {
+    for (const id of Object.keys(deviceMarkers)) refreshMarkerColor(id, at);
+  });
+
   // --- Live-data watchdog ---
   // Armed when a fetch succeeds, disarmed by the first socket frame (Traccar or
   // posbroker — both land in processSocketData).
@@ -121,12 +153,16 @@ export const useDevicesStore = defineStore('devices', () => {
     if (liveWatchdog) return;
     liveWatchdog = setTimeout(() => {
       liveWatchdog = null;
-      if (!loading.value) return;
-      console.warn('[Devices] No live position within 20s — releasing the loading gate.');
-      // Let the user into the app with whatever the fetch returned rather than
-      // holding them on a splash that has nothing left to wait for.
-      loading.value = false;
-      boot.markStalled();
+      if (loading.value) {
+        console.warn('[Devices] No live position within 20s — releasing the loading gate.');
+        // Let the user into the app with whatever the fetch returned rather than
+        // holding them on a splash that has nothing left to wait for.
+        loading.value = false;
+      }
+      // A warm reconnect never raises `loading`, but its boot run still waits
+      // on 'live'. A parked fleet sends no frame, so stand the run down here or
+      // the warm bar stays on screen until the next position.
+      if (boot.status.live === 'active') boot.markStalled();
     }, LIVE_WATCHDOG_MS);
   }
 
@@ -147,6 +183,9 @@ export const useDevicesStore = defineStore('devices', () => {
         // more-recent position already recorded.
         const ms = toMs(d.lastUpdate);
         if (ms > (devices[d.id].lastSeenMs || 0)) devices[d.id].lastSeenMs = ms;
+        // A status-only frame (online/offline flip) changes the colour without
+        // a position, so the marker is re-derived here. No-op without a marker.
+        refreshMarkerColor(d.id);
       });
     }
 
@@ -160,6 +199,10 @@ export const useDevicesStore = defineStore('devices', () => {
           ignition: pos.attributes?.ignition || false,
           speed: pos.speed,
           event: pos.attributes?.event || pos.event,
+          // Raw per-position attribute: present on an alarm report, absent on
+          // the next normal one, which is exactly the clear rule for the red
+          // marker. Not sticky by design.
+          alarm: pos.attributes?.alarm ?? null,
           power: pos.attributes?.power,
           battery: pos.attributes?.battery,
           sat: pos.attributes?.sat, 
@@ -177,10 +220,6 @@ export const useDevicesStore = defineStore('devices', () => {
           lastSeenMs: toMs(pos.serverTime || pos.deviceTime || pos.fixTime),
         });
 
-        // Map Markers Logic (freshness-gated, mirroring isDeviceOnline)
-        const isOnline = device.status === "online" && isFresh(device.lastSeenMs);
-        const isIgnitionOn = pos.attributes?.ignition;
-        const markerColor = (isOnline && isIgnitionOn) ? "#57f491" : "#ffcbd1";
         const catObj = categoryMapping.find(category => category.server === device.category)
           ?? categoryMapping.find(category => category.server === null);
 
@@ -188,17 +227,22 @@ export const useDevicesStore = defineStore('devices', () => {
           id: deviceId,
           latlon: [pos.latitude, pos.longitude],
           bearing: pos.course,
-          color: markerColor,
+          color: markerColor(device),
           label: device.name,
           type: catObj.map
         };
 
-        if (deviceId in deviceMarkers) {
-          mapUpdate.value = markerData;
-        } else {
-          deviceMarkers[deviceId] = markerData;
-          mapUpdate.value = markerData;
-        }
+        // ALWAYS replace the store entry. It used to be written only on
+        // create, with later moves going through the `mapUpdate` courier alone,
+        // so any remount of the map redrew every marker at its first-ever
+        // position. A new object (not an in-place latlon mutation) is what the
+        // map's `devices` watcher detects — and unlike the courier, which Vue
+        // collapses to the last write per tick, it applies every device in a
+        // batch. The courier stays for the self-location marker and for
+        // @burkaloo/leaflet-vue3 ≤ 2.3.5, where `devices` does not move
+        // existing markers.
+        deviceMarkers[deviceId] = markerData;
+        mapUpdate.value = markerData;
       });
     }
     console.log('procced socket message', data)
@@ -232,6 +276,7 @@ export const useDevicesStore = defineStore('devices', () => {
       const res = await request.send({
         url: `${baseUrl}/device/list`,
         token: userStore.idToken,
+        timeout: RECONNECT_TIMEOUT_MS,
       });
       const retArr = res?.devices;
 
@@ -249,7 +294,25 @@ export const useDevicesStore = defineStore('devices', () => {
           // list — see src/utils/scopes.js. shared:false makes the
           // ownership flag explicit for hasScope consumers and any UI that
           // wants to render an owned-vs-shared affordance.
-          devices[device.id] = { ...device, shared: false, scopes: [OWNER_SENTINEL], lastSeenMs: toMs(device.lastUpdate) };
+          const prev = devices[device.id];
+          const row = {
+            ...device,
+            shared: false,
+            scopes: [OWNER_SENTINEL],
+            // Never rewind: a socket frame may already have recorded a newer
+            // position than the list's lastUpdate.
+            lastSeenMs: Math.max(toMs(device.lastUpdate), prev?.lastSeenMs || 0),
+          };
+          // MERGE into the existing row. Replacing it wiped latlon, address,
+          // speed, ignition and alarm on every reconnect, so the list showed
+          // "Address calculating..." until the socket's first frame — and a
+          // warm reconnect now opens the socket before this fetch resolves, so
+          // a frame that lands first must survive it.
+          if (prev) {
+            Object.assign(prev, row);
+          } else {
+            devices[device.id] = row;
+          }
         });
       }
       await fetchDeviceExpirations();
@@ -263,7 +326,8 @@ export const useDevicesStore = defineStore('devices', () => {
   async function fetchDeviceExpirations() {
     const exps = await request.send({
       url: `${baseUrl}/user/device-expiration`,
-      token: userStore.idToken
+      token: userStore.idToken,
+      timeout: RECONNECT_TIMEOUT_MS,
     });
     if (exps && exps.status == "success") {
       // The payload key was renamed `message` -> `devices` on 2026-08-20 so
@@ -296,6 +360,7 @@ export const useDevicesStore = defineStore('devices', () => {
       const retArr = await request.send({
         url: `${baseUrl}/geofence`,
         token: userStore.idToken,
+        timeout: RECONNECT_TIMEOUT_MS,
       });
 
       let allgeos = {}
@@ -343,6 +408,7 @@ export const useDevicesStore = defineStore('devices', () => {
         url: `${baseUrl}/share/tome`,
         method: 'POST',
         token: userStore.idToken,
+        timeout: RECONNECT_TIMEOUT_MS,
       });
       const list = Array.isArray(res?.shared_devices) ? res.shared_devices : [];
       sharedToMe.value = list;
@@ -377,9 +443,13 @@ export const useDevicesStore = defineStore('devices', () => {
     }
   }
 
-  async function fetchAll() {
+  // `warm`: the user already has data on screen (a reconnect). The splash gate
+  // `loading` is NOT raised, so the map and list stay interactive; the boot
+  // store's warm bar is the only feedback. A frame that arrives before
+  // `loading = true` would otherwise hold it until the 20 s watchdog.
+  async function fetchAll({ warm = false } = {}) {
     boot.begin('devices');
-    loading.value = true;
+    if (!warm) loading.value = true;
     error.value = null;
     // Deliberately NOT clearing the live watchdog here. fetchAll runs on every
     // reconnect attempt, so clearing it made the deadline slide forward once per
@@ -589,6 +659,7 @@ export const useDevicesStore = defineStore('devices', () => {
     deviceSelectedObject, deviceSelected, mapUpdate, draftPolygon, activeRoute,
     sharedToMe, now, isDeviceOnline, hasLoadedOnce,
     entitlement, geofenceLimit, canCreateGeofence,
+    markerColor, refreshMarkerColor,
     processSocketData,
     fetchDevices, fetchGeofences, fetchDeviceExpirations, fetchSharedToMe, fetchAll, updateDevice,
     setActivityLock, setAutoLock,
