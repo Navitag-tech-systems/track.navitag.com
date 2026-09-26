@@ -9,6 +9,7 @@ import { useNotificationsStore } from '@/stores/notifications.js';
 import { request } from '@/utils/http.js';
 import { categoryMapping, baseUrl } from '@/utils/variables';
 import { hasScope } from '@/utils/scopes';
+import { humanizeEvent } from '@/utils/eventLabels';
 import QrScanner from '@/components/QrScanner.vue';
 import SharedBadge from '@/components/SharedBadge.vue';
 import PlanPurchaseSheet from '@/components/PlanPurchaseSheet.vue';
@@ -53,6 +54,10 @@ const canWriteEnergy = computed(() => hasScope(device.value, 'energy:write'));
 // energy:write to POST, and energy:read so the user can see the resulting
 // metrics. Without read access, an entry-button click is half-blind.
 const canLogEnergy = computed(() => canReadEnergy.value && canWriteEnergy.value);
+// Notification toggles: owners always; a grantee only with notification:read.
+// The rules a grantee toggles are their own — the owner's are untouched.
+const canManageNotifications = computed(() =>
+  !!device.value && (!device.value.shared || hasScope(device.value, 'notification:read')));
 
 const isProfileDirty = computed(() => {
   if (!device.value) return false;
@@ -96,23 +101,6 @@ const eventTypesForDevice = computed(() => {
   }
   return result;
 });
-
-function humanizeEvent(eventType) {
-  if (!eventType) return '';
-  if (eventType.startsWith('alarm:')) {
-    return humanizeEvent(eventType.slice('alarm:'.length));
-  }
-  if (eventType.includes(':')) {
-    const [prefix, subtype] = eventType.split(':');
-    return `${humanizeEvent(prefix)}: ${humanizeEvent(subtype)}`;
-  }
-  return eventType
-    .replace(/[_-]/g, ' ')
-    .replace(/([A-Z])/g, ' $1')
-    .replace(/\s+/g, ' ')
-    .replace(/^./, (c) => c.toUpperCase())
-    .trim();
-}
 
 async function toggleRule(eventType) {
   const imei = deviceImei.value;
@@ -449,7 +437,9 @@ watch(isActive, async (nv, ov) => {
       </div>
 
       <div v-else-if="device.shared" class="text-center text-xs text-gray-500 leading-snug px-6 py-2">
-        Only Usage Metrics are available for shared devices. Other settings are reserved for the device owner.
+        {{ canManageNotifications
+          ? 'Only Usage Metrics and your own notifications are available for shared devices. Other settings are reserved for the device owner.'
+          : 'Only Usage Metrics are available for shared devices. Other settings are reserved for the device owner.' }}
       </div>
 
       <div v-if="device && !device.shared" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
@@ -784,7 +774,7 @@ watch(isActive, async (nv, ov) => {
         <p v-if="contactsError" class="text-xs text-red-500">{{ contactsError }}</p>
       </div>
 
-      <div v-if="device && !device.shared" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 pb-8 mb-8 space-y-4">
+      <div v-if="canManageNotifications" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 pb-8 mb-8 space-y-4">
         <button
           type="button"
           @click="notificationsExpanded = !notificationsExpanded"
