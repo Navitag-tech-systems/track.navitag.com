@@ -26,7 +26,7 @@ Vue 3 + Capacitor 8 mobile app for GPS device tracking. Connects to `api.navitag
 
 ## Project Status
 
-### Shared-device notifications (2026-09-26, branch `shared-notifications-part1`, not pushed)
+### Shared-device notifications (2026-09-26, on `main`, not pushed)
 
 Frontend half of api.navitag.net plan Part 1 (F1–F4). The backend half is live on api.navitag.net since 2026-09-26 (api v1 `8237a31`) and was live-tested on the Civic with simulated frames. F1: `notification:read` is now in `GRANTABLE_SCOPES` (share screen shows a Notifications scope). F2: `stores/notifications.js` keeps `shared_devices`, adds `bulkSet(event_type, enabled)` (PUT `/notification/permissions/rule/bulk`, then refetch) and `notifyImeis()`, and force-refetches when the set of shares carrying `notification:read` changes mid-session. F3: the account Notifications card gains a "Notification types" block, one row per `GET /notification/events` entry with "On for X of Y" and All on / All off; `alarm:powerCut` renders as "Power Cut". F4: a grantee with `notification:read` sees the device's Notifications section and toggles their own rules; the shared-device banner says so. Label helper moved to `src/utils/eventLabels.js`. Tests: `src/stores/notifications.test.js`; `vite build` green. Not yet verified in a browser. Ship = merge to `main` + push (Vercel), then a native release; the backend already serves `alarm:powerCut` instead of `alarm`, so installed builds already show one "Power Cut" toggle with no release.
 
