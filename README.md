@@ -26,6 +26,10 @@ Vue 3 + Capacitor 8 mobile app for GPS device tracking. Connects to `api.navitag
 
 ## Project Status
 
+### Map categories: pin removed, dog + cat added (2026-10-01, committed, NOT pushed)
+
+`categoryMapping`: the `pin` option (Traccar `plane`) is removed; `dog` → Traccar `animal` (`fa-dog`), `cat` → Traccar `plane` (`fa-cat`, reused because Traccar has one animal category). Glyphs ship in `@burkaloo/leaflet-vue3` **2.3.8** (published). **Push is held** until every Traccar device with `category='plane'` is reset to null (default circle) — otherwise the old pins render as cats. api.navitag.net needs `animal` in `Device::ALLOWED_CATEGORIES` (prepared, not deployed). Installed native builds keep the pin option and still show pins for `plane` until the next release.
+
 ### New map categories: van, bus, suv (2026-10-01, on `main`)
 
 `categoryMapping` (`src/utils/variables.js`) gains three entries: `van` → Traccar `van` (`fa-van-shuttle`), `bus` → Traccar `bus` (`fa-bus-side`), `suv` → Traccar `tram` (`fa-truck-field`; Traccar has no SUV category, `tram` is reused). The marker glyphs live in `@burkaloo/leaflet-vue3` **2.3.7** (published 2026-10-01; `package.json` + lockfile bumped here). api.navitag.net accepts `van`/`bus`/`tram` since 2026-10-01 (api v1 `f2bb43f`). Remaining: native release (installed builds draw these devices as plain circles until then). Deploying this file against 2.3.6 draws an empty circle (no glyph) for any device in `van`/`bus`/`tram`, because 2.3.6 has no such glyph key. `demo.navitag.com` keeps its own list and is unchanged.

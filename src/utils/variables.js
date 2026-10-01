@@ -12,7 +12,10 @@ export const categoryMapping = [
   { map: 'van', server: 'van', icon: 'fa-van-shuttle' },
   { map: 'bus', server: 'bus', icon: 'fa-bus-side' },
   { map: 'suv', server: 'tram', icon: 'fa-truck-field' },
-  { map: 'pin', server: 'plane', icon: 'fa-map-pin' },
+  { map: 'dog', server: 'animal', icon: 'fa-dog' },
+  // 'plane' is reused for cat (Traccar has one animal category). It was the old
+  // 'pin' option; devices still on 'plane' from that era render as cats.
+  { map: 'cat', server: 'plane', icon: 'fa-cat' },
   { map: 'circle', server: null, icon: 'fa-circle' }
 ]
 
