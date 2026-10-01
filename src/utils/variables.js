@@ -9,6 +9,9 @@ export const categoryMapping = [
   { map: 'pickup', server: 'pickup', icon: 'fa-truck-pickup' },
   { map: 'truck4w', server: 'truck', icon: 'fa-truck' },
   { map: 'truck6w', server: 'trailer', icon: 'fa-truck-moving' },
+  { map: 'van', server: 'van', icon: 'fa-van-shuttle' },
+  { map: 'bus', server: 'bus', icon: 'fa-bus-side' },
+  { map: 'suv', server: 'tram', icon: 'fa-truck-field' },
   { map: 'pin', server: 'plane', icon: 'fa-map-pin' },
   { map: 'circle', server: null, icon: 'fa-circle' }
 ]
