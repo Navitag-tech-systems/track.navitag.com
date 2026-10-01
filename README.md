@@ -28,7 +28,7 @@ Vue 3 + Capacitor 8 mobile app for GPS device tracking. Connects to `api.navitag
 
 ### Map categories: pin removed, dog + cat added (2026-10-01, on `main`)
 
-`categoryMapping`: the `pin` option (Traccar `plane`) is removed; `dog` → Traccar `animal` (`fa-dog`), `cat` → Traccar `plane` (`fa-cat`, reused because Traccar has one animal category). Glyphs ship in `@burkaloo/leaflet-vue3` **2.3.8** (published). Checked before shipping: 0 of 202 Traccar devices had `category='plane'` (`scripts/tserver1/reset_plane_category.py`), so no pin turns into a cat. api.navitag.net needs `animal` in `Device::ALLOWED_CATEGORIES` (prepared, not deployed). Installed native builds keep the pin option and still show pins for `plane` until the next release.
+`categoryMapping`: the `pin` option (Traccar `plane`) is removed; `dog` → Traccar `animal` (`fa-dog`), `cat` → Traccar `plane` (`fa-cat`, reused because Traccar has one animal category). Glyphs ship in `@burkaloo/leaflet-vue3` **2.3.8** (published). Checked before shipping: 0 of 202 Traccar devices had `category='plane'` (`scripts/tserver1/reset_plane_category.py`), so no pin turns into a cat. api.navitag.net accepts `animal` since 2026-10-01 (api v1 `f662dd8`). Installed native builds keep the pin option and still show pins for `plane` until the next release.
 
 ### New map categories: van, bus, suv (2026-10-01, on `main`)
 
