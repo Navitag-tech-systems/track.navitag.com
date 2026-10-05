@@ -3,7 +3,7 @@
 // v-if'd so leaving Live unmounts LiveStream, which sends videoStop; the
 // device can only serve one stream at a time and clip playback reuses the
 // same HLS endpoint.
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useDevicesStore } from '@/stores/devices.js';
 import { isDashcam } from '@/utils/dashcam';
@@ -11,6 +11,8 @@ import SharedBadge from '@/components/SharedBadge.vue';
 import LiveStream from '@/components/dashcam/LiveStream.vue';
 import ClipBrowser from '@/components/dashcam/ClipBrowser.vue';
 import DashcamConfig from '@/components/dashcam/DashcamConfig.vue';
+import ChannelSelect from '@/components/dashcam/ChannelSelect.vue';
+import { demoEnabled, loadManifest } from '@/utils/dashcamDemo';
 
 const route = useRoute();
 const router = useRouter();
@@ -25,6 +27,17 @@ const TABS = [
   { key: 'clips', label: 'Clips', icon: 'fa-film' },
   { key: 'settings', label: 'Settings', icon: 'fa-gear' },
 ];
+// Demo media (scripts/medusa/dashcam-demo): when this device has a manifest,
+// the page is the channel picker for the Live / Playback viewer instead of
+// the device-command tabs below.
+const manifest = ref(null);
+const manifestChecked = ref(!demoEnabled());
+watch(() => device.value?.uniqueId, async (uid) => {
+  if (!uid || !demoEnabled()) return;
+  manifest.value = await loadManifest(uid);
+  manifestChecked.value = true;
+}, { immediate: true });
+
 const tab = ref(TABS.some((t) => t.key === route.query.tab) ? route.query.tab : 'live');
 
 function pick(key) {
@@ -53,7 +66,7 @@ function pick(key) {
         </div>
       </div>
 
-      <div v-if="device && capable" class="flex border-t border-gray-100">
+      <div v-if="device && capable && manifestChecked && !manifest" class="flex border-t border-gray-100">
         <button
           v-for="t in TABS"
           :key="t.key"
@@ -76,6 +89,12 @@ function pick(key) {
     <div v-else-if="!capable" class="p-10 text-center text-gray-500">
       <i class="fa-solid fa-video-slash text-3xl text-gray-300 mb-3"></i>
       <p>This device has no camera.</p>
+    </div>
+
+    <div v-else-if="!manifestChecked" class="p-10 text-center text-gray-500">Loading…</div>
+
+    <div v-else-if="manifest" class="p-4 pb-10 max-w-2xl mx-auto w-full">
+      <ChannelSelect :device="device" :manifest="manifest" />
     </div>
 
     <div v-else class="p-4 pb-10 max-w-md mx-auto w-full">

@@ -375,6 +375,16 @@ The old `/linkdevice/enable/:imei` screen (`enable.vue`) was **removed** — it 
 - `hls.js` is lazy-imported (own `hls` chunk) for Android/Chrome; Safari/iOS play `.m3u8` natively.
 - Settings persist to `attributes.dashcam` via `PUT /api/devices/{id}`; the WiFi password is never stored — it goes to the device only via `applyHubWifi()` (0x8300 transport **unverified on the device**, single seam for an SMS swap).
 
+### Dashcam demo — RTS + history playback with GPS (branch `feat/dashcam-demo`, 2026-10-05)
+
+- **Not on main, not in a store build.** Served at `https://mcp.navitag.com/demo/` by `scripts/medusa/deploy_demo.sh` (sets `VITE_DASHCAM_DEMO_BASE=/dashcam-demo`). Without that env var the demo code is inert and `/dashcam/:id` shows the tabs above.
+- Media + GPS come from pre-built files on medusa (`scripts/medusa/dashcam-demo/`, served at `/dashcam-demo/<uniqueId>/manifest.json`), not from the device. Test unit: device 203 `001318110808` (burkedev). 4 channels; footage is currently generated **placeholders** until real videos are supplied.
+- `/dashcam/:deviceId` → `ChannelSelect.vue` (Live | Playback, channel tiles with posters) when the device has a manifest.
+- `/dashcam/:deviceId/view?mode=live|playback&ch=N[&clip=id]` → `views/dashcam/viewer.vue`: video + `TrackMap.vue` (standalone Leaflet, not the global map) side by side on desktop, stacked on mobile.
+  - Playback: video time t = route sample t (1 Hz route, interpolated per frame); full track + progress line; click the track to seek; channel switch keeps the position; recordings grouped by Manila day.
+  - Live (simulated RTS): looping feed joined mid-stream, vehicle drives a closed loop on the wall clock (`liveRouteTime`), 150 s trail, follow/recenter.
+- Pure helpers in `src/utils/dashcamDemo.js` with a Vitest spec.
+
 ### Navigation & Auth Architecture
 
 - `utils/lifecycle/`: Split into `session.js` (orchestration + locks) and `listeners/{auth,appState,network}.js`. `index.js` exposes the `LifecycleService` facade (`init`, `startSession`, `stopSession`, `checkConnectionAndReconnect`, `reloadAndReconnect`). Lock flags (`isStartingSession`, `isReconnecting`) and the reconnect timer live on the `session` singleton. Single authority for post-auth navigation.
