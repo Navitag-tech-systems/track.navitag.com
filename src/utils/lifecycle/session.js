@@ -7,14 +7,26 @@ import { request } from '@/utils/http';
 import { baseUrl } from '@/utils/variables';
 import router from '@/router';
 
+// Result codes shared by startSession / checkConnectionAndReconnect so the
+// overlay Reconnect button can tell "not a failure" apart from "failed":
+//   'ok'         connected and live
+//   'no_devices' connected; the account has nothing to show (teaser shown)
+//   'failed'     a step failed; userStore.error is set
+//   'offline'    userStore.internet is false; nothing was attempted
+//   'busy'       another run holds the lock; nothing was attempted
 export const session = {
   reconnectTimer: null,
   isReconnecting: false,
   isStartingSession: false,
   countryCodePromise: null,
+  // Last connectivity we acted on. Shared between the network listener and the
+  // resume handler so a status re-read on foreground does not leave the
+  // listener believing we are still offline (which would make the next repeated
+  // `connected:true` event look like a transition).
+  wasOnline: null,
 
   async startSession() {
-    if (this.isStartingSession) return false;
+    if (this.isStartingSession) return 'busy';
     this.isStartingSession = true;
 
     const userStore = useUserStore();
@@ -46,7 +58,7 @@ export const session = {
           console.error('❌ Backend Sync Failed after retry');
           boot.fail('account');
           userStore.error = true;
-          return false;
+          return 'failed';
         }
       }
       boot.done('account');
@@ -57,7 +69,7 @@ export const session = {
         console.error('❌ Server Connect Failed');
         boot.fail('server');
         userStore.error = true;
-        return false;
+        return 'failed';
       }
       boot.done('server');
 
@@ -66,19 +78,20 @@ export const session = {
       const fetched = await deviceStore.fetchAll();
 
       if (fetched === 'no_devices') {
-        return false;
+        return 'no_devices';
       }
 
       if (!fetched) {
         console.error('❌ Failed to fetch devices or geofences');
         userStore.error = true;
-        return false;
+        return 'failed';
       }
 
-      userStore.connectSocket(
+      await userStore.connectSocket(
         deviceStore.processSocketData,
         () => this.handleSocketDisconnect()
       );
+      if (!userStore.socket) return 'failed';
 
       // Broker carries live positions for shared-to-me devices. Connect
       // after fetchAll so the mergeSharedToMeIntoDevices step has already
@@ -92,7 +105,7 @@ export const session = {
       // plan/expiration events that actually change an allowance. Deleting a
       // user's data as a side effect of opening the app is gone.
 
-      return true;
+      return 'ok';
     } finally {
       this.isStartingSession = false;
     }
@@ -129,7 +142,7 @@ export const session = {
   },
 
   async checkConnectionAndReconnect() {
-    if (this.isReconnecting) return;
+    if (this.isReconnecting) return 'busy';
     // startSession holds a DIFFERENT lock (isStartingSession), so the two could
     // previously overlap: backgrounding and foregrounding during a cold boot
     // sees a not-yet-open socket, fires a reconnect, and we end up running two
@@ -137,15 +150,15 @@ export const session = {
     // still starting is already doing everything this would do.
     if (this.isStartingSession) {
       console.log('⏸️ Skipping reconnect — session start already in progress.');
-      return;
+      return 'busy';
     }
 
     const userStore = useUserStore();
-    if (!userStore.server_url) return;
+    if (!userStore.server_url) return 'failed';
     // Don't even try while offline — serverConnect would just fail and
     // set userStore.error, which (since the user is looking at <NoNet />)
     // would surface <Error /> the moment network came back.
-    if (!userStore.internet) return;
+    if (!userStore.internet) return 'offline';
 
     this.isReconnecting = true;
     const deviceStore = useDevicesStore();
@@ -155,67 +168,73 @@ export const session = {
     // /user/sync do not re-run — so it gets the shorter warm flow, normalized
     // to reach 100%. Always a fresh run, unlike startSession's ensureFlow.
     //
-    // ...but ONLY while the user is still on the splash. reset() clears
-    // `stalled`, which is the flag the live-data watchdog sets to let the user
-    // into the app when no socket frame ever arrives. Resetting unconditionally
-    // put the full-screen boot overlay back over a working UI, and because this
-    // runs every few seconds for as long as the socket is down, it did so
-    // forever — the watchdog released the gate and the very next reconnect
-    // re-locked it. A reconnect that happens after the user is already in the
-    // app must stay in the background where they cannot see it.
-    // Reset ONLY for a genuinely fresh run. Two things must both be false:
+    // Reset unless a run is already animating: a reconnect CONTINUES that run,
+    // it does not start a new one — resetting mid-run rewinds the bar and
+    // breaks the "never goes backwards" guarantee in boot.js's docblock.
     //
-    //   userIsInApp  — they are past the splash. reset() clears `stalled`, the
-    //                  flag the live-data watchdog sets to let them in, so
-    //                  resetting here drops the full-screen overlay back over a
-    //                  working UI, every few seconds, forever.
-    //   bootRunning  — a run is already animating. A reconnect CONTINUES that
-    //                  run; it does not start a new one. Resetting mid-run
-    //                  rewinds the bar and re-normalizes cold(100) to warm(60),
-    //                  so the bar visibly jumps backwards — breaking the
-    //                  "never goes backwards" guarantee in boot.js's own
-    //                  docblock and making progress look unrelated to reality.
-    //
-    // What still resets: a first boot (owned by startSession/ensureFlow) and a
-    // retry after failure or stall, where inProgress is already false.
-    const userIsInApp = deviceStore.hasLoadedOnce && !deviceStore.loading;
-    const bootRunning = boot.inProgress;
-    if (!userIsInApp && !bootRunning) boot.reset('warm');
+    // This used to ALSO skip the reset once the user was in the app, because
+    // reset() clears `stalled` and the cold splash came back over a working
+    // UI. The cold splash is now latched off by App.vue's hasRenderedOnce, so
+    // an in-app reconnect shows the thin warm bar instead — which is the only
+    // feedback it has, since the warm path below never raises `loading`.
+    // Without the reset every step is already 'done', the run is `complete`,
+    // and the bar never appears.
+    if (!boot.inProgress) boot.reset('warm');
 
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+
+    // Warm = the user already has data on screen. The socket opens BEFORE the
+    // refetch so positions start moving as soon as the Traccar session is
+    // confirmed, instead of after three more round trips; fetchDevices merges
+    // rows, so a frame that lands mid-fetch survives it.
+    const warm = deviceStore.hasLoadedOnce;
 
     try {
       boot.begin('server');
       const sessionValid = await userStore.serverConnect();
 
-      if (sessionValid) {
-        boot.done('server');
-        const fetched = await deviceStore.fetchAll();
+      if (!sessionValid) {
+        boot.fail('server');
+        userStore.error = true;
+        return 'failed';
+      }
+      boot.done('server');
 
-        // fetchAll already redirected to the teaser; don't connect sockets
-        // for a zero-device account (and don't flag it as an error).
-        if (fetched === 'no_devices') {
-          return;
-        }
-
-        if (!fetched) {
-          console.error('❌ Failed to fetch devices or geofences');
-          userStore.error = true;
-          return;
-        }
-
-        userStore.connectSocket(
+      if (warm) {
+        await userStore.connectSocket(
           deviceStore.processSocketData,
           () => this.handleSocketDisconnect()
         );
-
-        const broker = useBrokerStore();
-        broker.disconnect();
-        broker.connect();
-      } else {
-        boot.fail('server');
-        userStore.error = true;
+        if (!userStore.socket) return 'failed';
       }
+
+      const fetched = await deviceStore.fetchAll({ warm });
+
+      // fetchAll already redirected to the teaser; don't keep sockets open
+      // for a zero-device account (and don't flag it as an error).
+      if (fetched === 'no_devices') {
+        if (warm) userStore.disconnectSocket();
+        return 'no_devices';
+      }
+
+      if (!fetched) {
+        console.error('❌ Failed to fetch devices or geofences');
+        userStore.error = true;
+        return 'failed';
+      }
+
+      if (!warm) {
+        await userStore.connectSocket(
+          deviceStore.processSocketData,
+          () => this.handleSocketDisconnect()
+        );
+        if (!userStore.socket) return 'failed';
+      }
+
+      const broker = useBrokerStore();
+      broker.disconnect();
+      broker.connect();
+      return 'ok';
     } finally {
       this.isReconnecting = false;
     }

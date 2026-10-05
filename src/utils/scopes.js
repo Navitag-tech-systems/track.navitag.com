@@ -12,10 +12,9 @@
 // 2. GRANT UI — what scopes can a device owner offer to a grantee via the
 //    share screen? GRANTABLE_SCOPES is the catalog the invite + per-grantee
 //    editor render from. position:live is the floor scope (always implied
-//    server-side) so it's not listed. notification:read is accepted by the
-//    backend but not yet end-to-end supported, so it's omitted from the UI
-//    catalog while remaining in SCOPE_LABELS so already-granted scopes
-//    render with a friendly label.
+//    server-side) so it's not listed. notification:read gives the grantee
+//    push notifications for the device under their own switches and rules
+//    (the backend seeds their default rules when it is granted).
 
 export const OWNER_SENTINEL = 'owner:all';
 
@@ -31,6 +30,7 @@ export function hasScope(device, scope) {
 
 export const GRANTABLE_SCOPES = [
   { key: 'history:read', label: 'History',                 icon: 'fa-clock-rotate-left' },
+  { key: 'notification:read', label: 'Notifications',       icon: 'fa-bell' },
   { key: 'share:public', label: 'Mint public share links', icon: 'fa-share-nodes' },
   { key: 'energy:read',  label: 'Energy data (read)',      icon: 'fa-gas-pump' },
   { key: 'energy:write', label: 'Energy data (write)',     icon: 'fa-pen' },

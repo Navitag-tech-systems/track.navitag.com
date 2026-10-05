@@ -2,6 +2,12 @@ import { CapacitorHttp, Capacitor, CapacitorCookies } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
 import ky from 'ky';
 
+// Deadlines for the reconnect path (serverConnect, fetchAll). Native only —
+// see `timeout` in send(). 30 s is the read deadline; the connect deadline is
+// capped lower because a dead route fails to connect, not to read.
+export const RECONNECT_TIMEOUT_MS = 30000;
+export const CONNECT_TIMEOUT_MS = 15000;
+
 // --- Traccar session id (JSESSIONID) cache ---
 // Native WebSocket auth needs the literal JSESSIONID value to pass as
 // ?session_id= (the tserver1 Caddy config turns that param back into a
@@ -127,7 +133,11 @@ export const request = {
       isTraccar = false,
       token = null,
       simple = false, // <--- NEW FLAG
-      raw = false // return the response body as-is (text), skip JSON parsing
+      raw = false, // return the response body as-is (text), skip JSON parsing
+      // Native read deadline in ms. CapacitorHttp has NO default timeout, so a
+      // request that hangs after a network change held the reconnect lock for
+      // as long as the OS let it. Web keeps ky's own 10 s default.
+      timeout = null,
     } = options;
 
     const isNative = Capacitor.isNativePlatform();
@@ -157,6 +167,10 @@ export const request = {
         data: data || {},
         withCredentials: true,
       };
+      if (timeout) {
+        httpOptions.connectTimeout = Math.min(timeout, CONNECT_TIMEOUT_MS);
+        httpOptions.readTimeout = timeout;
+      }
 
       try {
         const response = await CapacitorHttp.request(httpOptions);

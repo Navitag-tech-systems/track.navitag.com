@@ -6,6 +6,7 @@ import { useInstallStore } from '@/stores/install.js';
 import { useNotificationsStore } from '@/stores/notifications.js';
 import QrDisplayModal from '@/components/QrDisplayModal.vue';
 import InlineLoader from '@/components/InlineLoader.vue';
+import { humanizeEvent } from '@/utils/eventLabels';
 import { signOut } from '@/utils/auth';
 import { auth } from '@/firebase';
 import { baseUrl } from '@/utils/variables';
@@ -247,6 +248,37 @@ const toggleEmergency = async () => {
     emergencyError.value = err?.message || 'Failed to update setting.';
   } finally {
     emergencyBusy.value = false;
+  }
+};
+
+// Per-event-type bulk rows ("All on" / "All off"). Targets every device the
+// user can receive pushes for — owned plus shared with notification:read —
+// which is exactly what PUT /notification/permissions/rule/bulk writes to.
+// Rows come from GET /notification/events, so a new event type (e.g. a future
+// alarm:<subtype>) appears here with no frontend change.
+const bulkBusy = ref('');
+const bulkError = ref('');
+const notifyImeis = computed(() => notifStore.notifyImeis());
+const eventRows = computed(() => {
+  const imeis = notifyImeis.value;
+  return (notifStore.events || []).map((ev) => ({
+    ev,
+    label: humanizeEvent(ev),
+    on: imeis.filter((imei) => notifStore.hasRule(imei, ev)).length,
+    total: imeis.length,
+  }));
+});
+
+const bulkSet = async (ev, enabled) => {
+  if (bulkBusy.value || !notifStore.loaded) return;
+  bulkBusy.value = ev;
+  bulkError.value = '';
+  try {
+    await notifStore.bulkSet(ev, enabled);
+  } catch (err) {
+    bulkError.value = `Failed to turn ${enabled ? 'on' : 'off'} ${humanizeEvent(ev)}.`;
+  } finally {
+    bulkBusy.value = '';
   }
 };
 
@@ -551,6 +583,36 @@ const handleLogout = async () => {
         <p v-if="pushMessage" class="text-green-600 text-sm mt-3"><i class="fa-solid fa-check mr-1"></i>{{ pushMessage }}</p>
         <p v-if="pushDisabledMessage" class="text-red-500 text-sm mt-3"><i class="fa-solid fa-xmark mr-1"></i>{{ pushDisabledMessage }}</p>
         <p v-if="pushError" class="text-red-500 text-sm mt-3">{{ pushError }}</p>
+
+        <div v-if="notifStore.loaded && eventRows.length && notifyImeis.length" class="mt-5 pt-5 border-t border-gray-100">
+          <p class="text-sm font-medium text-gray-800">Notification types</p>
+          <p class="text-xs text-gray-500 mt-1 leading-snug">Turn a notification type on or off for all your devices, including devices shared with you. Each device keeps its own settings too.</p>
+
+          <div class="mt-3 divide-y divide-gray-100">
+            <div v-for="row in eventRows" :key="row.ev" class="flex items-center justify-between py-2.5">
+              <div class="flex-1 pr-3 min-w-0">
+                <p class="text-sm text-gray-800 truncate">{{ row.label }}</p>
+                <p class="text-xs text-gray-500">On for {{ row.on }} of {{ row.total }}</p>
+              </div>
+              <div class="flex items-center gap-2 shrink-0">
+                <InlineLoader v-if="bulkBusy === row.ev" class="text-gray-400" />
+                <button
+                  type="button"
+                  :disabled="!!bulkBusy || row.on === row.total"
+                  @click="bulkSet(row.ev, true)"
+                  class="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                >All on</button>
+                <button
+                  type="button"
+                  :disabled="!!bulkBusy || row.on === 0"
+                  @click="bulkSet(row.ev, false)"
+                  class="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                >All off</button>
+              </div>
+            </div>
+          </div>
+          <p v-if="bulkError" class="text-red-500 text-sm mt-3">{{ bulkError }}</p>
+        </div>
       </div>
 
       <div v-if="showInstallCard" class="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
