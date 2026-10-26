@@ -430,7 +430,11 @@ async function defaultProbe(url) {
     // Return the manifest BODY (or null) so waitForHls can judge freshness, not
     // just presence - medusa answers the manifest immediately, sometimes with a
     // stale or empty playlist, and hls.js fatals on those.
-    const text = await request.send({ url, isTraccar: true, raw: true });
+    // medusa answers `Access-Control-Allow-Origin: *`, which the browser rejects
+    // for a credentialed request - so live manifests go without cookies. Traccar
+    // playback (/api/stream) still needs the session cookie.
+    const medusa = url.startsWith(LIVE_HLS_BASE);
+    const text = await request.send({ url, isTraccar: !medusa, simple: medusa, raw: true });
     return typeof text === 'string' ? text : null;
   } catch (err) {
     // 404 = not up yet; anything else is also "not yet" until the deadline.

@@ -91,6 +91,17 @@ describe('live commands', () => {
 });
 
 describe('waitForHls', () => {
+  it('default probe: medusa live without cookies, Traccar playback with them', async () => {
+    const { request } = await import('@/utils/http');
+    request.send.mockReset();
+    request.send.mockResolvedValue('#EXTM3U\n#EXTINF:2.0,\ns0.ts\n');
+    const sleep = vi.fn().mockResolvedValue();
+    await waitForHls('https://mcp.navitag.com/live/991318145911/1/stream.m3u8', 10_000,
+      { requireFresh: false, sleep });
+    expect(request.send).toHaveBeenLastCalledWith(expect.objectContaining({ simple: true, isTraccar: false }));
+    await waitForHls(hlsUrl('tserver1.navitag.com', 248, 1), 10_000, { requireFresh: false, sleep });
+    expect(request.send).toHaveBeenLastCalledWith(expect.objectContaining({ simple: false, isTraccar: true }));
+  });
   it('resolves once the probe succeeds', async () => {
     const probe = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(false).mockResolvedValueOnce(true);
     const sleep = vi.fn().mockResolvedValue();
