@@ -4,6 +4,7 @@ import { useBootStore } from '@/stores/boot';
 import router from '@/router';
 import { iapLogIn, iapLogOut } from '@/utils/iap';
 import { clearMedusaSession } from '@/utils/medusa';
+import { routeAfterSession } from '@/utils/join';
 
 export function registerAuthListeners(session) {
   auth.addListener('authStateChange', async (data) => {
@@ -38,7 +39,7 @@ export function registerAuthListeners(session) {
 
       const sessionStarted = await session.startSession();
       if (sessionStarted === 'ok') {
-        router.replace('/');
+        router.replace(routeAfterSession());
       }
     } else {
       console.log('🛑 Auth State: Logged Out');

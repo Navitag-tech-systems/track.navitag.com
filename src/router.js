@@ -7,6 +7,8 @@ import geoEdit from '@/views/map/geofenceEdit.vue'
 
 import LoginView from '@/views/login/index.vue'
 import SignupView from '@/views/signup/index.vue'
+import JoinView from '@/views/join/index.vue'
+import InstallView from '@/views/install/index.vue'
 
 
 import LinkDeviceStart from '@/views/linkDevice/start.vue'
@@ -212,6 +214,17 @@ const router = createRouter({
       path: '/signup',
       name: 'signup',
       component: SignupView
+    },
+    // Public: business join link landing + home-screen install guide.
+    {
+      path: '/join/:code',
+      name: 'join',
+      component: JoinView
+    },
+    {
+      path: '/install',
+      name: 'install',
+      component: InstallView
     },
   ]
 })

@@ -5,6 +5,7 @@ import { useBrokerStore } from '@/stores/broker';
 import { useBootStore } from '@/stores/boot';
 import { request } from '@/utils/http';
 import { baseUrl } from '@/utils/variables';
+import { claimPendingJoin } from '@/utils/join';
 import router from '@/router';
 
 // Result codes shared by startSession / checkConnectionAndReconnect so the
@@ -62,6 +63,11 @@ export const session = {
         }
       }
       boot.done('account');
+
+      // A business join link opened before sign-in/sign-up. Claimed here —
+      // after /user/sync provisioned the account, before the device fetch —
+      // so the business's vehicles are in the first list. Never fails the session.
+      await claimPendingJoin(userStore.idToken);
 
       boot.begin('server');
       const connected = await userStore.serverConnect();

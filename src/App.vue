@@ -208,6 +208,8 @@ const currentToast = computed(() => {
   if (appGate.action === 'warn') return null;
   if (isInIframe()) return null;
   if (Capacitor.isNativePlatform()) return null;
+  // These pages carry their own install UI.
+  if (route.name === 'install' || route.name === 'join') return null;
   if (!userStore.isLoggedIn) return null;
 
   const isStandalone =

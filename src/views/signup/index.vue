@@ -5,6 +5,7 @@ import { supportedProviders, getErrorMessage, createUserWithEmailAndPassword } f
 import { useUserStore } from '@/stores/user.js';
 import { countries } from '@/utils/countryList';
 import InlineLoader from '@/components/InlineLoader.vue';
+import JoinBanner from '@/components/JoinBanner.vue';
 
 const userStore = useUserStore();
 const email = ref('');
@@ -89,6 +90,7 @@ const handleSignup = async () => {
 <template>
   <div class="flex flex-col items-center justify-center flex-1 p-4 bg-surface">
     <div class="w-full max-w-sm bg-white p-6 rounded-lg shadow-md">
+      <JoinBanner />
       <h1 class="text-2xl font-bold mb-4 text-center text-gray-800">Create Account</h1>
 
       <div v-show="userStore.countryCode !== null" class="flex items-center justify-center gap-1 mb-3">

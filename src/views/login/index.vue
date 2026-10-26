@@ -7,6 +7,7 @@ import { Browser } from '@capacitor/browser';
 
 import { supportedProviders, getErrorMessage, signInWithEmailAndPassword, sendEmailVerification } from '@/utils/auth';
 import InlineLoader from '@/components/InlineLoader.vue';
+import JoinBanner from '@/components/JoinBanner.vue';
 
 const forgotPasswordUrl = 'https://www.navitag.com/forgot-password';
 
@@ -69,6 +70,7 @@ const handleProviderLogin = async (providerHandler) => {
 <template>
   <div class="flex flex-col items-center justify-center flex-1 p-4 bg-surface">
     <div class="w-full max-w-sm bg-white p-6 rounded-lg shadow-md">
+      <JoinBanner />
       <h1 class="text-2xl font-bold mb-3 text-center text-gray-800">Welcome Back</h1>
 
       <!--div v-show="userStore.countryCode !== null" class="text-center text-gray-500 mb-3 font-semibold">Country Server: {{ userStore.countryCode }}</div-->

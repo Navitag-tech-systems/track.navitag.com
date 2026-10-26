@@ -636,6 +636,7 @@ const handleLogout = async () => {
             <li>Tap <strong>Add</strong> in the top-right corner.</li>
           </ol>
           <p class="mt-2 text-gray-500 italic">Only works in Safari on iOS — not Chrome or other browsers.</p>
+          <RouterLink to="/install" class="inline-block mt-2 text-brand font-semibold">Step-by-step guide <i class="fa-solid fa-arrow-right"></i></RouterLink>
         </div>
 
         <div v-if="showManualInstructions && installIsAndroid" class="mt-4 p-3 bg-gray-50 rounded-lg text-xs text-gray-700 leading-relaxed border border-gray-200">
