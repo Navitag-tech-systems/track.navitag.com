@@ -12,7 +12,7 @@ import InlineLoader from '@/components/InlineLoader.vue';
 import HlsVideo from './HlsVideo.vue';
 import {
   clipUrl, clipIsSynced, body9201, body9202, customCommand, sendCommand,
-  hlsUrl, waitForHls, clipDurationSec, formatDuration, formatMB,
+  hlsUrl, waitForHls, clipDurationSec, formatDuration, formatMB, deviceTimeZone,
 } from '@/utils/dashcam';
 
 const props = defineProps({
@@ -65,6 +65,7 @@ async function playRemote() {
       ch,
       start: props.clip.start,
       end: props.clip.end,
+      tz: deviceTimeZone(props.device),
     })));
     remoteActive = true;
   } catch (err) {

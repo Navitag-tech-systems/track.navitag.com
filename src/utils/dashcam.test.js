@@ -9,7 +9,8 @@ import {
   customCommand, videoStartCommand, videoStopCommand, hlsUrl,
   waitForHls, parseClipTime, parseMediaList, pickMediaList, findMediaList,
   groupByDay, clipUrl, formatMB, formatDuration, videoChannels, isDashcam,
-  readDashcamSettings,
+  readDashcamSettings, tzOffsetMinutes, deviceTimeZone, terminalSim, liveHlsUrl,
+  liveStartCommand, body9101, MEDIA_LIST_LOOKBACK_MS, estimateDataMB,
 } from './dashcam.js';
 
 const d = (y, mo, da, h = 0, mi = 0, s = 0) => new Date(y, mo - 1, da, h, mi, s);
@@ -193,7 +194,8 @@ describe('media list', () => {
     const fetcher = vi.fn().mockResolvedValue([]);
     const since = Date.parse('2026-08-22T00:00:00.000Z');
     await findMediaList('srv', 203, since, fetcher);
-    expect(fetcher).toHaveBeenCalledWith('srv', 203, '2026-08-22T00:00:00.000Z', expect.any(String));
+    // fixTime-filtered API: look back so a parked device's stale fixTime still matches.
+    expect(fetcher).toHaveBeenCalledWith('srv', 203, new Date(since - MEDIA_LIST_LOOKBACK_MS).toISOString(), expect.any(String));
   });
 
   it('groups by day, newest first', () => {
@@ -201,10 +203,14 @@ describe('media list', () => {
     expect(groups.map((g) => g.day)).toEqual(['2026-08-22', '2026-08-21']);
   });
 
-  it('derives the synced-clip url', () => {
-    const [clip] = parseMediaList(raw);
-    expect(clipUrl('001318110808', clip, 'https://h/dashcam'))
-      .toBe('https://h/dashcam/001318110808/1/20260822013325_20260822013349.mp4');
+  it('derives the synced-clip url from the device start digits', () => {
+    const [clip] = parseMediaList(raw, 'UTC');
+    expect(clipUrl('001318110808', clip, 'https://h/lookup'))
+      .toBe('https://h/lookup/001318110808/1/20260822013325.mp4');
+    // Same digits whatever zone the app reads the clip in.
+    const [local] = parseMediaList(raw, 'GMT+8');
+    expect(clipUrl('991318145911', local, 'https://h/lookup'))
+      .toBe('https://h/lookup/991318145911/1/20260822013325.mp4');
   });
 
   it('formats size and duration', () => {
@@ -232,5 +238,81 @@ describe('device metadata', () => {
     expect(readDashcamSettings({ attributes: { dashcam: { hubSsid: 'Hub', uploadPolicy: 'all' } } }))
       .toMatchObject({ hubSsid: 'Hub', uploadPolicy: 'all' });
     expect(readDashcamSettings({ attributes: { dashcam: '{"uploadPolicy":"none"}' } }).uploadPolicy).toBe('none');
+  });
+});
+
+describe('device clock zone', () => {
+  it('mirrors Traccar: decoder.timezone, else GMT+8', () => {
+    expect(deviceTimeZone({ attributes: { 'decoder.timezone': 'UTC' } })).toBe('UTC');
+    expect(deviceTimeZone({ attributes: {} })).toBe('GMT+8');
+    expect(deviceTimeZone(null)).toBe('GMT+8');
+  });
+
+  it('parses fixed offsets and IANA names', () => {
+    expect(tzOffsetMinutes('UTC')).toBe(0);
+    expect(tzOffsetMinutes('GMT+8')).toBe(480);
+    expect(tzOffsetMinutes('UTC-05:30')).toBe(-330);
+    expect(tzOffsetMinutes('Asia/Manila', new Date(Date.UTC(2026, 9, 22)))).toBe(480);
+    expect(tzOffsetMinutes('Not/AZone')).toBe(0);
+  });
+
+  it('writes BCD times on the device clock', () => {
+    const t = new Date(Date.UTC(2026, 9, 22, 10, 30, 0));
+    expect(bcd6(t, 'UTC')).toBe('261022103000');
+    expect(bcd6(t, 'GMT+8')).toBe('261022183000');
+    expect(body9205(1, t, t, 'UTC').slice(2, 14)).toBe('261022103000');
+    expect(body9201({ ch: 2, start: t, end: t, tz: 'UTC' }).slice(-24)).toBe('261022103000261022103000');
+  });
+
+  it('reads clip times on the device clock', () => {
+    expect(parseClipTime('2026-10-22 10:30:00', 'UTC').toISOString()).toBe('2026-10-22T10:30:00.000Z');
+    expect(parseClipTime('2026-10-22 18:30:00', 'GMT+8').toISOString()).toBe('2026-10-22T10:30:00.000Z');
+    const [c] = parseMediaList('[{"ch":3,"start":"2026-10-22 10:30:00","end":"2026-10-22 10:31:00"}]', 'UTC');
+    expect(c.start.toISOString()).toBe('2026-10-22T10:30:00.000Z');
+    expect(c.startRaw).toBe('2026-10-22 10:30:00');
+  });
+
+  it('pickMediaList passes the zone through', () => {
+    const positions = [{ id: 9, serverTime: '2026-10-22T11:31:50.000Z', attributes: { mediaList: '[{"ch":1,"start":"2026-10-22 10:30:00","end":"2026-10-22 10:31:00"}]' } }];
+    expect(pickMediaList(positions, null, 'UTC').clips[0].start.toISOString()).toBe('2026-10-22T10:30:00.000Z');
+  });
+});
+
+describe('multi-channel live', () => {
+  it('uses the uniqueId as the 12-digit JT/T 1078 SIM', () => {
+    expect(terminalSim({ uniqueId: '001318110808' })).toBe('001318110808');
+    expect(terminalSim({ uniqueId: '991318145911' })).toBe('991318145911');
+    expect(terminalSim({ uniqueId: '1318110808' })).toBe('001318110808');
+  });
+
+  it('gives every channel its own medusa playlist', () => {
+    const dev = { uniqueId: '991318145911' };
+    expect(liveHlsUrl(dev, 1)).toBe('https://mcp.navitag.com/live/991318145911/1/stream.m3u8');
+    expect(liveHlsUrl(dev, '4')).toBe('https://mcp.navitag.com/live/991318145911/4/stream.m3u8');
+  });
+
+  it('points 0x9101 at medusa:7801 for the requested channel', () => {
+    const body = body9101({ ch: 3 });
+    expect(body).toBe('0e' + utf8Hex('159.65.135.101') + '1e79' + '0000' + '03' + '00' + '01');
+    expect(liveStartCommand(3)).toEqual({ type: 'custom', attributes: { data: `9101:${body}` } });
+  });
+
+  it('scales the data estimate by stream count', () => {
+    expect(estimateDataMB(8 * 1024, 300, 3)).toBeCloseTo(3 * estimateDataMB(8 * 1024, 300, 1));
+  });
+});
+
+describe('channel layout', () => {
+  it('defaults by model: V5N 4 channels, V5-C (VISION-360) front/cabin', () => {
+    expect(videoChannels({ model: 'V5N' }).map((c) => c.index)).toEqual([1, 2, 3, 4]);
+    expect(videoChannels({ model: 'VISION-360' })).toEqual([{ index: 1, name: 'Front' }, { index: 2, name: 'Cabin' }]);
+    expect(videoChannels({ model: 'V5-C' })).toHaveLength(2);
+  });
+
+  it('attribute wins, capped at 4, de-duplicated and ordered', () => {
+    const attr = [{ index: 3, name: 'C' }, { index: 1, name: 'A' }, { index: 5, name: 'X' }, { index: 1, name: 'dup' }, { index: 2, name: 'B' }];
+    expect(videoChannels({ model: 'V5N', attributes: { videoChannels: attr } }))
+      .toEqual([{ index: 1, name: 'A' }, { index: 2, name: 'B' }, { index: 3, name: 'C' }]);
+    expect(videoChannels({ model: 'V5N', attributes: { videoChannels: '[]' } })).toHaveLength(4);
   });
 });

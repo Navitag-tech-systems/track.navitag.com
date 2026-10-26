@@ -1,4 +1,4 @@
-// Dashcam (Yuwei V5-C / "navicam") helpers.
+// Dashcam (Yuwei V5-C "VISION-360" and V5N, up to 4 channels) helpers.
 //
 // Everything that talks to a device goes through the stock Traccar API on the
 // user's own server (`server_url` + the JSESSIONID the app already holds):
@@ -15,19 +15,42 @@
 // The builders are pure so they can be unit-tested without a device.
 import { request } from '@/utils/http';
 
-// Where the hub-sync job uploads clips. A HEAD on the derived URL tells the
-// player whether a clip has been synced yet (404 = not yet).
-export const DASHCAM_MEDIA_BASE = 'https://broker.navitag.com/dashcam';
+// Hub-sync store (medusa dashcam-sync behind mcp.navitag.com/sync). Its
+// /lookup route resolves <uniqueId>/<ch>/<device start digits> to the synced
+// copy of a clip; a HEAD tells the player whether it exists (404 = not yet).
+export const DASHCAM_MEDIA_BASE = 'https://mcp.navitag.com/sync/lookup';
 
-// Sub-stream bitrate hint shown in the UI. Live streams are forced to the
-// sub-stream (streamType 1) — the modem is LTE Cat-1 and the 1080p main
-// stream does not fit.
+// Sub-stream bitrate hint shown in the UI, per channel. Live streams are
+// forced to the sub-stream (streamType 1) — the modem is LTE Cat-1 and the
+// 1080p main stream does not fit.
 export const SUB_STREAM_KBPS = 300;
+
+// JT/T 1078 logical channels this app drives. Both supported units expose at
+// most 4 camera inputs (V5N: maxch 4).
+export const MAX_CHANNELS = 4;
 
 export const DEFAULT_CHANNELS = [
   { index: 1, name: 'Front' },
   { index: 2, name: 'Cabin' },
 ];
+
+// Channel layout by Traccar device model, used when the device carries no
+// `videoChannels` attribute. VISION-360 is the V5-C.
+const MODEL_CHANNELS = [
+  { match: /v5n/i, channels: [
+    { index: 1, name: 'Front' },
+    { index: 2, name: 'Cabin' },
+    { index: 3, name: 'Camera 3' },
+    { index: 4, name: 'Camera 4' },
+  ] },
+  { match: /v5-?c|vision-?360/i, channels: DEFAULT_CHANNELS },
+];
+
+// Clock zone the dashcam's BCD timestamps are written in. Traccar's jt808
+// decoder reads the same per-device `decoder.timezone` attribute and falls back
+// to GMT+8 (the JT/T 808 convention), so this mirrors it exactly. Yuwei units
+// keep UTC: set `decoder.timezone` = "UTC" on the device when provisioning.
+export const DEFAULT_DEVICE_TZ = 'GMT+8';
 
 // Traccar jt1078 media receiver the device is told to push playback to (9201).
 export const JT1078_HOST = 'tserver1.navitag.com';
@@ -38,10 +61,12 @@ export const JT1078_PORT = 5263;
 // ("CHUNK_DEMUXER_ERROR_APPEND_FAILED: Parsed buffers not in DTS sequence"), so
 // live never played in-browser. The device is told (0x9101) to push JT1078 to
 // this receiver; ffmpeg regenerates clean, continuous timestamps and serves HLS.
+// The receiver keys every stream on the SIM number + channel in the JT/T 1078
+// frame header, so any number of devices and channels can stream at once.
 // (Recorded playback via 0x9201 stays on Traccar — it's already continuous.)
 export const LIVE_MEDIA_IP = '159.65.135.101';        // medusa public IP (device dials over cellular)
 export const LIVE_MEDIA_PORT = 7801;
-export const LIVE_HLS_URL = 'https://mcp.navitag.com/live/stream.m3u8';
+export const LIVE_HLS_BASE = 'https://mcp.navitag.com/live';
 
 // 0x9101 live AV request: ipLen(1)+ip+tcpPort(2)+udpPort(2)+ch(1)+dataType(1)+streamType(1)
 export function body9101({ ip = LIVE_MEDIA_IP, tcpPort = LIVE_MEDIA_PORT, udpPort = 0, ch, dataType = 0, streamType = 1 }) {
@@ -70,20 +95,77 @@ export function isDashcam(device) {
   return device.protocol === 'jt808' || device.attributes?.videoChannels != null;
 }
 
+function modelChannels(device) {
+  const model = String(device?.model ?? '');
+  return MODEL_CHANNELS.find((m) => m.match.test(model))?.channels ?? DEFAULT_CHANNELS;
+}
+
 // `attributes.videoChannels` is stored as a JSON string on the Traccar device
-// (attributes are flat scalars); tolerate an already-parsed array too.
+// (attributes are flat scalars); tolerate an already-parsed array too. Without
+// it the layout comes from the device model. At most MAX_CHANNELS, ordered.
 export function videoChannels(device) {
+  const fallback = modelChannels(device);
   const raw = device?.attributes?.videoChannels;
-  if (raw == null) return DEFAULT_CHANNELS;
+  if (raw == null) return fallback;
   let list = raw;
   if (typeof raw === 'string') {
-    try { list = JSON.parse(raw); } catch { return DEFAULT_CHANNELS; }
+    try { list = JSON.parse(raw); } catch { return fallback; }
   }
-  if (!Array.isArray(list)) return DEFAULT_CHANNELS;
+  if (!Array.isArray(list)) return fallback;
+  const seen = new Set();
   const cleaned = list
-    .map((c) => ({ index: Number(c?.index), name: String(c?.name ?? `Channel ${c?.index}`) }))
-    .filter((c) => Number.isInteger(c.index) && c.index > 0);
-  return cleaned.length ? cleaned : DEFAULT_CHANNELS;
+    .map((c) => ({ index: Number(c?.index), name: String(c?.name ?? `Camera ${c?.index}`) }))
+    .filter((c) => Number.isInteger(c.index) && c.index > 0 && c.index <= MAX_CHANNELS && !seen.has(c.index) && seen.add(c.index))
+    .sort((a, b) => a.index - b.index);
+  return cleaned.length ? cleaned : fallback;
+}
+
+// The JT/T 1078 SIM field is BCD[6]: the terminal phone number, which is the
+// Traccar uniqueId (V5-C 001318110808, V5N 991318145911), zero-padded to 12.
+export function terminalSim(device) {
+  const digits = String(device?.uniqueId ?? '').replace(/\D/g, '');
+  return digits.padStart(12, '0').slice(-12);
+}
+
+export function liveHlsUrl(device, ch) {
+  return `${LIVE_HLS_BASE}/${terminalSim(device)}/${Number(ch)}/stream.m3u8`;
+}
+
+// --- device clock ----------------------------------------------------------
+
+export function deviceTimeZone(device) {
+  const tz = device?.attributes?.['decoder.timezone'];
+  return typeof tz === 'string' && tz.trim() ? tz.trim() : DEFAULT_DEVICE_TZ;
+}
+
+// Minutes the zone is ahead of UTC at `date`. Accepts what Java's
+// TimeZone.getTimeZone accepts in practice: "UTC", "GMT", "GMT+8",
+// "UTC-05:30", or an IANA name. Unknown names fall back to UTC, as Java does.
+export function tzOffsetMinutes(tz, date = new Date()) {
+  const s = String(tz ?? '').trim();
+  if (!s || /^(utc|gmt|z)$/i.test(s)) return 0;
+  const m = /^(?:utc|gmt)\s*([+-])(\d{1,2})(?::?(\d{2}))?$/i.exec(s);
+  if (m) return (m[1] === '-' ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3] || 0));
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: s, hourCycle: 'h23',
+      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+    }).formatToParts(date);
+    const v = Object.fromEntries(parts.map((p) => [p.type, Number(p.value)]));
+    const asUtc = Date.UTC(v.year, v.month - 1, v.day, v.hour, v.minute, v.second);
+    return Math.round((asUtc - Math.floor(date.getTime() / 1000) * 1000) / 60000);
+  } catch {
+    return 0;
+  }
+}
+
+// Wall-clock fields of `date` in zone `tz` (null = the app's local zone).
+function wallClock(date, tz) {
+  if (tz == null) {
+    return [date.getFullYear(), date.getMonth() + 1, date.getDate(), date.getHours(), date.getMinutes(), date.getSeconds()];
+  }
+  const w = new Date(date.getTime() + tzOffsetMinutes(tz, date) * 60000);
+  return [w.getUTCFullYear(), w.getUTCMonth() + 1, w.getUTCDate(), w.getUTCHours(), w.getUTCMinutes(), w.getUTCSeconds()];
 }
 
 // --- hex / BCD helpers ---------------------------------------------------
@@ -105,21 +187,14 @@ export function utf8Hex(text) {
   return out;
 }
 
-// JT/T 808 BCD[6] timestamp: "YYMMDDhhmmss", device-local wall clock. The
-// dashcam keeps local time, so a JS Date's LOCAL fields are the right source
-// (the app and the device are in the same zone in practice).
-export function bcd6(date) {
+// JT/T 808 BCD[6] timestamp: "YYMMDDhhmmss" on the DEVICE's wall clock. `tz`
+// is the device clock zone (deviceTimeZone); null keeps the app's local zone.
+export function bcd6(date, tz = null) {
   if (date == null) return '000000000000';
   const d = date instanceof Date ? date : new Date(date);
   if (Number.isNaN(d.getTime())) return '000000000000';
-  return (
-    p2(d.getFullYear() % 100) +
-    p2(d.getMonth() + 1) +
-    p2(d.getDate()) +
-    p2(d.getHours()) +
-    p2(d.getMinutes()) +
-    p2(d.getSeconds())
-  );
+  const [y, mo, da, h, mi, s] = wallClock(d, tz);
+  return p2(y % 100) + p2(mo) + p2(da) + p2(h) + p2(mi) + p2(s);
 }
 
 // --- JT/T 1078 message bodies ---------------------------------------------
@@ -129,8 +204,8 @@ export function bcd6(date) {
 //   mediaType(1: 0 any) + streamType(1: 0 any) + storageType(1: 0 any)
 // 24 bytes (48 hex), spec-strict — this exact shape was verified against the
 // real V5-C on 2026-08-22.
-export function body9205(ch, start, end) {
-  return hex1(ch) + bcd6(start) + bcd6(end) + '00'.repeat(8) + '00' + '00' + '00';
+export function body9205(ch, start, end, tz = null) {
+  return hex1(ch) + bcd6(start, tz) + bcd6(end, tz) + '00'.repeat(8) + '00' + '00' + '00';
 }
 
 // 0x9201 remote playback request:
@@ -148,6 +223,7 @@ export function body9201({
   speed = 0,
   start,
   end,
+  tz = null,
 }) {
   const ipHex = utf8Hex(ip);
   return (
@@ -155,15 +231,15 @@ export function body9201({
     hex2(tcpPort) + hex2(udpPort) +
     hex1(ch) + hex1(mediaType) + hex1(streamType) + hex1(storageType) +
     hex1(playbackMode) + hex1(speed) +
-    bcd6(start) + bcd6(end)
+    bcd6(start, tz) + bcd6(end, tz)
   );
 }
 
 // 0x9202 playback control: ch(1) + ctrl(1: 0 play, 1 pause, 2 stop, 3 fast
 // fwd, 4 key-frame rewind, 5 drag) + fastSpeed(1) + start BCD6 (zeros unless
 // dragging).
-export function body9202(ch, ctrl = 2, fastSpeed = 0, start = null) {
-  return hex1(ch) + hex1(ctrl) + hex1(fastSpeed) + (start ? bcd6(start) : '000000000000');
+export function body9202(ch, ctrl = 2, fastSpeed = 0, start = null, tz = null) {
+  return hex1(ch) + hex1(ctrl) + hex1(fastSpeed) + (start ? bcd6(start, tz) : '000000000000');
 }
 
 // 0x8300 text message: flag(1) + text. Flag 0x01 = "emergency" bit, which is
@@ -365,15 +441,19 @@ async function defaultProbe(url) {
 
 // --- clip list -------------------------------------------------------------
 
-// "2026-08-22 01:33:25" (device-local) -> Date in the app's local zone.
-export function parseClipTime(str) {
+// "2026-08-22 01:33:25" on the device clock -> the instant it names. `tz` is
+// the device clock zone; null reads it in the app's local zone.
+export function parseClipTime(str, tz = null) {
   if (str instanceof Date) return str;
   const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/.exec(String(str ?? '').trim());
   if (!m) return null;
-  return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+  if (tz == null) return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+  const asUtc = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+  // Offset at (approximately) that instant; exact for fixed-offset zones.
+  return new Date(asUtc - tzOffsetMinutes(tz, new Date(asUtc)) * 60000);
 }
 
-export function parseMediaList(raw) {
+export function parseMediaList(raw, tz = null) {
   if (raw == null) return [];
   let list = raw;
   if (typeof raw === 'string') {
@@ -382,8 +462,8 @@ export function parseMediaList(raw) {
   if (!Array.isArray(list)) return [];
   return list
     .map((c, i) => {
-      const start = parseClipTime(c.start);
-      const end = parseClipTime(c.end);
+      const start = parseClipTime(c.start, tz);
+      const end = parseClipTime(c.end, tz);
       if (!start || !end) return null;
       return {
         id: `${c.ch}-${c.start}-${c.end}`,
@@ -403,8 +483,8 @@ export function parseMediaList(raw) {
     .filter(Boolean);
 }
 
-// Pick the newest mediaList position at or after `sinceMs` (null = any).
-export function pickMediaList(positions, sinceMs = null) {
+// Pick the newest mediaList position RECEIVED at or after `sinceMs` (null = any).
+export function pickMediaList(positions, sinceMs = null, tz = null) {
   if (!Array.isArray(positions)) return null;
   let best = null;
   for (const pos of positions) {
@@ -418,20 +498,26 @@ export function pickMediaList(positions, sinceMs = null) {
   return {
     serial: best.pos.attributes.mediaSerial ?? null,
     count: Number(best.pos.attributes.mediaCount ?? 0),
-    clips: parseMediaList(best.pos.attributes.mediaList),
+    clips: parseMediaList(best.pos.attributes.mediaList, tz),
     receivedMs: best.t,
     positionId: best.pos.id,
   };
 }
 
-// Fetch positions since `since` (Date|ms) and return the newest mediaList, or
-// null. `fetcher` is injectable for tests.
-export async function findMediaList(server, deviceId, since, fetcher = defaultPositionsFetcher) {
+// /api/positions filters on fixTime, and Traccar stamps the 0x1205 answer with
+// the device's LAST fix time — minutes old when parked (ACC-off reports every
+// 300 s), or skewed if the clock zone is misconfigured. Query a generous window
+// back and judge freshness by serverTime in pickMediaList instead.
+export const MEDIA_LIST_LOOKBACK_MS = 30 * 60_000;
+
+// Fetch positions around `since` (Date|ms) and return the newest mediaList
+// received since then, or null. `fetcher` is injectable for tests.
+export async function findMediaList(server, deviceId, since, fetcher = defaultPositionsFetcher, tz = null) {
   const sinceMs = since instanceof Date ? since.getTime() : Number(since);
-  const from = new Date(sinceMs).toISOString();
+  const from = new Date(sinceMs - MEDIA_LIST_LOOKBACK_MS).toISOString();
   const to = new Date(Date.now() + 60_000).toISOString();
   const positions = await fetcher(server, deviceId, from, to);
-  return pickMediaList(positions, sinceMs);
+  return pickMediaList(positions, sinceMs, tz);
 }
 
 function defaultPositionsFetcher(server, deviceId, from, to) {
@@ -491,9 +577,13 @@ export function compactTime(date) {
   );
 }
 
-// https://<media-host>/dashcam/<uniqueId>/<ch>/<start>_<end>.mp4
+// <base>/<uniqueId>/<ch>/<YYYYMMDDhhmmss>.mp4 — the start is the device's own
+// wall-clock digits (the 0x1205 string), which is exactly what the device puts
+// in the name of the file it uploads, whatever zone its clock is in.
 export function clipUrl(uniqueId, clip, base = DASHCAM_MEDIA_BASE) {
-  return `${base}/${uniqueId}/${clip.ch}/${compactTime(clip.start)}_${compactTime(clip.end)}.mp4`;
+  const raw = String(clip.startRaw ?? '').replace(/\D/g, '');
+  const start = raw.length === 14 ? raw : compactTime(clip.start);
+  return `${base}/${uniqueId}/${clip.ch}/${start}.mp4`;
 }
 
 // HEAD the synced-clip URL. true = synced, false = 404 / unreachable.
@@ -506,7 +596,7 @@ export async function clipIsSynced(url, fetchImpl = globalThis.fetch) {
   }
 }
 
-// Rough data-usage estimate for the sub-stream at a given elapsed time.
-export function estimateDataMB(elapsedSec, kbps = SUB_STREAM_KBPS) {
-  return (elapsedSec * kbps) / 8 / 1024;
+// Rough data-usage estimate for `streams` sub-streams at a given elapsed time.
+export function estimateDataMB(elapsedSec, kbps = SUB_STREAM_KBPS, streams = 1) {
+  return (elapsedSec * kbps * streams) / 8 / 1024;
 }

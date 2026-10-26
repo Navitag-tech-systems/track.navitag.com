@@ -366,12 +366,17 @@ The old `/linkdevice/enable/:imei` screen (`enable.vue`) was **removed** — it 
 - Date picker enforces plan-based min date (Basic: 31 days, Pro: 90 days)
 - Dynamically updates based on selected device's `plan_level`
 
-### Dashcam video (`src/views/dashcam/index.vue`, branch `feat/dashcam-video`)
+### Dashcam video (`src/views/dashcam/index.vue`, branch `feat/dashcam-multi`, 2026-10-22)
+
+- **Not on main.** Supports the Yuwei V5-C (`VISION-360`, 2 ch, device 203) and V5N (3–4 ch, device 248). Channels come from `attributes.videoChannels`, else from the model (`V5N` → 4, `VISION-360`/`V5-C` → 2), capped at 4.
+- **Device clock:** BCD times in `9205`/`9201`/`9202` and the `0x1205` list are on the device clock, read from the same per-device `decoder.timezone` attribute Traccar's jt808 decoder uses (default `GMT+8`). Yuwei units keep **UTC** — set `decoder.timezone=UTC` on the Traccar device at provisioning (both 203 and 248 have it). The decoder caches it per connection, so it applies on the next reconnect.
+- **Live:** custom `9101` per channel → medusa `jt1078-hls` (`scripts/medusa/jt1078-hls/hls.py`), which keys each stream on the SIM + channel in the JT/T 1078 header → `https://mcp.navitag.com/live/<12-digit uniqueId>/<ch>/stream.m3u8`. `LiveStream.vue` plays one camera or **All** in a grid; each tile starts/fails/stops on its own. Verified 2026-10-22 with 3 concurrent V5N channels.
+- **Clip list caveat:** a `0x1205` longer than one packet (~33 clips, e.g. all channels or a busy day) is sub-packaged and the deployed Traccar decoder mis-reads it. Fix is `scripts/yuwei-dashcam/traccar-optb/patch_multipacket.py` — **not yet built/deployed**.
 
 - Route `/dashcam/:deviceId` with Live | Clips | Settings tabs; entry is the **Video** button on `DeviceCard.vue`, shown only for dashcam-capable devices (`protocol === 'jt808'` or `attributes.videoChannels`).
 - Everything goes through the user's own Traccar session: `POST /api/commands/send` (`videoStart`/`videoStop` on the sub-stream, plus `custom` JT/T 1078 bodies `9205` clip list, `9201`/`9202` remote playback, `8300` hub-WiFi text) and HLS from `/api/stream/{id}/{ch}/live.m3u8`. Builders are pure in `src/utils/dashcam.js` with a Vitest spec.
 - The `9205` answer arrives as a Traccar position carrying `attributes.mediaList`; `stores/devices.js` copies it to `device.mediaList` from the socket, and `ClipBrowser` also polls `/api/positions` as a fallback.
-- Clip playback: synced mp4 from `DASHCAM_MEDIA_BASE` (`https://broker.navitag.com/dashcam/<uniqueId>/<ch>/<start>_<end>.mp4`, HEAD-checked) else remote playback from the device over the same HLS URL.
+- Clip playback: synced mp4 from `DASHCAM_MEDIA_BASE` (`https://mcp.navitag.com/sync/lookup/<uniqueId>/<ch>/<device start YYYYMMDDhhmmss>.mp4`, served by medusa `dashcam-sync`, HEAD-checked) else remote playback from the device (`9201` → Traccar jt1078 :5263 → `/api/stream/{id}/{ch}/live.m3u8`). Verified on all 3 V5N channels 2026-10-22.
 - `hls.js` is lazy-imported (own `hls` chunk) for Android/Chrome; Safari/iOS play `.m3u8` natively.
 - Settings persist to `attributes.dashcam` via `PUT /api/devices/{id}`; the WiFi password is never stored — it goes to the device only via `applyHubWifi()` (0x8300 transport **unverified on the device**, single seam for an SMS swap).
 

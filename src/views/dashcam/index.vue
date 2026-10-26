@@ -1,8 +1,8 @@
 <script setup>
-// /dashcam/:deviceId — Live | Clips | Settings for one dashcam. Tabs are
-// v-if'd so leaving Live unmounts LiveStream, which sends videoStop; the
-// device can only serve one stream at a time and clip playback reuses the
-// same HLS endpoint.
+// /dashcam/:deviceId — Live | Clips | Settings for one dashcam (V5-C or V5N,
+// up to 4 cameras). Tabs are v-if'd so leaving Live unmounts LiveStream, which
+// sends videoStop for every camera it started; clip playback goes through
+// Traccar's per-channel HLS endpoint instead.
 import { ref, computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useDevicesStore } from '@/stores/devices.js';

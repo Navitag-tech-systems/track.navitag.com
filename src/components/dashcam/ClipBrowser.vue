@@ -16,6 +16,7 @@ import ClipPlayer from './ClipPlayer.vue';
 import {
   videoChannels, body9205, customCommand, sendCommand, findMediaList,
   parseMediaList, groupByDay, clipDurationSec, formatDuration, formatMB,
+  deviceTimeZone,
 } from '@/utils/dashcam';
 
 const props = defineProps({
@@ -33,6 +34,8 @@ const today = toLocalDateString();
 const dateFrom = ref(toLocalDateString(new Date(Date.now() - 2 * 86400_000)));
 const dateTo = ref(today);
 const channels = computed(() => videoChannels(props.device));
+// Clock zone of the device's BCD times, for the 9205 window and the clip list.
+const tz = computed(() => deviceTimeZone(props.device));
 // 0 = all channels (JT/T 1078 uses channel 0 for "all").
 const channelFilter = ref(0);
 
@@ -90,7 +93,7 @@ function stopWaiting() {
 async function pollOnce() {
   if (!server.value) return;
   try {
-    const r = await findMediaList(server.value, props.device.id, requestedAt - 5000);
+    const r = await findMediaList(server.value, props.device.id, requestedAt - 5000, undefined, tz.value);
     if (r && state.value === 'waiting') accept(r, 'poll');
     else if (Date.now() > deadline) {
       stopWaiting();
@@ -116,7 +119,7 @@ async function refresh() {
   const { start, end } = windowDates();
   requestedAt = Date.now();
   try {
-    await sendCommand(server.value, props.device.id, customCommand('9205', body9205(channelFilter.value, start, end)));
+    await sendCommand(server.value, props.device.id, customCommand('9205', body9205(channelFilter.value, start, end, tz.value)));
   } catch (err) {
     state.value = 'error';
     errorMsg.value = err?.status === 403
@@ -135,7 +138,7 @@ watch(() => props.device.mediaList, (m) => {
   if (!m || state.value !== 'waiting') return;
   if ((m.receivedMs || 0) < requestedAt - 5000) return;
   accept({
-    clips: parseMediaList(m.raw),
+    clips: parseMediaList(m.raw, tz.value),
     count: Number(m.count ?? 0),
     receivedMs: m.receivedMs,
   }, 'socket');
@@ -146,7 +149,7 @@ watch(() => props.device.mediaList, (m) => {
 onMounted(async () => {
   if (!server.value) return;
   try {
-    const r = await findMediaList(server.value, props.device.id, Date.now() - 7 * 86400_000);
+    const r = await findMediaList(server.value, props.device.id, Date.now() - 7 * 86400_000, undefined, tz.value);
     if (r && state.value === 'idle') {
       clips.value = r.clips;
       listedAt.value = new Date(r.receivedMs);
