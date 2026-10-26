@@ -12,7 +12,7 @@ import InlineLoader from '@/components/InlineLoader.vue';
 import HlsVideo from './HlsVideo.vue';
 import {
   clipUrl, clipIsSynced, body9201, body9202, customCommand, sendCommand,
-  hlsUrl, waitForHls, clipDurationSec, formatDuration, formatMB, deviceTimeZone,
+  hlsUrl, waitForHls, clipDurationSec, formatDuration, formatMB, deviceTimeZone, PLAYBACK_MIN_SEGMENTS,
 } from '@/utils/dashcam';
 
 const props = defineProps({
@@ -78,7 +78,7 @@ async function playRemote() {
 
   const url = hlsUrl(server.value, props.device.id, ch);
   try {
-    await waitForHls(url, 45_000, { signal: abort.signal });
+    await waitForHls(url, 45_000, { signal: abort.signal, minSegments: PLAYBACK_MIN_SEGMENTS });
   } catch (err) {
     if (err?.message === 'aborted') return;
     state.value = 'error';

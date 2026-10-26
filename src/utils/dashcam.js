@@ -55,6 +55,11 @@ export const DEFAULT_DEVICE_TZ = 'GMT+8';
 // Traccar jt1078 media receiver the device is told to push playback to (9201).
 export const JT1078_HOST = 'tserver1.navitag.com';
 export const JT1078_PORT = 5263;
+// Traccar's /api/stream playlist is a sliding window of at most 5 segments
+// (3 s each), so waitForHls's default minSegments (6, sized for the medusa live
+// burst) can never be met and every playback timed out at 45 s. Measured
+// 2026-10-26: 2 segments at 2.5 s, 4 at 4.7 s, then a steady 5.
+export const PLAYBACK_MIN_SEGMENTS = 3;
 
 // LIVE goes through the medusa ffmpeg re-mux, NOT Traccar's native HLS: Traccar's
 // live segments have a cross-segment DTS discontinuity that MSE rejects

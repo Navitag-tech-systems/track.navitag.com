@@ -7,7 +7,7 @@ import {
   bcd6, hex1, hex2, utf8Hex,
   body9205, body9201, body9202, body8300, hubWifiText, validateHubWifi,
   customCommand, videoStartCommand, videoStopCommand, hlsUrl,
-  waitForHls, parseClipTime, parseMediaList, pickMediaList, findMediaList,
+  waitForHls, parseClipTime, parseMediaList, pickMediaList, findMediaList, PLAYBACK_MIN_SEGMENTS,
   groupByDay, clipUrl, formatMB, formatDuration, videoChannels, isDashcam,
   readDashcamSettings, tzOffsetMinutes, deviceTimeZone, terminalSim, liveHlsUrl,
   liveStartCommand, body9101, MEDIA_LIST_LOOKBACK_MS, estimateDataMB,
@@ -169,6 +169,18 @@ describe('waitForHls', () => {
     const sleep = vi.fn().mockResolvedValue();
     await expect(waitForHls('u', 20_000, { intervalMs: 1000, probe, sleep, minSegments: 4 })).resolves.toBe(true);
     expect(probe).toHaveBeenCalledTimes(5);
+  });
+  it('playback: Traccar\'s 5-segment sliding window passes PLAYBACK_MIN_SEGMENTS (and never the default)', async () => {
+    // The shape measured on /api/stream/249/1 on 2026-10-26: empty, 2, 4, then a steady 5.
+    const seg = (n, seq) => `#EXTM3U #EXT-X-MEDIA-SEQUENCE:${seq} ` + Array.from({length:n},(_,i)=>'#EXTINF:3.0, s'+(seq+i)+'.ts').join(' ');
+    const shapes = () => [seg(0, 0), seg(2, 0), seg(4, 0), seg(5, 2), seg(5, 4), seg(5, 6)];
+    const sleep = vi.fn().mockResolvedValue();
+    let p = vi.fn(); shapes().forEach((s) => p.mockResolvedValueOnce(s));
+    await expect(waitForHls('u', 20_000, { intervalMs: 1000, probe: p, sleep, minSegments: PLAYBACK_MIN_SEGMENTS })).resolves.toBe(true);
+    expect(p).toHaveBeenCalledTimes(3);
+    p = vi.fn().mockResolvedValue(seg(5, 9)); shapes().forEach((s) => p.mockResolvedValueOnce(s));
+    // Default minSegments (6) never passes; a 50 ms deadline keeps the real clock short.
+    await expect(waitForHls('u', 50, { intervalMs: 1000, probe: p, sleep })).rejects.toThrow();
   });
 });
 
