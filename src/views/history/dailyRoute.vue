@@ -91,7 +91,9 @@ const fetchHistory = async () => {
       method: 'POST',
       data: {
         date: currentDate.value,
-        imei: Number(imei),
+        // String, not Number: IMEIs with leading zeros (e.g. 001318110808)
+        // lose them as a number and the backend's exact match 404s.
+        imei: String(imei),
         ...(tz ? { timezone: tz } : {}),
       },
       token: userStore.idToken
