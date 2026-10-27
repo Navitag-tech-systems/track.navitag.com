@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useDevicesStore } from '@/stores/devices.js';
 import { useUserStore } from '@/stores/user.js';
@@ -82,8 +82,16 @@ function toLocalInputValue(d) {
   const p = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
-const eventAtMin = toLocalInputValue(new Date(Date.now() - 30 * 86400000));
-const eventAtMax = toLocalInputValue(new Date());
+// Refreshed when the picker is used, not fixed at load: a form left open
+// would otherwise refuse the current minute and accept a 31st day back.
+const eventAtMin = ref('');
+const eventAtMax = ref('');
+function refreshEventBounds() {
+  eventAtMin.value = toLocalInputValue(new Date(Date.now() - 30 * 86400000));
+  eventAtMax.value = toLocalInputValue(new Date());
+}
+refreshEventBounds();
+watch(useCurrentTime, (on) => { if (!on) refreshEventBounds(); });
 
 const canSubmit = computed(() =>
   !submitting.value &&
@@ -318,6 +326,7 @@ onMounted(() => {
               type="datetime-local"
               :min="eventAtMin"
               :max="eventAtMax"
+              @focus="refreshEventBounds"
               :disabled="submitting"
               class="w-full px-4 py-3 bg-surface border border-gray-200 rounded-xl text-sm font-medium text-gray-700 focus:bg-white focus:border-brand focus:ring-2 focus:ring-brand-light transition-all outline-none disabled:opacity-60"
             />
