@@ -82,6 +82,21 @@ const odoNum = computed(() => {
 });
 const isOdoValid = computed(() => odometerKm.value === '' || (odoNum.value !== null && odoNum.value >= 0 && odoNum.value <= 9999999));
 
+// With "Use current time" off, an empty date used to submit with no event_at,
+// so the server stamped the current time and the user believed they had
+// back-dated the entry. The date is required once the toggle is off.
+const hasEventAt = computed(() => useCurrentTime.value || eventAtLocal.value !== '');
+
+// datetime-local works in wall-clock strings with no zone. The bounds mirror
+// the server's accepted window (30 days back; a future charge is never meant,
+// so max = now even though the server tolerates +1 h of clock skew).
+function toLocalInputValue(d) {
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+const eventAtMin = toLocalInputValue(new Date(Date.now() - 30 * 86400000));
+const eventAtMax = toLocalInputValue(new Date());
+
 const canSubmit = computed(() =>
   !submitting.value &&
   !!deviceImei.value &&
@@ -91,7 +106,8 @@ const canSubmit = computed(() =>
   isEndValid.value &&
   isOrderValid.value &&
   isAmountValid.value &&
-  isOdoValid.value
+  isOdoValid.value &&
+  hasEventAt.value
 );
 
 function buildEventAt() {
@@ -299,6 +315,7 @@ onMounted(() => {
               <input
                 v-model="stationName"
                 type="text"
+                maxlength="255"
                 placeholder="e.g. Tesla Supercharger"
                 :disabled="submitting"
                 class="w-full pl-11 pr-4 py-3 bg-surface border border-gray-200 rounded-xl text-sm font-medium text-gray-700 focus:bg-white focus:border-brand focus:ring-2 focus:ring-brand-light transition-all outline-none disabled:opacity-60"
@@ -313,6 +330,7 @@ onMounted(() => {
               <input
                 v-model="stationAddress"
                 type="text"
+                maxlength="500"
                 placeholder="e.g. SM Megamall"
                 :disabled="submitting"
                 class="w-full pl-11 pr-4 py-3 bg-surface border border-gray-200 rounded-xl text-sm font-medium text-gray-700 focus:bg-white focus:border-brand focus:ring-2 focus:ring-brand-light transition-all outline-none disabled:opacity-60"
@@ -338,9 +356,14 @@ onMounted(() => {
               v-if="!useCurrentTime"
               v-model="eventAtLocal"
               type="datetime-local"
+              :min="eventAtMin"
+              :max="eventAtMax"
               :disabled="submitting"
               class="w-full px-4 py-3 bg-surface border border-gray-200 rounded-xl text-sm font-medium text-gray-700 focus:bg-white focus:border-brand focus:ring-2 focus:ring-brand-light transition-all outline-none disabled:opacity-60"
             />
+            <p v-if="!useCurrentTime" class="text-xs text-gray-500 mt-1.5">
+              Required. Up to 30 days back.
+            </p>
           </div>
         </div>
 
