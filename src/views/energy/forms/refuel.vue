@@ -9,6 +9,7 @@ import { baseUrl } from '@/utils/variables';
 import { hasScope } from '@/utils/scopes';
 import SharedBadge from '@/components/SharedBadge.vue';
 import InlineLoader from '@/components/InlineLoader.vue';
+import ReceiptScanner from '@/components/energy/ReceiptScanner.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -146,6 +147,26 @@ async function submit() {
   }
 }
 
+// A scanned receipt pre-fills the form; nothing is saved until the user
+// submits. The tank level is never on a receipt, so it stays the user's.
+function applyScan(res) {
+  const f = (res && res.fields) || {};
+  if (res?.is_fuel_receipt === false) {
+    toast.show('That does not look like a fuel receipt.', { variant: 'error' });
+    return;
+  }
+  if (f.liters_refueled != null) litersRefueled.value = String(f.liters_refueled);
+  if (f.amount_paid != null) amountPaid.value = String(f.amount_paid);
+  if (f.odometer_km != null) odometerKm.value = String(f.odometer_km);
+  if (f.station_name) stationName.value = f.station_name;
+  if (f.station_address) stationAddress.value = f.station_address;
+  if (f.event_at_local) {
+    useCurrentTime.value = false;
+    eventAtLocal.value = f.event_at_local;
+  }
+  toast.show('Receipt read. Check the values and set the tank level.', { variant: 'success' });
+}
+
 onMounted(() => {
   if (!device.value) {
     errorMsg.value = 'Device not found.';
@@ -190,6 +211,8 @@ onMounted(() => {
       </div>
 
       <form v-if="!device || canWriteEnergy" @submit.prevent="submit" class="space-y-6">
+
+        <ReceiptScanner v-if="deviceImei" :imei="deviceImei" :disabled="submitting" @extracted="applyScan" />
 
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
           <h2 class="text-lg font-bold text-gray-800">Fill-up</h2>

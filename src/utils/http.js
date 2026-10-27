@@ -229,6 +229,9 @@ export const request = {
       };
 
       if (hasBody) kyOptions.json = data;
+      // Same option as the native path; ky's default is 10 s, too short for a
+      // request that waits on a third party (receipt OCR).
+      if (timeout) kyOptions.timeout = timeout;
 
       try {
         const res = await ky(url, kyOptions);
