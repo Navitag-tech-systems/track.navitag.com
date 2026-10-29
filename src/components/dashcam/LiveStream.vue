@@ -216,13 +216,24 @@ onBeforeUnmount(() => { stop(true); });
           v-else
           class="absolute inset-0 flex flex-col items-center justify-center text-white/80"
         >
-          <i class="fa-solid fa-video text-4xl mb-3 text-white/60"></i>
           <template v-if="timedOut">
-            <p class="text-sm">Live stopped after {{ limitMinutes }} min</p>
-            <p class="text-xs text-white/60 mt-1">Tap Start to keep watching</p>
+            <i class="fa-solid fa-circle-pause text-4xl mb-3 text-white/70"></i>
+            <p class="text-sm font-bold text-white">Live paused</p>
+            <p class="text-xs text-white/60 mt-1 px-6 text-center">Paused after {{ limitMinutes }} min to save the camera's mobile data</p>
+            <button
+              type="button"
+              @click="start"
+              :disabled="!server"
+              class="mt-4 bg-brand hover:bg-brand-dark text-white text-sm font-bold px-5 py-2 rounded-xl transition-colors flex items-center gap-2 active:scale-[0.98] disabled:opacity-50"
+            >
+              <i class="fa-solid fa-play"></i> Resume
+            </button>
           </template>
-          <p v-else-if="stopped" class="text-sm">Stream stopped</p>
-          <p v-else class="text-sm">Tap Start to view live video</p>
+          <template v-else>
+            <i class="fa-solid fa-video text-4xl mb-3 text-white/60"></i>
+            <p v-if="stopped" class="text-sm">Stream stopped</p>
+            <p v-else class="text-sm">Tap Start to view live video</p>
+          </template>
         </div>
 
         <div
@@ -275,7 +286,7 @@ onBeforeUnmount(() => { stop(true); });
             :disabled="!server"
             class="flex-1 bg-brand hover:bg-brand-dark text-white font-bold py-3 rounded-xl transition-colors flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50"
           >
-            <i class="fa-solid fa-play"></i> Start
+            <i class="fa-solid fa-play"></i> {{ timedOut ? 'Resume' : 'Start' }}
           </button>
           <button
             v-else
