@@ -3,7 +3,8 @@
 // grid. Each channel is its own device stream (0x9101) and its own HLS
 // playlist on the medusa re-mux (keyed by SIM + channel), so channels start,
 // fail and stop independently. The component always sends videoStop for every
-// started channel on stop / unmount / route leave.
+// started channel on stop / unmount / route leave, and stops itself
+// LIVE_SESSION_LIMIT_S after Start.
 import { ref, reactive, computed, onBeforeUnmount } from 'vue';
 import { onBeforeRouteLeave } from 'vue-router';
 import { useUserStore } from '@/stores/user.js';
@@ -12,7 +13,7 @@ import InlineLoader from '@/components/InlineLoader.vue';
 import HlsVideo from './HlsVideo.vue';
 import {
   videoChannels, liveStartCommand, videoStopCommand, liveHlsUrl,
-  sendCommand, waitForHls, SUB_STREAM_KBPS, estimateDataMB,
+  sendCommand, waitForHls, SUB_STREAM_KBPS, estimateDataMB, LIVE_SESSION_LIMIT_S,
 } from '@/utils/dashcam';
 
 const props = defineProps({
@@ -37,6 +38,10 @@ const started = ref([]);
 let abort = null;
 const running = ref(false);
 const stopped = ref(false);
+// Set when the session limit (not the user) stopped the stream.
+const timedOut = ref(false);
+let limitTimer = null;
+const limitMinutes = Math.round(LIVE_SESSION_LIMIT_S / 60);
 
 const elapsed = ref(0);
 let ticker = null;
@@ -103,7 +108,9 @@ async function start() {
   if (busy.value || !server.value) return;
   if (started.value.length) await stop(true);
   stopped.value = false;
+  timedOut.value = false;
   running.value = true;
+  limitTimer = setTimeout(onSessionLimit, LIVE_SESSION_LIMIT_S * 1000);
   started.value = [...targets.value];
   abort = new AbortController();
   const { signal } = abort;
@@ -130,8 +137,16 @@ function onPlayerError(ch, msg) {
   sendCommand(server.value, props.device.id, videoStopCommand(ch)).catch(() => {});
 }
 
+async function onSessionLimit() {
+  limitTimer = null;
+  if (!running.value) return;
+  timedOut.value = true;
+  await stop();
+}
+
 // `silent` = do not show the stopped state or toast (error/cleanup paths).
 async function stop(silent = false) {
+  if (limitTimer) { clearTimeout(limitTimer); limitTimer = null; }
   if (abort) { abort.abort(); abort = null; }
   stopTicker();
   const chs = started.value;
@@ -202,7 +217,11 @@ onBeforeUnmount(() => { stop(true); });
           class="absolute inset-0 flex flex-col items-center justify-center text-white/80"
         >
           <i class="fa-solid fa-video text-4xl mb-3 text-white/60"></i>
-          <p v-if="stopped" class="text-sm">Stream stopped</p>
+          <template v-if="timedOut">
+            <p class="text-sm">Live stopped after {{ limitMinutes }} min</p>
+            <p class="text-xs text-white/60 mt-1">Tap Start to keep watching</p>
+          </template>
+          <p v-else-if="stopped" class="text-sm">Stream stopped</p>
           <p v-else class="text-sm">Tap Start to view live video</p>
         </div>
 

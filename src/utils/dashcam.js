@@ -25,6 +25,10 @@ export const DASHCAM_MEDIA_BASE = 'https://mcp.navitag.com/sync/lookup';
 // 1080p main stream does not fit.
 export const SUB_STREAM_KBPS = 300;
 
+// A live session stops itself this long after Start, so a page left open does
+// not stream from the customer's SIM indefinitely. Tap Start to continue.
+export const LIVE_SESSION_LIMIT_S = 5 * 60;
+
 // JT/T 1078 logical channels this app drives. Both supported units expose at
 // most 4 camera inputs (V5N: maxch 4).
 export const MAX_CHANNELS = 4;
