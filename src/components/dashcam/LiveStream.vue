@@ -13,7 +13,7 @@ import InlineLoader from '@/components/InlineLoader.vue';
 import HlsVideo from './HlsVideo.vue';
 import {
   videoChannels, liveStartCommand, videoStopCommand, liveHlsUrl,
-  sendCommand, waitForHls, SUB_STREAM_KBPS, estimateDataMB, LIVE_SESSION_LIMIT_S,
+  sendCommand, waitForHls, LIVE_SESSION_LIMIT_S,
 } from '@/utils/dashcam';
 
 const props = defineProps({
@@ -51,12 +51,6 @@ const tiles = computed(() => started.value.map((ch) => ({ ch, ...sessions[ch] })
 const anyPlaying = computed(() => tiles.value.some((t) => t.state === 'playing'));
 const allFailed = computed(() => tiles.value.length > 0 && tiles.value.every((t) => t.state === 'error'));
 const busy = computed(() => running.value && !anyPlaying.value && !allFailed.value);
-const playingCount = computed(() => tiles.value.filter((t) => t.state === 'playing').length);
-const dataHint = computed(() => {
-  const n = Math.max(1, playingCount.value);
-  const rate = `~${SUB_STREAM_KBPS * n} kbps${n > 1 ? ` (${n} cameras)` : ' sub-stream'}`;
-  return `${rate} · ${estimateDataMB(elapsed.value, SUB_STREAM_KBPS, playingCount.value).toFixed(1)} MB so far`;
-});
 const gridClass = computed(() => (tiles.value.length > 1 ? 'grid grid-cols-2 gap-0.5' : ''));
 
 const elapsedLabel = computed(() => {
@@ -219,7 +213,7 @@ onBeforeUnmount(() => { stop(true); });
           <template v-if="timedOut">
             <i class="fa-solid fa-circle-pause text-4xl mb-3 text-white/70"></i>
             <p class="text-sm font-bold text-white">Live paused</p>
-            <p class="text-xs text-white/60 mt-1 px-6 text-center">Paused after {{ limitMinutes }} min to save the camera's mobile data</p>
+            <p class="text-xs text-white/60 mt-1 px-6 text-center">Paused after {{ limitMinutes }} min</p>
             <button
               type="button"
               @click="start"
@@ -299,11 +293,6 @@ onBeforeUnmount(() => { stop(true); });
             {{ busy ? 'Cancel' : 'Stop' }}
           </button>
         </div>
-
-        <p class="text-[11px] text-gray-400 flex items-center gap-1.5">
-          <i class="fa-solid fa-signal"></i>
-          {{ dataHint }}
-        </p>
       </div>
     </div>
   </div>

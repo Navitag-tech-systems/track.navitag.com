@@ -4,6 +4,7 @@
 // lazily so it only ships to users who open a dashcam (separate chunk, see
 // vite.config.js manualChunks).
 import { ref, watch, onBeforeUnmount } from 'vue';
+import { LIVE_HLS_BASE } from '@/utils/dashcam';
 
 const props = defineProps({
   src: { type: String, default: '' },
@@ -29,16 +30,31 @@ function destroy() {
   }
 }
 
+// iOS (every browser there is WebKit) and desktop Safari.
+function appleWebKit() {
+  const ua = navigator.userAgent || '';
+  if (/iPad|iPhone|iPod/.test(ua)) return true;
+  if (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) return true;   // iPadOS desktop UA
+  return /Safari\//.test(ua) && !/Chrome|Chromium|CriOS|Edg|OPR|Android/.test(ua);
+}
+
 async function attach(src) {
   destroy();
   const v = videoEl.value;
   if (!v || !src) return;
 
   const isHls = !props.native && /\.m3u8(\?|$)/i.test(src);
-  if (!isHls || v.canPlayType('application/vnd.apple.mpegurl')) {
+  // Only Traccar playback (/api/stream) needs the session cookie. The medusa
+  // live re-mux answers `Access-Control-Allow-Origin: *`, and browsers reject
+  // a credentialed response with a wildcard origin, so live must go without.
+  const withCookie = !src.startsWith(LIVE_HLS_BASE);
+  // Native HLS only on Apple WebKit. Chrome now also answers canPlayType for
+  // HLS, but its built-in player dies on the live re-mux after a few minutes
+  // (DEMUXER_ERROR_COULD_NOT_PARSE, Chrome 156, 2026-10-29); hls.js does not.
+  if (!isHls || (v.canPlayType('application/vnd.apple.mpegurl') && appleWebKit())) {
     // Cross-origin segments need the Traccar cookie; use-credentials makes
     // Safari's native HLS send it (matches hls.js xhr.withCredentials below).
-    v.crossOrigin = 'use-credentials';
+    if (withCookie) v.crossOrigin = 'use-credentials';
     // The native player (iOS Safari) otherwise fails silently — surface the real
     // MediaError code so a field failure is diagnosable (2=network, 3=decode,
     // 4=src-not-supported/format). Retry ONCE without CORS credentials in case
@@ -82,7 +98,7 @@ async function attach(src) {
     maxBufferLength: 20,
     nudgeMaxRetry: 30,
     // Send the Traccar session cookie with manifest/segment requests.
-    xhrSetup: (xhr) => { xhr.withCredentials = true; },
+    xhrSetup: (xhr) => { xhr.withCredentials = withCookie; },
   });
   let recoveries = 0;
   // A LIVE session runs for minutes; transient fatals (a dropped segment fetch,
