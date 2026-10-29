@@ -26,6 +26,10 @@ Vue 3 + Capacitor 8 mobile app for GPS device tracking. Connects to `api.navitag
 
 ## Project Status
 
+### Map layers: Satellite + Night (2026-10-29, on `main`)
+
+`@burkaloo/leaflet-vue3` **2.4.0**. The map's layer button now cycles four base maps in order — Streets (LocationIQ) → OpenStreetMap → Satellite (Esri World Imagery + roads/labels) → Night (Esri navigation-night) — and the last one shown is reopened on the next start (`localStorage` `navitag.mapLayer`, via the map's `tile-change` event; unknown/unoffered values fall back to Streets). Layer list and key live in `src/utils/variables.js` (`mapLayers`, `arcgisKey` from `VITE_ARCGIS_APIKEY`, set in `.env.local` locally and in the Vercel project for production). The ArcGIS Location Platform key is referrer-restricted to `*.navitag.com` / `*.navitag.net`, so native builds (capacitor://localhost, https://localhost) are offered Streets and OpenStreetMap only. No attribution is drawn (decision 2026-10-29; Esri's terms ask for "Powered by Esri"). Approved from a side-by-side preview of 14 candidates; Terrain was dropped after testing.
+
 ### Dashcam live: 5-minute session limit + Chrome player fix (2026-10-29, on `main`)
 
 **Player fix (`HlsVideo.vue`):** Chrome 156 answers `canPlayType` for HLS, so live went to Chrome's built-in player, which (a) requested medusa with credentials — rejected, because medusa answers `Access-Control-Allow-Origin: *` — and (b) dies with `DEMUXER_ERROR_COULD_NOT_PARSE` after ~4 min. Native HLS is now used only on Apple WebKit (iOS, desktop Safari); everything else uses hls.js, and credentials are sent only for Traccar `/api/stream` playback, never for medusa live. Verified in Chrome 156 as burkedev on NLQ 2537: hls.js playback, then the paused screen at the limit.

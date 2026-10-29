@@ -2,6 +2,16 @@ import { Capacitor } from '@capacitor/core';
 export const baseUrl = "https://api.navitag.net/v1"
 export const liqKey = "pk.f34251da8132d1cbfbb1baa7f9925265"
 
+// ArcGIS Location Platform key for the Esri map layers (Satellite, Night).
+// Referrer-restricted to *.navitag.com / *.navitag.net, so the native
+// shells (capacitor://localhost, https://localhost) are refused by Esri and
+// get only the LocationIQ / OSM layers. Set VITE_ARCGIS_APIKEY in .env.local
+// and in the Vercel project; empty = no Esri layers anywhere.
+export const arcgisKey = import.meta.env.VITE_ARCGIS_APIKEY || '';
+export const mapLayers = Capacitor.isNativePlatform() || !arcgisKey
+  ? ['liq', 'osm']
+  : ['liq', 'osm', 'esriHybrid', 'esriNight'];
+
 export const categoryMapping = [
   { map: 'car', server: 'car', icon: 'fa-car' },
   { map: 'motorcycle', server: 'motorcycle', icon: 'fa-motorcycle' },

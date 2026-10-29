@@ -13,11 +13,22 @@ import Loading from '@/components/loading.vue';
 import Error from '@/components/error.vue';
 import NoNet from './components/noNet.vue';
 import UpdateRequired from '@/components/updateRequired.vue';
-import { getPlatformInfo, liqKey } from './utils/variables';
+import { getPlatformInfo, liqKey, arcgisKey, mapLayers } from './utils/variables';
 import { leafletMap } from '@burkaloo/leaflet-vue3'
 import { Capacitor } from '@capacitor/core';
 
 const PUSH_DISMISS_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
+
+// Base map last shown (the layer button cycles through mapLayers); the next app
+// start opens on it. Falls back to Streets when the saved layer is not offered
+// here (native, no key). A ref, so a map rebuilt mid-session keeps the choice.
+const MAP_LAYER_KEY = 'navitag.mapLayer';
+const savedMapLayer = (() => { try { return localStorage.getItem(MAP_LAYER_KEY); } catch { return null; } })();
+const mapTileLayer = ref(mapLayers.includes(savedMapLayer) ? savedMapLayer : 'liq');
+function onTileChange(id) {
+  mapTileLayer.value = id;
+  try { localStorage.setItem(MAP_LAYER_KEY, id); } catch { /* private mode */ }
+}
 const INSTALL_DISMISS_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000;
 
 const userStore = useUserStore();
@@ -393,8 +404,11 @@ function dismissInstallToast() {
           :devices="mapDevices"
           :geos="activeGeofences"
           :liqkey="liqKey"
+          :arcgiskey="arcgisKey"
+          :maps="mapLayers"
           :route="deviceStore.activeRoute"
-          tileLayer="liq"
+          :tileLayer="mapTileLayer"
+          @tile-change="onTileChange"
           :deviceUpdate="mapUpdate"
           :activeId="deviceStore.deviceSelected === null ? null : deviceStore.deviceSelected+''"
           @poly-save="(data) => deviceStore.draftPolygon = data"
