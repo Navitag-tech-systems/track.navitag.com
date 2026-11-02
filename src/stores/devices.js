@@ -197,7 +197,7 @@ export const useDevicesStore = defineStore('devices', () => {
 
         // Dashcam clip list (JT/T 1078 0x1205 answer). The patched Traccar
         // stores it as a position with attributes.mediaList; keep the raw
-        // string + arrival time so ClipBrowser can pick it up live instead
+        // string + arrival time so PlaybackView can pick it up live instead
         // of polling /api/positions for it.
         if (pos.attributes?.mediaList !== undefined) {
           device.mediaList = {

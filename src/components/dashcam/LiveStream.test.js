@@ -6,6 +6,7 @@ const sendCommand = vi.fn(() => Promise.resolve({}));
 vi.mock('@/utils/dashcam', async (importOriginal) => ({
   ...(await importOriginal()),
   sendCommand: (...a) => sendCommand(...a),
+  labelLive: () => Promise.resolve(),
   waitForHls: () => Promise.resolve(true),
 }));
 vi.mock('@/stores/user.js', () => ({ useUserStore: () => ({ server_url: 'tserver1.navitag.com' }) }));

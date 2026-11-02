@@ -287,6 +287,15 @@ export function videoStartCommand(ch) {
   return { type: 'videoStart', attributes: { index: Number(ch), streamType: 1 } };
 }
 
+// Tell the medusa receiver the next stream on (device, ch) is a live view the
+// app asked for, so its rolling cache records it even right after a playback
+// (an UNannounced connection then is a camera re-dial and is not recorded).
+// Best effort: live works without it.
+export function labelLive(device, ch) {
+  const q = `sim=${terminalSim(device)}&ch=${Number(ch)}&live=1`;
+  return request.send({ url: `${LIVE_HLS_BASE}/_session?${q}`, method: 'POST', simple: true }).catch(() => {});
+}
+
 // Live via the medusa re-mux path (custom 0x9101 -> LIVE_MEDIA_IP:LIVE_MEDIA_PORT).
 export function liveStartCommand(ch) {
   return customCommand('9101', body9101({ ch: Number(ch) }));

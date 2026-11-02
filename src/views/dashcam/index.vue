@@ -1,15 +1,15 @@
 <script setup>
-// /dashcam/:deviceId — Live | Clips | Settings for one dashcam (V5-C or V5N,
+// /dashcam/:deviceId — Live | Playback | Settings for one dashcam (V5-C or V5N,
 // up to 4 cameras). Tabs are v-if'd so leaving Live unmounts LiveStream, which
-// sends videoStop for every camera it started; clip playback goes through
-// Traccar's per-channel HLS endpoint instead.
+// sends videoStop for every camera it started. Playback is time-based
+// (PlaybackView): day + hour, video over a map, see utils/dashcamPlayback.js.
 import { ref, computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useDevicesStore } from '@/stores/devices.js';
 import { isDashcam } from '@/utils/dashcam';
 import SharedBadge from '@/components/SharedBadge.vue';
 import LiveStream from '@/components/dashcam/LiveStream.vue';
-import ClipBrowser from '@/components/dashcam/ClipBrowser.vue';
+import PlaybackView from '@/components/dashcam/PlaybackView.vue';
 import DashcamConfig from '@/components/dashcam/DashcamConfig.vue';
 import ChannelSelect from '@/components/dashcam/ChannelSelect.vue';
 import { demoEnabled, loadManifest } from '@/utils/dashcamDemo';
@@ -24,7 +24,7 @@ const capable = computed(() => isDashcam(device.value));
 
 const TABS = [
   { key: 'live', label: 'Live', icon: 'fa-video' },
-  { key: 'clips', label: 'Clips', icon: 'fa-film' },
+  { key: 'playback', label: 'Playback', icon: 'fa-clock-rotate-left' },
   { key: 'settings', label: 'Settings', icon: 'fa-gear' },
 ];
 // Demo media (scripts/medusa/dashcam-demo): when this device has a manifest,
@@ -38,7 +38,9 @@ watch(() => device.value?.uniqueId, async (uid) => {
   manifestChecked.value = true;
 }, { immediate: true });
 
-const tab = ref(TABS.some((t) => t.key === route.query.tab) ? route.query.tab : 'live');
+// 'clips' was the old Playback tab key; keep old links working.
+const initialTab = route.query.tab === 'clips' ? 'playback' : route.query.tab;
+const tab = ref(TABS.some((t) => t.key === initialTab) ? initialTab : 'live');
 
 function pick(key) {
   tab.value = key;
@@ -97,9 +99,10 @@ function pick(key) {
       <ChannelSelect :device="device" :manifest="manifest" />
     </div>
 
+    <PlaybackView v-else-if="tab === 'playback'" :device="device" class="flex-1" />
+
     <div v-else class="p-4 pb-10 max-w-md mx-auto w-full">
       <LiveStream v-if="tab === 'live'" :device="device" />
-      <ClipBrowser v-else-if="tab === 'clips'" :device="device" />
       <DashcamConfig v-else :device="device" />
     </div>
   </div>
