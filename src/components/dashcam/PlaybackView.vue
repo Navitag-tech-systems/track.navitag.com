@@ -781,7 +781,11 @@ watch(online, (on) => {
     </div>
 
     <div class="relative flex-1 min-h-[260px]">
-      <TrackMap :points="points" :position="mapPosition" mode="playback" @seek="onMapSeek" />
+      <!-- absolute: the wrapper's height comes from flex/min-height only, so
+           TrackMap's h-full would resolve to 0 without a positioned box. -->
+      <div class="absolute inset-0">
+        <TrackMap :points="points" :position="mapPosition" mode="playback" @seek="onMapSeek" />
+      </div>
       <div v-if="!points.length && !loadingDay" class="absolute inset-x-0 top-3 flex justify-center pointer-events-none z-[500]">
         <span class="text-xs font-semibold text-gray-600 bg-white/90 px-2.5 py-1 rounded-full shadow-sm">No GPS for this hour</span>
       </div>
