@@ -15,6 +15,7 @@ import { useDevicesStore } from '@/stores/devices.js';
 import InlineLoader from '@/components/InlineLoader.vue';
 import HlsVideo from './HlsVideo.vue';
 import TrackMap from './TrackMap.vue';
+import { useVideoAspect } from './dashcamAspect';
 import PlaybackTimeline from './PlaybackTimeline.vue';
 import DayHourPicker from './DayHourPicker.vue';
 import DownloadSheet from './DownloadSheet.vue';
@@ -35,6 +36,7 @@ const props = defineProps({
 
 const userStore = useUserStore();
 const deviceStore = useDevicesStore();
+const { aspect, onAspect } = useVideoAspect(props.device.id, 'playback');
 const server = computed(() => userStore.server_url);
 const tz = computed(() => deviceTimeZone(props.device));
 const channels = computed(() => videoChannels(props.device));
@@ -379,13 +381,23 @@ async function startRemote(c, my) {
   try {
     // Lets the cache file this stream under the right device time.
     await labelPlayback(props.device, camera, c.base).catch(() => {});
+    // Superseded (camera switch, seek, leave) while the medusa label was in
+    // flight: never send this 0x9201. Whoever superseded it owns `remote`.
+    if (my !== resolveToken) return;
     playbackEchoes.add(echoKey(camera, c.base, c.end));
     await sendCommand(server.value, props.device.id, playbackCommand(props.device, camera, c.base, c.end));
   } catch (err) {
-    remote = null;
+    if (remote?.ch === camera && my === resolveToken) remote = null;
     if (my !== resolveToken) return;
     status.value = 'error';
     errorMsg.value = err?.status === 403 ? 'You do not have permission to play video from this camera.' : 'Could not reach the camera.';
+    return;
+  }
+  // Camera switched / stopped while the 0x9201 was in flight: stopRemote's
+  // 0x9202 may have reached the device first, so close this one again —
+  // unless the same camera has been asked for since (that request replaces it).
+  if (my !== resolveToken) {
+    if (remote?.ch !== camera) sendCommand(server.value, props.device.id, stopPlaybackCommand(camera)).catch(() => {});
     return;
   }
   const url = liveHlsUrl(props.device, camera);
@@ -648,11 +660,14 @@ onMounted(async () => {
   cacheTimer = setInterval(refreshCache, 30_000);
 });
 
-onBeforeRouteLeave(() => { stopRemote(); });
+// resolveToken++ abandons a camera stream still starting, so startRemote
+// closes it once its 0x9201 lands instead of going on to play it.
+onBeforeRouteLeave(() => { resolveToken++; stopRemote(); });
 
 onBeforeUnmount(() => {
   cancelAnimationFrame(raf);
   clearInterval(cacheTimer);
+  resolveToken++;
   stopRemote();
 });
 
@@ -663,8 +678,10 @@ watch(online, (on) => {
 </script>
 
 <template>
-  <div class="flex flex-col flex-1 min-h-0 bg-surface">
-    <div class="bg-white border-b border-gray-200 px-2 py-2">
+  <!-- Stacked on narrow screens, side by side from 1024 px: dashcamLayout.css -->
+  <div class="dc-layout pb-layout" :style="{ '--dc-aspect': aspect }">
+    <!-- Hour bar: first row when stacked; top of the map column side by side. -->
+    <div class="pb-hourbar bg-white border-b border-gray-200 px-2 py-2">
       <div class="flex items-center gap-0.5 bg-gray-100 rounded-2xl p-0.5 max-w-xl mx-auto">
         <button type="button" @click="stepHour(-1)" class="w-11 h-11 rounded-xl text-gray-700 flex items-center justify-center" aria-label="Previous hour">
           <i class="fa-solid fa-chevron-left"></i>
@@ -679,7 +696,10 @@ watch(online, (on) => {
       </div>
     </div>
 
-    <div class="relative w-full bg-black aspect-video max-h-[50vh]">
+    <div class="dc-media">
+
+    <div class="bg-black">
+    <div class="pb-video dc-video relative mx-auto w-full bg-black">
       <HlsVideo
         v-if="videoSrc"
         ref="playerRef"
@@ -693,6 +713,7 @@ watch(online, (on) => {
         @pause="onPause"
         @ended="onSourceEnd"
         @error="onPlayerError"
+        @aspect="onAspect"
       />
       <button v-if="videoSrc && (status === 'playing' || status === 'paused')" type="button" class="absolute inset-0 w-full h-full" @click="togglePlay" :aria-label="isPlaying ? 'Pause' : 'Play'"></button>
 
@@ -738,6 +759,7 @@ watch(online, (on) => {
         <button type="button" @click="playAt(t, { autoplay: true })" class="h-10 px-4 rounded-full bg-white text-gray-800 text-sm font-bold">Try again</button>
       </div>
     </div>
+    </div>
 
     <div class="bg-white border-b border-gray-200 pt-2.5 pb-1">
       <PlaybackTimeline
@@ -779,8 +801,9 @@ watch(online, (on) => {
         {{ listNote === 'asleep' ? 'Check when on' : 'Try again' }}
       </button>
     </div>
+    </div>
 
-    <div class="relative flex-1 min-h-[260px]">
+    <div class="dc-map">
       <!-- absolute: the wrapper's height comes from flex/min-height only, so
            TrackMap's h-full would resolve to 0 without a positioned box. -->
       <div class="absolute inset-0">
@@ -817,3 +840,29 @@ watch(online, (on) => {
     />
   </div>
 </template>
+
+<style src="./dashcamLayout.css"></style>
+<style scoped>
+/* Media column below the video: timeline (131) + controls (65). The hour bar
+   (65) is above the video when stacked, above the map side by side. */
+.pb-layout { --dc-below: 196px; --dc-map-min: 160px; }
+@media (min-width: 1024px) {
+  .pb-layout {
+    display: grid;
+    grid-template-columns: max(420px, min(60%, calc((100dvh - var(--dc-chrome) - var(--dc-below)) * var(--dc-aspect)))) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .pb-layout > .dc-media { grid-column: 1; grid-row: 1 / span 2; width: auto; }
+  .pb-layout > .pb-hourbar { grid-column: 2; grid-row: 1; }
+  .pb-layout > .dc-map { grid-column: 2; grid-row: 2; }
+}
+/* Stacked: the box (height = width / aspect) is at most half the screen tall
+   and leaves room for header + hour bar + timeline + controls + nav + a 160 px
+   map; never below 180 px tall. */
+.pb-video {
+  max-width: min(calc(50dvh * var(--dc-aspect)), max(calc(180px * var(--dc-aspect)), calc((100dvh - 592px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) * var(--dc-aspect))));
+}
+@media (min-width: 1024px) {
+  .pb-video { max-width: none; }
+}
+</style>

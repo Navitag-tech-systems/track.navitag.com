@@ -1,0 +1,59 @@
+/* Shared layout for the dashcam Live and Playback views.
+ *
+ * Narrow (< 1024 px): stacked — the media column (video + its controls) on
+ * top, the map filling the rest down to the bottom nav.
+ * Wide (>= 1024 px): side by side — the media column on the left, the map on
+ * the right, both exactly as tall as the space between the page header and
+ * the bottom nav.
+ *
+ * Why the explicit sizes: the app's <main> grows past the viewport (the whole
+ * page scrolls) instead of scrolling inside when a page is too tall, which hid
+ * the map under the bottom nav. So the stacked video is capped to leave room
+ * for everything else, and the wide row gets a fixed height.
+ *
+ * --dc-chrome: dashcam page header (121 px incl. tabs) + bottom nav (49 px).
+ * --dc-below:  media-column height that is not the video (set per view).
+ * --dc-aspect: video frame width / height (set inline from the stream; the
+ *              dashcams send ~11:9, not 16:9).
+ */
+.dc-layout {
+  --dc-chrome: calc(170px + env(safe-area-inset-top, 0px) + env(safe-area-inset-bottom, 0px));
+  --dc-aspect: 1.2222;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  background: var(--color-surface, #f8f6f3);
+}
+.dc-media {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+}
+.dc-video {
+  aspect-ratio: var(--dc-aspect);
+}
+.dc-map {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: var(--dc-map-min, 200px);
+}
+
+@media (min-width: 1024px) {
+  .dc-layout {
+    flex-direction: row;
+    height: calc(100dvh - var(--dc-chrome));
+  }
+  .dc-media {
+    /* As wide as lets the video (at its own aspect) plus the controls under
+       it fit the height, at most 60 % of the row, at least 420 px for the
+       controls. */
+    width: max(420px, min(60%, calc((100dvh - var(--dc-chrome) - var(--dc-below)) * var(--dc-aspect))));
+    overflow-y: auto;
+    background: #fff;
+    border-right: 1px solid #e5e7eb;
+  }
+  .dc-map {
+    min-height: 0;
+  }
+}

@@ -12,11 +12,18 @@ const props = defineProps({
   muted: { type: Boolean, default: true },
   controls: { type: Boolean, default: true },
 });
-const emit = defineEmits(['playing', 'error', 'ended', 'timeupdate', 'loadedmetadata', 'pause']);
+const emit = defineEmits(['playing', 'error', 'ended', 'timeupdate', 'loadedmetadata', 'pause', 'aspect']);
 
 const videoEl = ref(null);
 // The playback view seeks, pauses and reads the clock itself.
 defineExpose({ video: videoEl });
+
+// Frame aspect (width / height) once known; dashcams are not 16:9 (V5N sends
+// 704x576), so the views size their video box from this.
+function onMeta() {
+  const v = videoEl.value;
+  if (v?.videoWidth && v?.videoHeight) emit('aspect', v.videoWidth / v.videoHeight);
+}
 let hls = null;
 
 function destroy() {
@@ -147,6 +154,7 @@ onBeforeUnmount(destroy);
     @ended="emit('ended')"
     @pause="emit('pause')"
     @timeupdate="emit('timeupdate')"
-    @loadedmetadata="emit('loadedmetadata')"
+    @loadedmetadata="emit('loadedmetadata'); onMeta()"
+    @resize="onMeta"
   ></video>
 </template>

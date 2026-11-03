@@ -101,9 +101,10 @@ function pick(key) {
 
     <PlaybackView v-else-if="tab === 'playback'" :device="device" class="flex-1" />
 
+    <LiveStream v-else-if="tab === 'live'" :device="device" class="flex-1" />
+
     <div v-else class="p-4 pb-10 max-w-md mx-auto w-full">
-      <LiveStream v-if="tab === 'live'" :device="device" />
-      <DashcamConfig v-else :device="device" />
+      <DashcamConfig :device="device" />
     </div>
   </div>
 </template>

@@ -1,20 +1,27 @@
 <script setup>
-// Live view for one dashcam: a single camera, or every camera at once in a
-// grid. Each channel is its own device stream (0x9101) and its own HLS
-// playlist on the medusa re-mux (keyed by SIM + channel), so channels start,
-// fail and stop independently. The component always sends videoStop for every
-// started channel on stop / unmount / route leave, and stops itself
+// Live view for one dashcam, ONE camera at a time. Each camera is its own
+// device stream (0x9101 -> its own JT1078 connection to the medusa re-mux,
+// keyed by SIM + channel); JT1078 has no "switch channel" on an open stream,
+// so a camera switch closes the current stream (videoStop) BEFORE asking for
+// the next one: never two connections at once. The component always sends
+// videoStop on stop / unmount / route leave, and stops itself
 // LIVE_SESSION_LIMIT_S after Start.
-import { ref, reactive, computed, onBeforeUnmount } from 'vue';
+// Below the video, the same map as Playback shows the vehicle's current
+// position from the live device store (socket), with a trail of the fixes
+// received while this view is open.
+import { ref, computed, watch, onBeforeUnmount } from 'vue';
 import { onBeforeRouteLeave } from 'vue-router';
 import { useUserStore } from '@/stores/user.js';
 import { useToastStore } from '@/stores/toast.js';
 import InlineLoader from '@/components/InlineLoader.vue';
 import HlsVideo from './HlsVideo.vue';
+import TrackMap from './TrackMap.vue';
+import { useVideoAspect } from './dashcamAspect';
 import {
   videoChannels, liveStartCommand, labelLive, videoStopCommand, liveHlsUrl,
   sendCommand, waitForHls, LIVE_SESSION_LIMIT_S,
 } from '@/utils/dashcam';
+import { KNOTS_TO_KMH } from '@/utils/dashcamPlayback';
 
 const props = defineProps({
   device: { type: Object, required: true },
@@ -23,19 +30,18 @@ const props = defineProps({
 const userStore = useUserStore();
 const toast = useToastStore();
 
-const ALL = 'all';
 const channels = computed(() => videoChannels(props.device));
-const multi = computed(() => channels.value.length > 1);
-// A channel index, or ALL.
+const { aspect, onAspect } = useVideoAspect(props.device.id, 'live');
 const choice = ref(channels.value[0]?.index ?? 1);
-const targets = computed(() => (choice.value === ALL ? channels.value.map((c) => c.index) : [choice.value]));
 
-// Per started channel: { url, state: 'starting' | 'playing' | 'error', error }
-const sessions = reactive({});
-// Channels the device was told to start; stop() targets these, not the chips
-// the user may have tapped since.
-const started = ref([]);
+// The one stream the device was told to start:
+// { ch, url, state: 'starting' | 'playing' | 'error', error } or null.
+// stop() targets session.ch, not the chip the user may have tapped since.
+const session = ref(null);
 let abort = null;
+// Serialises start/stop so a quick double switch cannot overlap streams.
+let chain = Promise.resolve();
+let disposed = false;
 const running = ref(false);
 const stopped = ref(false);
 // Set when the session limit (not the user) stopped the stream.
@@ -47,11 +53,8 @@ const elapsed = ref(0);
 let ticker = null;
 
 const server = computed(() => userStore.server_url);
-const tiles = computed(() => started.value.map((ch) => ({ ch, ...sessions[ch] })));
-const anyPlaying = computed(() => tiles.value.some((t) => t.state === 'playing'));
-const allFailed = computed(() => tiles.value.length > 0 && tiles.value.every((t) => t.state === 'error'));
-const busy = computed(() => running.value && !anyPlaying.value && !allFailed.value);
-const gridClass = computed(() => (tiles.value.length > 1 ? 'grid grid-cols-2 gap-0.5' : ''));
+const playing = computed(() => session.value?.state === 'playing');
+const busy = computed(() => running.value && session.value?.state === 'starting');
 
 const elapsedLabel = computed(() => {
   const s = elapsed.value;
@@ -59,7 +62,27 @@ const elapsedLabel = computed(() => {
   return `${m}:${String(s % 60).padStart(2, '0')}`;
 });
 
-const channelName = (ch) => channels.value.find((c) => c.index === ch)?.name || `Camera ${ch}`;
+// --- Map: current position + trail of fixes seen while open ---------------
+const TRAIL_MAX = 500;
+const mapPosition = computed(() => {
+  const ll = props.device?.latlon;
+  if (!ll || ll[0] == null || ll[1] == null || (ll[0] === 0 && ll[1] === 0)) return null;
+  return { lat: ll[0], lng: ll[1], course: props.device.bearing || 0 };
+});
+const trail = ref([]);
+watch(mapPosition, (p) => {
+  if (!p) return;
+  const last = trail.value[trail.value.length - 1];
+  if (last && last[0] === p.lat && last[1] === p.lng) return;
+  const next = [...trail.value, [p.lat, p.lng]];
+  trail.value = next.length > TRAIL_MAX ? next.slice(-TRAIL_MAX) : next;
+}, { immediate: true });
+const speedKmh = computed(() => Math.max(0, Math.round((Number(props.device?.speed) || 0) * KNOTS_TO_KMH)));
+const fixLabel = computed(() => {
+  const ms = Date.parse(props.device?.fixTime || '');
+  if (!Number.isFinite(ms)) return '';
+  return new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+});
 
 function startTicker() {
   if (ticker) return;
@@ -76,60 +99,118 @@ function commandError(err) {
     : (err?.message || 'Could not send the start command.');
 }
 
+const sendStop = (ch) => sendCommand(server.value, props.device.id, videoStopCommand(ch));
+
+function clearLimit() {
+  if (limitTimer) { clearTimeout(limitTimer); limitTimer = null; }
+}
+
+// A failed session stays on screen with its error; it no longer counts
+// toward the session limit (which would replace the error with "Live paused").
+function failSession(base, error) {
+  clearLimit();
+  session.value = { ...base, url: '', state: 'error', error };
+}
+
 async function startChannel(ch, signal) {
-  sessions[ch] = { url: '', state: 'starting', error: '' };
+  const mine = { ch, url: '', state: 'starting', error: '' };
+  session.value = mine;
   try {
     await labelLive(props.device, ch);
+    // Stopped / switched / left while the medusa label was in flight: never
+    // send the 0x9101 (its videoStop has already gone out).
+    if (signal.aborted) return;
     await sendCommand(server.value, props.device.id, liveStartCommand(ch));
   } catch (err) {
-    sessions[ch] = { url: '', state: 'error', error: commandError(err) };
+    if (!signal.aborted) failSession(mine, commandError(err));
+    return;
+  }
+  // Stopped or switched while the start command was in flight: its videoStop
+  // may have reached the device before this 0x9101, so close it again —
+  // unless the same camera was started again since.
+  if (signal.aborted) {
+    if (session.value?.ch !== ch) sendStop(ch).catch(() => {});
     return;
   }
   const url = liveHlsUrl(props.device, ch);
   try {
     await waitForHls(url, 45_000, { signal });
   } catch (err) {
-    if (err?.message === 'aborted') return;
-    sessions[ch] = { url: '', state: 'error', error: 'No video within 45 s. Check the camera is connected and the dashcam is online.' };
-    sendCommand(server.value, props.device.id, videoStopCommand(ch)).catch(() => {});
+    // waitForHls only checks the signal between probes, so an abort during
+    // the last probe surfaces as a timeout: check the signal, not the message.
+    if (signal.aborted || err?.message === 'aborted') return;
+    failSession(mine, 'No video within 45 s. Check the camera is connected and the dashcam is online.');
+    sendStop(ch).catch(() => {});
     return;
   }
   // Cache-bust so a re-start after stop does not replay a stale manifest.
-  // HlsVideo flips the tile to 'playing' on its first frame.
-  if (!signal.aborted) sessions[ch] = { url: `${url}?t=${Date.now()}`, state: 'starting', error: '' };
+  // HlsVideo flips the session to 'playing' on its first frame.
+  if (!signal.aborted) session.value = { ...mine, url: `${url}?t=${Date.now()}` };
 }
 
-async function start() {
-  if (busy.value || !server.value) return;
-  if (started.value.length) await stop(true);
+// Ends the current stream's local state (timers, waits) without touching
+// what the screen shows.
+function teardown() {
+  clearLimit();
+  if (abort) { abort.abort(); abort = null; }
+  stopTicker();
+}
+
+// `silent` = do not show the stopped state or toast (error/cleanup paths).
+async function doStop(silent) {
+  teardown();
+  const s = session.value;
+  session.value = null;
+  running.value = false;
+  if (!silent) stopped.value = true;
+  if (!s || !server.value) return;
+  try {
+    await sendStop(s.ch);
+  } catch {
+    if (!silent) toast.show('Stop command failed — the dashcam may keep streaming briefly.', { variant: 'error' });
+  }
+}
+
+async function doStart() {
+  if (disposed || !server.value) return;
+  const prev = session.value;
+  const ch = choice.value;
+  teardown();
+  // Show the next camera as waking straight away (not "Tap Start") while the
+  // previous one is stopped.
   stopped.value = false;
   timedOut.value = false;
   running.value = true;
+  session.value = { ch, url: '', state: 'starting', error: '' };
+  // Close the current stream first: one camera connection at a time.
+  if (prev && server.value) await sendStop(prev.ch).catch(() => {});
+  if (disposed) return;
   limitTimer = setTimeout(onSessionLimit, LIVE_SESSION_LIMIT_S * 1000);
-  started.value = [...targets.value];
   abort = new AbortController();
-  const { signal } = abort;
-  // Sequential sends: the device handles one 0x9101 at a time more reliably,
-  // and the waits then run in parallel.
-  const waits = [];
-  for (const ch of started.value) {
-    waits.push(startChannel(ch, signal));
-    await new Promise((r) => setTimeout(r, 300));
-  }
-  await Promise.all(waits);
+  // Not awaited: the chain only orders the commands; the HLS wait (up to
+  // 45 s) must not hold back a Stop or a camera switch.
+  startChannel(ch, abort.signal);
 }
 
-function onPlaying(ch) {
-  if (sessions[ch]?.state === 'starting') {
-    sessions[ch] = { ...sessions[ch], state: 'playing' };
+function queue(fn) {
+  chain = chain.then(fn, fn);
+  return chain;
+}
+const start = () => queue(doStart);
+const stop = (silent = false) => queue(() => doStop(silent));
+
+function onPlaying() {
+  if (session.value?.state === 'starting') {
+    session.value = { ...session.value, state: 'playing' };
     startTicker();
   }
 }
 
-function onPlayerError(ch, msg) {
-  if (!running.value || !sessions[ch]) return;
-  sessions[ch] = { url: '', state: 'error', error: msg || 'Playback failed.' };
-  sendCommand(server.value, props.device.id, videoStopCommand(ch)).catch(() => {});
+function onPlayerError(msg) {
+  const s = session.value;
+  if (!running.value || !s) return;
+  failSession(s, msg || 'Playback failed.');
+  sendStop(s.ch).catch(() => {});
 }
 
 async function onSessionLimit() {
@@ -139,73 +220,56 @@ async function onSessionLimit() {
   await stop();
 }
 
-// `silent` = do not show the stopped state or toast (error/cleanup paths).
-async function stop(silent = false) {
-  if (limitTimer) { clearTimeout(limitTimer); limitTimer = null; }
-  if (abort) { abort.abort(); abort = null; }
-  stopTicker();
-  const chs = started.value;
-  started.value = [];
-  running.value = false;
-  for (const k of Object.keys(sessions)) delete sessions[k];
-  if (!silent) stopped.value = true;
-  if (!chs.length || !server.value) return;
-  const results = await Promise.allSettled(
-    chs.map((ch) => sendCommand(server.value, props.device.id, videoStopCommand(ch))),
-  );
-  if (!silent && results.some((r) => r.status === 'rejected')) {
-    toast.show('Stop command failed — the dashcam may keep streaming briefly.', { variant: 'error' });
-  }
-}
-
 function pick(next) {
   if (next === choice.value) return;
   choice.value = next;
+  // A camera switch while streaming (or still waking) replaces the stream.
   if (running.value) start();
 }
 
-onBeforeRouteLeave(() => { stop(true); });
-onBeforeUnmount(() => { stop(true); });
+// `disposed` keeps a start that is queued behind a stop from running after
+// the user has left.
+function dispose() {
+  disposed = true;
+  stop(true);
+}
+onBeforeRouteLeave(dispose);
+onBeforeUnmount(dispose);
 </script>
 
 <template>
-  <div class="space-y-4">
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-      <div class="relative bg-black" :class="tiles.length > 1 ? '' : 'aspect-video'">
-        <div v-if="tiles.length" :class="gridClass" class="h-full">
-          <div v-for="t in tiles" :key="t.ch" class="relative aspect-video bg-black overflow-hidden">
-            <HlsVideo
-              v-if="t.url"
-              :src="t.url"
-              @playing="onPlaying(t.ch)"
-              @error="(msg) => onPlayerError(t.ch, msg)"
-            />
+  <!-- Stacked on narrow screens, side by side from 1024 px: dashcamLayout.css -->
+  <div class="dc-layout live-layout" :style="{ '--dc-aspect': aspect }">
+    <div class="dc-media">
+    <div class="bg-black">
+      <div class="live-video dc-video relative mx-auto w-full overflow-hidden">
+        <template v-if="session">
+          <HlsVideo
+            v-if="session.url"
+            :key="session.ch"
+            :src="session.url"
+            @playing="onPlaying"
+            @error="onPlayerError"
+            @aspect="onAspect"
+          />
 
-            <div
-              v-if="t.state === 'starting'"
-              class="absolute inset-0 flex flex-col items-center justify-center text-white/90 bg-black/60"
-            >
-              <InlineLoader :size="tiles.length > 1 ? 'xl' : '2xl'" class="text-white mb-2" />
-              <p class="text-xs font-bold">Waking the camera…</p>
-              <p v-if="tiles.length === 1" class="text-xs text-white/70 mt-1">Usually 5–15 s on LTE</p>
-            </div>
-
-            <div
-              v-else-if="t.state === 'error'"
-              class="absolute inset-0 flex flex-col items-center justify-center text-red-200 px-3 text-center"
-            >
-              <i class="fa-solid fa-video-slash mb-2 text-red-400" :class="tiles.length > 1 ? 'text-xl' : 'text-4xl'"></i>
-              <p class="leading-snug" :class="tiles.length > 1 ? 'text-[11px]' : 'text-sm'">{{ t.error }}</p>
-            </div>
-
-            <div
-              v-if="tiles.length > 1"
-              class="absolute bottom-1 left-1 bg-black/60 text-white text-[10px] font-bold px-1.5 py-0.5 rounded"
-            >
-              {{ channelName(t.ch) }}
-            </div>
+          <div
+            v-if="session.state === 'starting'"
+            class="absolute inset-0 flex flex-col items-center justify-center text-white/90 bg-black/60"
+          >
+            <InlineLoader size="2xl" class="text-white mb-2" />
+            <p class="text-xs font-bold">Waking the camera…</p>
+            <p class="text-xs text-white/70 mt-1">Usually 5–15 s on LTE</p>
           </div>
-        </div>
+
+          <div
+            v-else-if="session.state === 'error'"
+            class="absolute inset-0 flex flex-col items-center justify-center text-red-200 px-3 text-center"
+          >
+            <i class="fa-solid fa-video-slash mb-2 text-red-400 text-4xl"></i>
+            <p class="leading-snug text-sm">{{ session.error }}</p>
+          </div>
+        </template>
 
         <div
           v-else
@@ -230,71 +294,85 @@ onBeforeUnmount(() => { stop(true); });
             <p v-else class="text-sm">Tap Start to view live video</p>
           </template>
         </div>
+      </div>
+    </div>
 
-        <div
-          v-if="anyPlaying"
-          class="absolute top-2 left-2 flex items-center gap-1.5 bg-red-600 text-white text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md"
+    <div class="bg-white border-b border-gray-200 px-4 py-2.5 flex items-center gap-2">
+      <div class="flex gap-1.5 flex-1 min-w-0 overflow-x-auto">
+        <button
+          v-for="c in channels"
+          :key="c.index"
+          type="button"
+          @click="pick(c.index)"
+          class="h-9 px-3 rounded-full text-sm font-bold border transition-colors shrink-0"
+          :class="choice === c.index
+            ? 'bg-brand text-white border-brand'
+            : 'bg-surface text-gray-600 border-gray-200 hover:bg-gray-100'"
         >
-          <span class="relative flex h-2 w-2">
-            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
-            <span class="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
-          </span>
-          Live · {{ elapsedLabel }}
-        </div>
+          {{ c.name }}
+        </button>
       </div>
 
-      <div class="p-4 space-y-4">
-        <div>
-          <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Camera</p>
-          <div class="flex gap-2 flex-wrap">
-            <button
-              v-for="c in channels"
-              :key="c.index"
-              type="button"
-              @click="pick(c.index)"
-              class="px-3 py-1.5 rounded-full text-sm font-bold border transition-colors"
-              :class="choice === c.index
-                ? 'bg-brand text-white border-brand'
-                : 'bg-surface text-gray-600 border-gray-200 hover:bg-gray-100'"
-            >
-              {{ c.name }}
-            </button>
-            <button
-              v-if="multi"
-              type="button"
-              @click="pick(ALL)"
-              class="px-3 py-1.5 rounded-full text-sm font-bold border transition-colors flex items-center gap-1.5"
-              :class="choice === ALL
-                ? 'bg-brand text-white border-brand'
-                : 'bg-surface text-gray-600 border-gray-200 hover:bg-gray-100'"
-            >
-              <i class="fa-solid fa-table-cells-large text-xs"></i> All ({{ channels.length }})
-            </button>
-          </div>
-        </div>
+      <!-- Live timer + speed sit here, not over the video: the box is the exact
+           frame, so overlays would cover the camera's own date/GPS stamp. -->
+      <div v-if="playing" class="shrink-0 flex flex-col items-end leading-tight">
+        <span class="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-red-600">
+          <span class="relative flex h-2 w-2">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-2 w-2 bg-red-600"></span>
+          </span>
+          Live {{ elapsedLabel }}
+        </span>
+        <span v-if="mapPosition" class="text-xs font-semibold text-gray-500 tabular-nums">{{ speedKmh }} km/h</span>
+      </div>
 
-        <div class="flex gap-2">
-          <button
-            v-if="!running"
-            type="button"
-            @click="start"
-            :disabled="!server"
-            class="flex-1 bg-brand hover:bg-brand-dark text-white font-bold py-3 rounded-xl transition-colors flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50"
-          >
-            <i class="fa-solid fa-play"></i> {{ timedOut ? 'Resume' : 'Start' }}
-          </button>
-          <button
-            v-else
-            type="button"
-            @click="stop()"
-            class="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-xl transition-colors flex items-center justify-center gap-2 active:scale-[0.98]"
-          >
-            <InlineLoader v-if="busy" class="text-white" />
-            <i v-else class="fa-solid fa-stop"></i>
-            {{ busy ? 'Cancel' : 'Stop' }}
-          </button>
-        </div>
+      <button
+        v-if="!running"
+        type="button"
+        @click="start"
+        :disabled="!server"
+        class="h-11 px-5 shrink-0 bg-brand hover:bg-brand-dark text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50"
+      >
+        <i class="fa-solid fa-play"></i> {{ timedOut ? 'Resume' : 'Start' }}
+      </button>
+      <button
+        v-else
+        type="button"
+        @click="stop()"
+        class="h-11 px-5 shrink-0 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2 active:scale-[0.98]"
+      >
+        <InlineLoader v-if="busy" class="text-white" />
+        <i v-else class="fa-solid fa-stop"></i>
+        {{ busy ? 'Cancel' : 'Stop' }}
+      </button>
+    </div>
+    </div>
+
+    <div class="dc-map">
+      <!-- absolute: the wrapper's height comes from flex/min-height only, so
+           TrackMap's h-full would resolve to 0 without a positioned box. -->
+      <div class="absolute inset-0">
+        <TrackMap :position="mapPosition" mode="live" :trail="trail" />
+      </div>
+      <div class="absolute inset-x-0 top-3 flex justify-center pointer-events-none z-[500]">
+        <span v-if="!mapPosition" class="text-xs font-semibold text-gray-600 bg-white/90 px-2.5 py-1 rounded-full shadow-sm">No GPS position yet</span>
+        <span v-else-if="fixLabel" class="text-xs font-semibold text-gray-600 bg-white/90 px-2.5 py-1 rounded-full shadow-sm tabular-nums">{{ fixLabel }}</span>
       </div>
     </div>
   </div>
 </template>
+
+<style src="./dashcamLayout.css"></style>
+<style scoped>
+/* Media column below the video: the camera bar (64 px). */
+.live-layout { --dc-below: 64px; }
+/* Stacked: the box (height = width / aspect) is at most half the screen tall
+   and leaves room for header + camera bar + nav + a 200 px map; never below
+   160 px tall. */
+.live-video {
+  max-width: min(calc(50dvh * var(--dc-aspect)), max(calc(160px * var(--dc-aspect)), calc((100dvh - 442px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) * var(--dc-aspect))));
+}
+@media (min-width: 1024px) {
+  .live-video { max-width: none; }
+}
+</style>
