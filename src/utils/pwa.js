@@ -46,5 +46,35 @@ export async function registerPwa() {
   }
 
   const { registerSW } = await import('virtual:pwa-register');
-  registerSW({ immediate: true });
+  registerSW({
+    immediate: true,
+    onRegisteredSW(_swUrl, registration) {
+      if (registration) watchForUpdates(registration);
+    },
+  });
+}
+
+// The browser only re-checks sw.js on a navigation. An installed PWA that is
+// resumed from the background (iOS/Android keep it in memory) never
+// navigates, so it would keep running the old build. Check on every return to
+// the foreground (and hourly while open); with registerType 'autoUpdate' a new
+// build installs, activates and the page reloads into it — same as a cold open.
+const UPDATE_MIN_GAP_MS = 60_000;
+const UPDATE_INTERVAL_MS = 60 * 60_000;
+
+export function watchForUpdates(registration) {
+  let last = 0;
+  const check = () => {
+    if (navigator.onLine === false) return;
+    const now = Date.now();
+    if (now - last < UPDATE_MIN_GAP_MS) return;
+    last = now;
+    registration.update().catch(() => {});
+  };
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') check();
+  });
+  // Restored from the back/forward cache: also no navigation fetch.
+  window.addEventListener('pageshow', (e) => { if (e.persisted) check(); });
+  setInterval(check, UPDATE_INTERVAL_MS);
 }
