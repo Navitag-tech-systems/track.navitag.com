@@ -4,10 +4,54 @@
 // seek) or a short trail behind the marker (live). Deliberately separate from
 // the app's global leafletMap so the viewer cannot disturb the main map's
 // markers, selection or view.
-import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
+//
+// Base map: opens on the layer chosen on the main map (localStorage
+// navitag.mapLayer, written by App.vue) and has its own layer button. A change
+// here stays in this viewer and is never written back. The tile definitions are
+// a COPY of @burkaloo/leaflet-vue3 leafletMap.vue `mapOptions` (2.4.0): keep
+// both in step when a layer is added or changed.
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import L from 'leaflet';
-import { liqKey } from '@/utils/variables';
+import { liqKey, arcgisKey, mapLayers } from '@/utils/variables';
 import { nearestTime } from '@/utils/dashcamDemo';
+
+const MAP_LAYER_KEY = 'navitag.mapLayer';
+const ESRI_STATIC = 'https://static-map-tiles-api.arcgis.com/arcgis/rest/services/static-basemap-tiles-service/v1';
+const ESRI_IMAGERY = 'https://ibasemaps-api.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+// Static styles are 512 px tiles, hence tileSize 512 / zoomOffset -1.
+const esriStatic = (style) => L.tileLayer(
+  `${ESRI_STATIC}/${style}/static/tile/{z}/{y}/{x}?token=${arcgisKey}`,
+  { tileSize: 512, zoomOffset: -1, maxZoom: 19 });
+// Order = the layer button's cycle order (same as the main map).
+const BASE_LAYERS = {
+  liq: {
+    name: 'Streets',
+    create: () => L.tileLayer(`https://{s}-tiles.locationiq.com/v3/streets/r/{z}/{x}/{y}.png?key=${liqKey}`, { subdomains: 'abc', maxZoom: 19 }),
+  },
+  osm: {
+    name: 'OpenStreetMap',
+    create: () => L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }),
+  },
+  esriHybrid: {
+    name: 'Satellite',
+    create: () => L.layerGroup([
+      L.tileLayer(`${ESRI_IMAGERY}?token=${arcgisKey}`, { maxZoom: 19 }),
+      esriStatic('arcgis/imagery/labels'),
+    ]),
+  },
+  esriNight: {
+    name: 'Night',
+    create: () => esriStatic('arcgis/navigation-night'),
+  },
+};
+// mapLayers drops the Esri layers on native / without a key.
+const layerIds = Object.keys(BASE_LAYERS).filter((id) => mapLayers.includes(id));
+
+function savedLayer() {
+  let id = null;
+  try { id = localStorage.getItem(MAP_LAYER_KEY); } catch { /* private mode */ }
+  return layerIds.includes(id) ? id : (layerIds[0] || 'liq');
+}
 
 const props = defineProps({
   points: { type: Array, default: () => [] },     // [[t, lat, lng, speed, course], ...]
@@ -29,6 +73,21 @@ let marker = null;
 let arrowEl = null;
 let ro = null;
 let progressIdx = -1;
+let baseLayer = null;
+const layerId = ref(savedLayer());
+const layerName = computed(() => BASE_LAYERS[layerId.value]?.name || '');
+
+function showLayer(id) {
+  if (!map || !BASE_LAYERS[id]) return;
+  baseLayer?.remove();
+  baseLayer = BASE_LAYERS[id].create().addTo(map);
+  layerId.value = id;
+}
+
+function nextLayer() {
+  if (layerIds.length < 2) return;
+  showLayer(layerIds[(layerIds.indexOf(layerId.value) + 1) % layerIds.length]);
+}
 
 const BRAND = '#0076f5';
 
@@ -124,9 +183,7 @@ onMounted(() => {
   map = L.map(el.value, {
     zoomControl: false, attributionControl: false, rotateControl: false, center: [14.5995, 120.9842], zoom: 13,
   });
-  L.tileLayer(`https://{s}-tiles.locationiq.com/v3/streets/r/{z}/{x}/{y}.png?key=${liqKey}`, {
-    subdomains: 'abc', maxZoom: 19,
-  }).addTo(map);
+  showLayer(layerId.value);
   L.control.zoom({ position: 'bottomright' }).addTo(map);
   map.on('dragstart', () => { following.value = false; });
   ro = new ResizeObserver(() => map && map.invalidateSize());
@@ -140,6 +197,7 @@ onBeforeUnmount(() => {
   ro?.disconnect();
   map?.remove();
   map = null;
+  baseLayer = null;
   marker = null;
   arrowEl = null;
   trailLine = null;
@@ -161,6 +219,16 @@ watch(() => props.trail, updateTrail);
       :aria-label="mode === 'playback' ? 'Show whole trip' : 'Follow vehicle'"
     >
       <i class="fa-solid" :class="mode === 'playback' ? 'fa-expand' : 'fa-location-crosshairs'"></i>
+    </button>
+    <button
+      v-if="layerIds.length > 1"
+      type="button"
+      @click="nextLayer"
+      class="absolute top-[3.75rem] right-3 z-[500] w-10 h-10 rounded-full bg-white shadow-md flex items-center justify-center text-gray-600 hover:text-brand"
+      :title="`Map: ${layerName}`"
+      :aria-label="`Change map (now ${layerName})`"
+    >
+      <i class="fa-solid fa-layer-group"></i>
     </button>
   </div>
 </template>
