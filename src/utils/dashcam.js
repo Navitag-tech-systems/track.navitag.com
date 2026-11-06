@@ -73,7 +73,7 @@ export const PLAYBACK_MIN_SEGMENTS = 3;
 // The receiver keys every stream on the SIM number + channel in the JT/T 1078
 // frame header, so any number of devices and channels can stream at once.
 // (Recorded playback via 0x9201 stays on Traccar — it's already continuous.)
-export const LIVE_MEDIA_IP = '159.65.135.101';        // medusa public IP (device dials over cellular)
+export const LIVE_MEDIA_IP = '159.223.52.106';        // medusa on the track4 droplet since 2026-11 (device dials over cellular)
 export const LIVE_MEDIA_PORT = 7801;
 export const LIVE_HLS_BASE = 'https://mcp.navitag.com/live';
 

@@ -316,7 +316,7 @@ describe('multi-channel live', () => {
 
   it('points 0x9101 at medusa:7801 for the requested channel', () => {
     const body = body9101({ ch: 3 });
-    expect(body).toBe('0e' + utf8Hex('159.65.135.101') + '1e79' + '0000' + '03' + '00' + '01');
+    expect(body).toBe('0e' + utf8Hex('159.223.52.106') + '1e79' + '0000' + '03' + '00' + '01');
     expect(liveStartCommand(3)).toEqual({ type: 'custom', attributes: { data: `9101:${body}` } });
   });
 

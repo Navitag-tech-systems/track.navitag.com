@@ -157,7 +157,7 @@ describe('sources', () => {
     const cmd = playbackCommand({ attributes: { 'decoder.timezone': 'UTC' } }, 1, Date.UTC(2026, 10, 2, 10, 3, 0), Date.UTC(2026, 10, 2, 10, 40, 0));
     const hex = cmd.attributes.data;
     expect(hex.startsWith('9201:')).toBe(true);
-    const ipHex = Buffer.from('159.65.135.101').toString('hex');
+    const ipHex = Buffer.from('159.223.52.106').toString('hex');
     expect(hex).toContain(ipHex + '1e790000');
     expect(hex.endsWith('261102100300261102104000')).toBe(true);
   });
