@@ -19,6 +19,7 @@ import { useVideoAspect } from './dashcamAspect';
 import PlaybackTimeline from './PlaybackTimeline.vue';
 import DayHourPicker from './DayHourPicker.vue';
 import DownloadSheet from './DownloadSheet.vue';
+import PlaybackTile from './PlaybackTile.vue';
 import {
   videoChannels, deviceTimeZone, sendCommand, liveHlsUrl, waitForHls, clipIsSynced,
 } from '@/utils/dashcam';
@@ -42,6 +43,19 @@ const tz = computed(() => deviceTimeZone(props.device));
 const channels = computed(() => videoChannels(props.device));
 const ch = ref(channels.value[0]?.index ?? 1);
 const online = computed(() => deviceStore.isDeviceOnline(props.device));
+
+// "All": the selected camera stays the main player (playhead, sound, timeline,
+// download); every other camera plays beside it in a muted PlaybackTile that
+// follows the playhead. 2 columns, as many rows as needed.
+const allMode = ref(false);
+const followers = computed(() => (allMode.value ? channels.value.filter((c) => c.index !== ch.value) : []));
+const grid = computed(() => followers.value.length > 0);
+const boxAspect = computed(() => {
+  const n = 1 + followers.value.length;
+  if (n <= 1) return aspect.value;
+  return (aspect.value * 2) / Math.ceil(n / 2);
+});
+const camName = (index) => channels.value.find((c) => c.index === index)?.name || `Camera ${index}`;
 
 // --- time selection --------------------------------------------------------------
 
@@ -479,7 +493,12 @@ function skip(sec) {
   playAt(t.value + sec * 1000, { autoplay: go, allowRemote: go });
 }
 
+function pickAll() {
+  allMode.value = true;
+}
+
 function pickCamera(index) {
+  allMode.value = false;
   if (index === ch.value) return;
   const wasPlaying = isPlaying.value;
   ch.value = index;
@@ -679,7 +698,7 @@ watch(online, (on) => {
 
 <template>
   <!-- Stacked on narrow screens, side by side from 1024 px: dashcamLayout.css -->
-  <div class="dc-layout pb-layout" :style="{ '--dc-aspect': aspect }">
+  <div class="dc-layout pb-layout" :style="{ '--dc-aspect': boxAspect }">
     <!-- Hour bar: first row when stacked; top of the map column side by side. -->
     <div class="pb-hourbar bg-white border-b border-gray-200 px-2 py-2">
       <div class="flex items-center gap-0.5 bg-gray-100 rounded-2xl p-0.5 max-w-xl mx-auto">
@@ -700,6 +719,8 @@ watch(online, (on) => {
 
     <div class="bg-black">
     <div class="pb-video dc-video relative mx-auto w-full bg-black">
+    <div class="absolute inset-0" :class="grid ? 'grid grid-cols-2 auto-rows-fr gap-0.5' : ''">
+    <div class="relative w-full h-full overflow-hidden">
       <HlsVideo
         v-if="videoSrc"
         ref="playerRef"
@@ -717,16 +738,23 @@ watch(online, (on) => {
       />
       <button v-if="videoSrc && (status === 'playing' || status === 'paused')" type="button" class="absolute inset-0 w-full h-full" @click="togglePlay" :aria-label="isPlaying ? 'Pause' : 'Play'"></button>
 
-      <div v-if="channels.length > 1" class="absolute top-2.5 left-2.5 flex gap-1.5">
+      <div v-if="channels.length > 1" class="absolute top-2.5 left-2.5 right-2.5 flex flex-wrap gap-1.5 z-10">
         <button
           v-for="c in channels"
           :key="c.index"
           type="button"
           @click="pickCamera(c.index)"
           class="h-[30px] px-3 rounded-full text-xs font-bold"
-          :class="c.index === ch ? 'bg-white text-gray-800' : 'bg-black/55 text-white'"
+          :class="!allMode && c.index === ch ? 'bg-white text-gray-800' : 'bg-black/55 text-white'"
         >{{ c.name }}</button>
+        <button
+          type="button"
+          @click="pickAll"
+          class="h-[30px] px-3 rounded-full text-xs font-bold flex items-center gap-1"
+          :class="allMode ? 'bg-white text-gray-800' : 'bg-black/55 text-white'"
+        ><i class="fa-solid fa-table-cells-large text-[10px]"></i> All ({{ channels.length }})</button>
       </div>
+      <span v-if="grid" class="absolute left-2.5 top-11 bg-black/60 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">{{ camName(ch) }}</span>
 
       <span class="absolute right-2.5 bottom-2.5 text-[13px] font-bold text-white bg-black/60 px-2 py-1 rounded-md tabular-nums">{{ fmtHMS(t) }}</span>
       <span v-if="fixNow" class="absolute left-2.5 bottom-2.5 text-xs font-semibold text-white bg-black/60 px-2 py-1 rounded-md">{{ Math.round(fixNow.kmh) }} km/h</span>
@@ -758,6 +786,23 @@ watch(online, (on) => {
         <p class="text-sm font-semibold">{{ errorMsg }}</p>
         <button type="button" @click="playAt(t, { autoplay: true })" class="h-10 px-4 rounded-full bg-white text-gray-800 text-sm font-bold">Try again</button>
       </div>
+    </div>
+    <PlaybackTile
+      v-for="c in followers"
+      :key="c.index"
+      :device="device"
+      :server="server || ''"
+      :ch="c.index"
+      :name="c.name"
+      :t="t"
+      :playing="isPlaying && !downloadOpen"
+      :allow-remote="isPlaying && !downloadOpen"
+      :online="online"
+      :clips="clips"
+      :cache="cache"
+      :hub-check="hubCheck"
+    />
+    </div>
     </div>
     </div>
 
