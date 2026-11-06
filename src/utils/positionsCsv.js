@@ -43,15 +43,10 @@ function cell(value) {
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-// VT100 carries ignition on input bit 1. Traccar usually decodes it into
-// attributes.ignition, but not on every protocol/firmware pair -- so fall back
-// to the raw mask rather than exporting a blank column for a vehicle that was
-// plainly running.
-function readIgnition(attrs) {
-  if (typeof attrs.ignition === 'boolean') return attrs.ignition;
-  if (attrs.input !== undefined) return (Number(attrs.input) & 2) > 0;
-  return null;
-}
+// Protocol-aware: attributes.ignition, else navtelecom in1, else the VT100
+// input bit 1 (startek/osmand only -- other protocols' `input` means something
+// else). See utils/telemetry.js.
+import { readIgnition } from './telemetry.js';
 
 /**
  * @param {Array} positions raw Traccar position objects, any order
@@ -63,7 +58,7 @@ export function buildPositionsCsv(positions) {
     .sort((a, b) => new Date(a.fixTime) - new Date(b.fixTime))
     .map((p) => {
       const attrs = p.attributes || {};
-      const ignition = readIgnition(attrs);
+      const ignition = readIgnition(p);
       return [
         p.fixTime,
         p.latitude,

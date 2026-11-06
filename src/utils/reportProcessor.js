@@ -1,6 +1,28 @@
 /**
- * VT100 Location Processing Module for Map Rendering & Event Logging
+ * Location Processing Module for Map Rendering & Event Logging.
+ *
+ * Written for iStartek VT100 (protocol "startek"); every telemetry value is now
+ * read through utils/telemetry.js so navtelecom, h02 and jt808 positions produce
+ * the same events: ignition from in1 on navtelecom, iStartek event codes only on
+ * protocols that use them, Traccar `alarm` keys on the others, and CSQ rssi
+ * converted to dBm.
  */
+import {
+  readIgnition,
+  readPower,
+  readBattery,
+  readSignalDbm,
+  readStartekEvent,
+  readAlarms,
+  usesStartekEventCodes,
+} from './telemetry.js';
+import { humanizeEvent } from './eventLabels.js';
+
+// Traccar alarm keys that the stateful power/battery logic below consumes.
+const STATEFUL_ALARMS = new Set(['powerCut', 'powerRestored', 'lowBattery']);
+// Traccar alarm keys that map onto an existing iStartek marker type.
+const ALARM_EVENT_TYPES = { sos: 'SOS', overspeed: 'Speeding' };
+
 class VT100MapProcessor {
   constructor() {
     // iStartek VT100 Event codes mapping (Appendix A)
@@ -100,9 +122,10 @@ class VT100MapProcessor {
 
     sortedPoints.forEach((point, index) => {
       const latlon = [point.latitude, point.longitude];
-      const attrs = point.attributes || {};
-      
-      const eventCode = attrs.event !== undefined ? Number(attrs.event) : undefined;
+      // iStartek code on startek/osmand; Traccar alarm keys on everything else
+      // (startek also sets `alarm`, from the same event, so it is not read twice).
+      const eventCode = readStartekEvent(point);
+      const alarms = usesStartekEventCodes(point.protocol) ? [] : readAlarms(point);
       const pointTime = new Date(point.fixTime).getTime();
       
       line.push(latlon);
@@ -111,21 +134,21 @@ class VT100MapProcessor {
       const isEnd = index === sortedPoints.length - 1;
       const localEvents = [];
 
-      const power = attrs.power;
-      const battery = attrs.battery;
-      const ignition = attrs.ignition;
+      const power = readPower(point);
+      const battery = readBattery(point);
+      const ignition = readIgnition(point); // null when the protocol has no ignition signal
       const validGps = point.valid;
-      const gsmSignal = point.network?.cellTowers?.[0]?.signalStrength || attrs.rssi;
+      const gsmSignal = readSignalDbm(point);
 
       // ==========================================
       // 1. STATEFUL EVENTS (Alarms + Telemetry)
       // ==========================================
 
       // --- Power Logic ---
-      if (eventCode === 18) {
+      if (eventCode === 18 || alarms.includes('powerCut')) {
         activeStates.isPowerCut = true;
         localEvents.push({ type: "Power Cut", description: "External power cut (Alarm)." });
-      } else if (eventCode === 19) {
+      } else if (eventCode === 19 || alarms.includes('powerRestored')) {
         activeStates.isPowerCut = false;
         localEvents.push({ type: "Power Restored", description: "External power restored (Alarm)." });
       } else if (power !== undefined) {
@@ -139,7 +162,7 @@ class VT100MapProcessor {
       }
 
       // --- Battery Logic ---
-      if (eventCode === 20) {
+      if (eventCode === 20 || alarms.includes('lowBattery')) {
         activeStates.isLowBattery = true;
         localEvents.push({ type: "Low Battery", description: "Internal battery low (Alarm)." });
       } else if (battery !== undefined) {
@@ -153,7 +176,7 @@ class VT100MapProcessor {
       }
 
       // --- Ignition Logic (Purely Boolean-Based) ---
-      if (ignition !== undefined) {
+      if (ignition !== null && ignition !== undefined) {
         if (activeStates.isIgnitionOn === null) {
           // Silent initialization on the first point of the route
           activeStates.isIgnitionOn = ignition;
@@ -209,6 +232,15 @@ class VT100MapProcessor {
           localEvents.push({ type: eventLabel, description: `Triggered event: ${eventLabel}` });
         }
       }
+
+      // Non-iStartek protocols: Traccar's normalised alarm keys. SOS and
+      // overspeed reuse the iStartek marker types; anything else is shown under
+      // its own humanised name (e.g. "Tampering") with the default colour.
+      alarms.forEach((alarm) => {
+        if (STATEFUL_ALARMS.has(alarm)) return;
+        const type = ALARM_EVENT_TYPES[alarm] || humanizeEvent(alarm);
+        localEvents.push({ type, description: `Triggered alarm: ${humanizeEvent(alarm)}` });
+      });
 
       // ==========================================
       // 3. Evaluate Distance/Time Gap Waypoints

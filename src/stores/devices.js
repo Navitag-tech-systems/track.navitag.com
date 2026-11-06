@@ -6,6 +6,7 @@ import { useRouter } from 'vue-router';
 import { request, RECONNECT_TIMEOUT_MS } from '@/utils/http';
 import { baseUrl, categoryMapping } from '@/utils/variables';
 import { OWNER_SENTINEL } from '@/utils/scopes';
+import { readIgnition, readPower, readBattery, readSignalDbm } from '@/utils/telemetry';
 
 // Canonical plan_level is lowercase ('pro', 'basic'). Older API shapes shipped
 // 'Pro' / 'Basic', so normalize to lowercase on ingestion — the stored value
@@ -210,15 +211,17 @@ export const useDevicesStore = defineStore('devices', () => {
         }
 
         Object.assign(device, {
-          ignition: pos.attributes?.ignition || false,
+          // Protocol-aware (utils/telemetry.js): navtelecom reports ignition
+          // on in1 only, so `attributes.ignition` alone left it always Off.
+          ignition: readIgnition(pos) === true,
           speed: pos.speed,
           event: pos.attributes?.event || pos.event,
           // Raw per-position attribute: present on an alarm report, absent on
           // the next normal one, which is exactly the clear rule for the red
           // marker. Not sticky by design.
           alarm: pos.attributes?.alarm ?? null,
-          power: pos.attributes?.power,
-          battery: pos.attributes?.battery,
+          power: readPower(pos),
+          battery: readBattery(pos),
           sat: pos.attributes?.sat, 
           hdop: pos.attributes?.hdop, 
           latlon: [pos.latitude, pos.longitude],
@@ -227,7 +230,9 @@ export const useDevicesStore = defineStore('devices', () => {
           fixTime: pos.fixTime,
           updateTime: pos.serverTime || pos.deviceTime,
           connectionType: pos.network?.radioType,
-          signalLevel: pos.network?.cellTowers?.[0]?.signalStrength,
+          // Cell-tower dBm as before, else attributes.rssi (jt808 CSQ 0..31
+          // converted to dBm) so dashcams no longer read N/A.
+          signalLevel: readSignalDbm(pos),
           address: pos.address,
           geofences: pos.geofenceIds,
           valid: pos.valid,
