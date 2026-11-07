@@ -27,10 +27,10 @@ Vue 3 + Capacitor 8 mobile app for GPS device tracking. Connects to `api.navitag
 ## Project Status
 
 ### Business emails on /account (2026-11-07, on `main`, web deployed by push; native apps not rebuilt)
-- `src/components/BusinessEmailSettings.vue` on `/account`, below Profile. Renders only when `GET /business/settings` returns accounts: the caller owns linked `business` units of an ACTIVE `business_accounts` row (today: Lionking, Fuji test, MCE Rocktech owners). A failed fetch also hides it.
+- `src/components/BusinessEmailSettings.vue` on `/account`, below Profile. Renders only when `GET /business/settings` returns accounts: the caller owns linked `business` units of an ACTIVE `business_accounts` row. A failed fetch also hides it.
 - Edits billing emails (the real billing recipients, first = main/To), daily report and weekly report recipients + on/off switches; `PUT /business/settings/{id}`. Report emails are stored only — no report job exists yet.
 - Validation mirrors the API (`src/utils/businessEmails.js`): ≥1 billing email, enabled report needs a recipient, max 10 per list.
-- Tests: `src/utils/businessEmails.test.js`, `src/components/BusinessEmailSettings.test.js`. API live-tested 18/18 on the Fuji test account (restored).
+- Tests: `src/utils/businessEmails.test.js`, `src/components/BusinessEmailSettings.test.js`. API live-tested 18/18 on an internal test account (restored).
 
 ### Geofence name replaces address when inside (2026-11-07, on `main`, web deployed by push; native apps not rebuilt)
 - Label = the caller's geofence name when the position is inside one, else the address. Shown in DeviceCard, map selected-device strip, device detail, daily-route timeline.
