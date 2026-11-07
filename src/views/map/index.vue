@@ -7,6 +7,7 @@ import { useUserLocationStore } from '@/stores/userLocation.js';
 import ShareModal from '@/components/ShareModal.vue';
 import SharedBadge from '@/components/SharedBadge.vue';
 import { hasScope } from '@/utils/scopes';
+import { isDashcam } from '@/utils/dashcam';
 
 const router = useRouter();
 const deviceStore = useDevicesStore();
@@ -261,6 +262,16 @@ const getGpsQuality = (device) => {
         </div>
 
         <div class="flex items-center gap-1.5">
+          <!-- Same rule and route as the Video button on DeviceCard. -->
+          <button
+            v-if="isDashcam(deviceStore.deviceSelectedObject)"
+            @click="router.push(`/dashcam/${deviceStore.deviceSelectedObject.id}`)"
+            class="text-brand bg-brand-light hover:bg-brand-light w-6 h-6 rounded-lg transition-colors flex items-center justify-center"
+            aria-label="Dashcam video"
+            title="Video"
+          >
+            <i class="fa-solid fa-video text-[11px]"></i>
+          </button>
           <button
             v-if="hasScope(deviceStore.deviceSelectedObject, 'energy:read')"
             @click="router.push(`/device/settings/${deviceStore.deviceSelectedObject.id}`)"

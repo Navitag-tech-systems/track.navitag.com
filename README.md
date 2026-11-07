@@ -26,6 +26,9 @@ Vue 3 + Capacitor 8 mobile app for GPS device tracking. Connects to `api.navitag
 
 ## Project Status
 
+### Map: Video button on the selected-device panel (2026-11-07, on `main`, web deployed by push; native apps not rebuilt)
+- `src/views/map/index.vue`: a video icon button left of the gear/Details buttons, shown only when `isDashcam(device)` (jt808 protocol or `attributes.videoChannels`), opening `/dashcam/<id>` — same rule and route as the Video button on DeviceCard. Test: `src/views/map/index.test.js`.
+
 ### Business emails on /account (2026-11-07, on `main`, web deployed by push; native apps not rebuilt)
 - `src/components/BusinessEmailSettings.vue` on `/account`, below Profile. Renders only when `GET /business/settings` returns accounts: the caller owns linked `business` units of an ACTIVE `business_accounts` row. A failed fetch also hides it.
 - Edits billing emails (the real billing recipients, first = main/To), daily report and weekly report recipients + on/off switches; `PUT /business/settings/{id}`. Report emails are stored only — no report job exists yet.
