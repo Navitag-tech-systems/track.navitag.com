@@ -26,6 +26,11 @@ Vue 3 + Capacitor 8 mobile app for GPS device tracking. Connects to `api.navitag
 
 ## Project Status
 
+### Dashcam Playback starts by itself after "Looking for video" (2026-11-07, on `main`, web deployed by push; native apps not rebuilt)
+- `PlaybackView.vue`: new `autoPlay` flag, set when an hour is opened (page open, Route History link, hour picker, hour arrows, rolling into the next hour) or "Check again" is pressed. While set, video found for the hour plays without a tap, **including streaming it off the camera (0x9201, vehicle SIM data)** when that is its only copy. Before, opening an hour never woke the camera and stopped on "tap to play".
+- Cleared when playback starts, when the user takes over (play/pause, seek, skip, camera, download) and when the hour's video check finishes, so a camera that wakes later (vehicle switched on) never streams to an unattended page. A camera that is off is never woken.
+- Test: `src/components/dashcam/PlaybackView.autostart.test.js` (fails on the previous version).
+
 ### Route History: Video Playback for dashcams (2026-11-07, on `main`, web deployed by push; native apps not rebuilt)
 - `src/views/history/setup.vue`: when the selected tracker `isDashcam`, a **Video Hour** selector follows the date (24 hours, later-than-now hours of today disabled, defaults to the current hour) and a **Video Playback** button sits below Generate Report.
 - The button opens `/dashcam/<id>?tab=playback&day=YYYY-MM-DD&hour=H`. `views/dashcam/index.vue` parses it with `playbackStartFromQuery` (utils/dashcamPlayback.js; local time; null when missing, malformed or in the future) and passes `startAt` to `PlaybackView`, which opens on that hour instead of the latest driving hour.

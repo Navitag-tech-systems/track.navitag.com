@@ -206,7 +206,28 @@ async function askCamera(cam, from, to, run) {
   });
 }
 
-async function ensureList({ force = false } = {}) {
+// The hour's video check ends the automatic start: video found during it
+// starts by itself, but a camera that wakes up much later (vehicle switched on)
+// must not stream to a page nobody may be watching. openToken guards against
+// an older hour's check clearing a newer hour's flag.
+async function ensureList(opts) {
+  const my = openToken;
+  try {
+    await checkHour(opts);
+  } finally {
+    if (my === openToken) autoPlay.value = false;
+  }
+}
+
+// "Check again" button: an explicit request, so video it finds starts by itself
+// too (only when nothing is playing: see the novideo/looking guards below).
+function recheck() {
+  openToken++;
+  autoPlay.value = true;
+  ensureList({ force: true });
+}
+
+async function checkHour({ force = false } = {}) {
   if (listing.value || !server.value) return;
   if (!force) {
     if (hourChecked.value) return;
@@ -232,7 +253,7 @@ async function ensureList({ force = false } = {}) {
       if (autoStart.value) followFirstVideo();
       // Otherwise show this camera's video at the playhead once it is known.
       else if (c.index === ch.value && ['novideo', 'looking'].includes(status.value)) {
-        playAt(t.value, { autoplay: false, allowRemote: false });
+        playAt(t.value, { autoplay: autoPlay.value, allowRemote: autoPlay.value });
       }
     }
   } catch (err) {
@@ -249,7 +270,7 @@ async function ensureList({ force = false } = {}) {
   } else if (!listNote.value) {
     listNote.value = !answered ? (online.value ? 'noanswer' : 'queued') : 'partial';
   }
-  if (['novideo', 'looking'].includes(status.value)) playAt(t.value, { autoplay: false, allowRemote: false });
+  if (['novideo', 'looking'].includes(status.value)) playAt(t.value, { autoplay: autoPlay.value, allowRemote: autoPlay.value });
 }
 
 const listMessage = computed(() => {
@@ -319,6 +340,9 @@ function onLoadedMeta() {
 function onPlaying() {
   status.value = 'playing';
   ending = false;
+  // Playback is under way: video found later no longer moves or restarts it.
+  autoPlay.value = false;
+  autoStart.value = false;
 }
 
 function onPause() {
@@ -341,7 +365,8 @@ async function stopRemote() {
 }
 
 // Play camera `ch` at instant `target`. allowRemote=false never wakes the
-// camera on its own (hour changes, first open); the play button does.
+// camera; it is true for the play button and while autoPlay is set (an hour
+// was just opened), so found video starts without a tap.
 async function playAt(target, { autoplay = true, allowRemote = true, freshIndex = false } = {}) {
   const my = ++resolveToken;
   t.value = Math.max(hourMs.value, Math.min(target, hourEnd.value - 1000));
@@ -473,6 +498,7 @@ const isPlaying = computed(() => status.value === 'playing');
 
 function togglePlay() {
   autoStart.value = false;
+  autoPlay.value = false;
   const v = video();
   if (status.value === 'playing' && v) {
     v.pause();
@@ -491,6 +517,7 @@ function togglePlay() {
 
 function skip(sec) {
   autoStart.value = false;
+  autoPlay.value = false;
   // Only a playing player may wake the camera; a paused one just moves.
   const go = isPlaying.value || status.value === 'loading';
   playAt(t.value + sec * 1000, { autoplay: go, allowRemote: go });
@@ -503,6 +530,7 @@ function pickAll() {
 function pickCamera(index) {
   allMode.value = false;
   if (index === ch.value) return;
+  autoPlay.value = false;
   const wasPlaying = isPlaying.value;
   ch.value = index;
   source.value = null;
@@ -517,12 +545,14 @@ function toggleMute() {
 
 function onScrub(nt) {
   autoStart.value = false;
+  autoPlay.value = false;
   scrubbing.value = true;
   t.value = nt;
 }
 
 function onSeek(nt) {
   autoStart.value = false;
+  autoPlay.value = false;
   scrubbing.value = false;
   // Keep playing if it was playing; a paused player stays paused at the new time.
   playAt(nt, { autoplay: isPlaying.value, allowRemote: isPlaying.value });
@@ -530,6 +560,7 @@ function onSeek(nt) {
 
 function onMapSeek(sec) {
   autoStart.value = false;
+  autoPlay.value = false;
   playAt(hourMs.value + sec * 1000, { autoplay: isPlaying.value, allowRemote: isPlaying.value });
 }
 
@@ -549,6 +580,7 @@ const downloadOpen = ref(false);
 // the player goes back to "tap to play" at the same instant).
 async function openDownload() {
   autoStart.value = false;
+  autoPlay.value = false;
   video()?.pause();
   resolveToken++;                 // abandon a playback still starting
   if (source.value?.kind === 'remote' || remote) {
@@ -582,11 +614,19 @@ function firstVideoOf(h) {
 // hour's first video.
 const autoStart = ref(false);
 
+// True from opening an hour (page open, Route History link, hour picker, hour
+// arrows, rolling into the next hour) until playback starts or the user takes
+// over (play/pause, seek, skip, camera, download). While true, the video found
+// for the hour starts by itself, from the camera too when that is its only
+// copy: no "tap to play" between "Looking for video" and the video.
+const autoPlay = ref(false);
+let openToken = 0;              // bumps on every selectHour, see ensureList
+
 function followFirstVideo() {
   if (!autoStart.value) return;
   const first = firstVideoOf(hourMs.value);
   if (first == null || Math.abs(first - t.value) < 1000) return;
-  playAt(first, { autoplay: false, allowRemote: false });
+  playAt(first, { autoplay: autoPlay.value, allowRemote: autoPlay.value });
 }
 
 async function selectHour(h, { at = null, autoplay = false } = {}) {
@@ -601,11 +641,13 @@ async function selectHour(h, { at = null, autoplay = false } = {}) {
     await loadDay(day);
   }
   listNote.value = '';
+  openToken++;
+  autoPlay.value = true;
   await refreshCache();
   if (hourMs.value !== h) return;
   autoStart.value = at == null;
   const target = at ?? firstVideoOf(h) ?? h;
-  playAt(target, { autoplay, allowRemote: false });
+  playAt(target, { autoplay: autoplay || autoPlay.value, allowRemote: autoPlay.value });
   ensureList();
 }
 
@@ -850,7 +892,7 @@ watch(online, (on) => {
 
     <div v-if="listMessage" class="px-4 py-2 bg-amber-50 border-b border-amber-100 flex items-center gap-2">
       <p class="flex-1 text-xs text-amber-900 leading-snug">{{ listMessage }}</p>
-      <button v-if="['asleep', 'noanswer', 'partial'].includes(listNote)" type="button" @click="ensureList({ force: true })" class="h-9 px-3 rounded-lg bg-white border border-amber-200 text-xs font-bold text-amber-900 shrink-0">
+      <button v-if="['asleep', 'noanswer', 'partial'].includes(listNote)" type="button" @click="recheck" class="h-9 px-3 rounded-lg bg-white border border-amber-200 text-xs font-bold text-amber-900 shrink-0">
         {{ listNote === 'asleep' ? 'Check when on' : 'Try again' }}
       </button>
     </div>
