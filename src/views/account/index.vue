@@ -6,6 +6,7 @@ import { useInstallStore } from '@/stores/install.js';
 import { useNotificationsStore } from '@/stores/notifications.js';
 import QrDisplayModal from '@/components/QrDisplayModal.vue';
 import InlineLoader from '@/components/InlineLoader.vue';
+import BusinessEmailSettings from '@/components/BusinessEmailSettings.vue';
 import { humanizeEvent } from '@/utils/eventLabels';
 import { signOut } from '@/utils/auth';
 import { auth } from '@/firebase';
@@ -484,6 +485,9 @@ const handleLogout = async () => {
           </button>
         </form>
       </div>
+
+      <!-- Owners of an active business account's units only; renders nothing otherwise. -->
+      <BusinessEmailSettings />
 
       <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
         <h2 class="text-lg font-bold text-gray-800 mb-4">Notifications</h2>
