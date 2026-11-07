@@ -144,7 +144,7 @@ const goToVideo = () => router.push(`/dashcam/${props.device.id}`);
       <div class="pt-3 border-t border-gray-100">
         <div class="flex items-start text-xs text-gray-600 mb-2">
           <div class="w-5 mt-0.5 text-gray-400 text-center"><i class="fa-solid fa-location-dot"></i></div>
-          <span class="line-clamp-1 leading-tight">{{ device.address || 'Address calculating...' }}</span>
+          <span class="line-clamp-1 leading-tight">{{ deviceStore.locationLabels[device.id] || 'Address calculating...' }}</span>
         </div>
         <div class="flex items-center text-[10px] text-gray-400 pl-1">
           <i class="fa-regular fa-clock mr-1.5"></i>

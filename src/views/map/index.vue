@@ -233,7 +233,7 @@ const getGpsQuality = (device) => {
         </span>
         <p class="text-[10px] text-gray-500 truncate flex-1">
           <i class="fa-solid fa-location-dot text-accent mr-1"></i>
-          {{ deviceStore.deviceSelectedObject.address || 'Locating...' }}
+          {{ deviceStore.locationLabels[deviceStore.deviceSelectedObject.id] || 'Locating...' }}
         </p>
       </div>
 

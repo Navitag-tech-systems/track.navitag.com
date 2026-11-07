@@ -26,6 +26,14 @@ Vue 3 + Capacitor 8 mobile app for GPS device tracking. Connects to `api.navitag
 
 ## Project Status
 
+### Geofence name replaces address when inside (2026-11-07, on `main`, web deployed by push; native apps not rebuilt)
+- Label = the caller's geofence name when the position is inside one, else the address. Shown in DeviceCard, map selected-device strip, device detail, daily-route timeline.
+- Scope: only the caller's geofences (`deviceStore.geofences`, from `GET /geofence` = the caller's Traccar group). Never the owner's.
+- Owned devices: Traccar `geofenceIds` (evaluated against the caller's group; matches geofence notifications).
+- Shared devices: point-in-polygon (`src/utils/geofence.js`) on the caller's polygons, because Traccar evaluates a device only against its owner's group.
+- Live labels: `deviceStore.locationLabels` computed (re-derives on position / geofence change, not per render). History: computed once per load.
+- Tests: `src/utils/geofence.test.js`, `src/stores/devices.geofenceLabel.test.js` (synthetic owner/sharee fixtures). Verified against live tserver1 data for one shared fleet on 2026-11-07: sharee polygon results matched the owner's Traccar `geofenceIds` on all 18 units.
+
 ### Dashcam "All" cameras back in Live, new in Playback (2026-11-06, on `main`, web deployed by push; native apps not rebuilt; not tested on a dashcam)
 
 **Live (`LiveStream.vue`):** the "All (n)" chip is back (removed in c284f52) on top of the current view (map, 5-min limit, serialised start/stop, real aspect). State is a list of streams, one per camera, each tagged with its start run: All sends one 0x9101 per camera 300 ms apart, HLS waits run in parallel, tiles fail independently (the limit keeps running unless every camera failed), Stop / limit / leave send videoStop for every started camera, and a change of choice stops all current streams before starting the next set. The late-stop guards are per camera (a 0x9101 still in flight when superseded is closed again unless that camera is in the new set). Grid = 2 columns; the box aspect is frame × 2 / rows so the layout sizing still fits. Tests: `LiveStream.test.js` (+5).

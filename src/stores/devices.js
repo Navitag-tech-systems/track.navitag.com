@@ -7,6 +7,7 @@ import { request, RECONNECT_TIMEOUT_MS } from '@/utils/http';
 import { baseUrl, categoryMapping } from '@/utils/variables';
 import { OWNER_SENTINEL } from '@/utils/scopes';
 import { readIgnition, readPower, readBattery, readSignalDbm } from '@/utils/telemetry';
+import { pointInPolygon, polygonBounds } from '@/utils/geofence';
 
 // Canonical plan_level is lowercase ('pro', 'basic'). Older API shapes shipped
 // 'Pro' / 'Basic', so normalize to lowercase on ingestion — the stored value
@@ -399,7 +400,7 @@ export const useDevicesStore = defineStore('devices', () => {
             });
           }
 
-          allgeos[g.id] = { name: g.name, points: parsedPoints };
+          allgeos[g.id] = { name: g.name, points: parsedPoints, bounds: polygonBounds(parsedPoints) };
 
         });
       }
@@ -670,6 +671,59 @@ export const useDevicesStore = defineStore('devices', () => {
   // client code deletes on it: the server refuses at the limit with a 409, and
   // that refusal is the authority. Guessing low here costs the user one blocked
   // tap and a clear message; it can no longer cost them a geofence.
+  // `geofences` holds ONLY the caller's geofences (GET /geofence lists by the
+  // caller's Traccar group). Two sources decide which of them a position is in:
+  //
+  //   owned  — Traccar's geofenceIds. Traccar evaluates a device against its
+  //            own group, which for an owned device is the caller's group, so
+  //            the ids are authoritative and match geofence notifications.
+  //   shared — point-in-polygon against the caller's polygons. The device sits
+  //            in the OWNER's group, so its geofenceIds are the owner's and are
+  //            never evaluated against the viewer's geofences. The owner's ids
+  //            are not in `geofences`, so their names can never leak.
+
+  // Name of the first of the caller's geofences among `geofenceIds`, else null.
+  function geofenceNameFor(geofenceIds) {
+    if (!Array.isArray(geofenceIds)) return null;
+    for (const id of geofenceIds) {
+      const g = geofences[id];
+      if (g?.name) return g.name;
+    }
+    return null;
+  }
+
+  // Name of the first of the caller's geofences containing the point, else null.
+  function geofenceNameAt(lat, lng) {
+    for (const g of Object.values(geofences)) {
+      if (pointInPolygon(lat, lng, g.points, g.bounds)) return g.name;
+    }
+    return null;
+  }
+
+  // Display label for a position: the caller's geofence name when inside one,
+  // else the reverse-geocoded address (null when neither is known).
+  function locationLabel({ shared, geofenceIds, lat, lng, address }) {
+    const name = shared ? geofenceNameAt(lat, lng) : geofenceNameFor(geofenceIds);
+    return name || address || null;
+  }
+
+  // Live label per device id. A computed so it re-derives only when a
+  // position, the shared flag or the geofence list changes — not on every
+  // re-render (the 1 s `now` tick re-renders cards).
+  const locationLabels = computed(() => {
+    const out = {};
+    for (const [id, d] of Object.entries(devices)) {
+      out[id] = locationLabel({
+        shared: d.shared === true,
+        geofenceIds: d.geofences,
+        lat: d.latlon?.[0],
+        lng: d.latlon?.[1],
+        address: d.address,
+      });
+    }
+    return out;
+  });
+
   const geofenceLimit = computed(() => entitlement.value?.geofence_limit ?? 2);
   const canCreateGeofence = computed(() => Object.keys(geofences).length < geofenceLimit.value);
 
@@ -678,6 +732,7 @@ export const useDevicesStore = defineStore('devices', () => {
     deviceSelectedObject, deviceSelected, mapUpdate, draftPolygon, activeRoute,
     sharedToMe, now, isDeviceOnline, hasLoadedOnce,
     entitlement, geofenceLimit, canCreateGeofence,
+    geofenceNameFor, geofenceNameAt, locationLabel, locationLabels,
     markerColor, refreshMarkerColor,
     processSocketData,
     fetchDevices, fetchGeofences, fetchDeviceExpirations, fetchSharedToMe, fetchAll, updateDevice,

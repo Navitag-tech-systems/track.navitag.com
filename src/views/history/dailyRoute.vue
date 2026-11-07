@@ -114,7 +114,16 @@ const fetchHistory = async () => {
 
         return {
           ...pos,
-          markerId, 
+          // Computed once per load, not per render. Owned: Traccar geofenceIds;
+          // shared: point-in-polygon on the viewer's own geofences.
+          locationLabel: deviceStore.locationLabel({
+            shared: device.value?.shared === true,
+            geofenceIds: pos.geofenceIds,
+            lat: pos.latitude,
+            lng: pos.longitude,
+            address: pos.address,
+          }),
+          markerId,
           markerData,
           events: pointEvents
         };
@@ -367,7 +376,7 @@ onUnmounted(() => {
                   
                   <p class="text-[10px] truncate mt-0.5 transition-colors"
                      :class="deviceStore.deviceSelected === item.markerId ? 'text-gray-700' : 'text-gray-500'">
-                    {{ item.address || `${item.latitude.toFixed(5)}, ${item.longitude.toFixed(5)}` }}
+                    {{ item.locationLabel || `${item.latitude.toFixed(5)}, ${item.longitude.toFixed(5)}` }}
                   </p>
                 </div>
               </div>

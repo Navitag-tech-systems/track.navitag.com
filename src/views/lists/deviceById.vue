@@ -262,7 +262,7 @@ async function toggleActivityLock() {
         <div class="divide-y divide-gray-100">
           <div class="p-3 text-sm">
             <span class="block text-gray-500 mb-1">Address</span>
-            <span class="block font-medium text-gray-800 leading-snug">{{ device.address || 'Resolving address...' }}</span>
+            <span class="block font-medium text-gray-800 leading-snug">{{ deviceStore.locationLabels[device.id] || 'Resolving address...' }}</span>
           </div>
           <div class="flex justify-between p-3 text-sm">
             <span class="text-gray-500">Coordinates</span>
