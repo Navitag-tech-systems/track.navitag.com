@@ -26,6 +26,11 @@ Vue 3 + Capacitor 8 mobile app for GPS device tracking. Connects to `api.navitag
 
 ## Project Status
 
+### Route History: Video Playback for dashcams (2026-11-07, on `main`, web deployed by push; native apps not rebuilt)
+- `src/views/history/setup.vue`: when the selected tracker `isDashcam`, a **Video Hour** selector follows the date (24 hours, later-than-now hours of today disabled, defaults to the current hour) and a **Video Playback** button sits below Generate Report.
+- The button opens `/dashcam/<id>?tab=playback&day=YYYY-MM-DD&hour=H`. `views/dashcam/index.vue` parses it with `playbackStartFromQuery` (utils/dashcamPlayback.js; local time; null when missing, malformed or in the future) and passes `startAt` to `PlaybackView`, which opens on that hour instead of the latest driving hour.
+- Tests: `src/views/history/setup.test.js`, `src/views/dashcam/index.test.js`, `playbackStartFromQuery` cases in `src/utils/dashcamPlayback.test.js`.
+
 ### Map: Video button on the selected-device panel (2026-11-07, on `main`, web deployed by push; native apps not rebuilt)
 - `src/views/map/index.vue`: a video icon button left of the gear/Details buttons, shown only when `isDashcam(device)` (jt808 protocol or `attributes.videoChannels`), opening `/dashcam/<id>` — same rule and route as the Video button on DeviceCard. Test: `src/views/map/index.test.js`.
 

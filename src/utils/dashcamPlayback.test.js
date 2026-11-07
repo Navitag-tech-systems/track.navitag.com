@@ -8,7 +8,7 @@ import {
   candidatesAt, downloadCandidates, sliceAround, parseRecIndex, loadListCache, saveListCache,
   isChecked, clipsFromPositions, playbackCommand, SYNC_SLICE_BASE, pickListAnswer, listEntries,
   listCommand, echoKey, fmtHour12, fmtHourRange12,
-  sliceBefore, DOWNLOAD_MINUTES, subtractRanges, planDownload, coveredMs,
+  sliceBefore, DOWNLOAD_MINUTES, subtractRanges, planDownload, coveredMs, playbackStartFromQuery,
 } from './dashcamPlayback.js';
 import { parseMediaList, LIVE_HLS_BASE, DASHCAM_MEDIA_BASE } from './dashcam.js';
 
@@ -280,5 +280,26 @@ describe('list cache', () => {
 describe('constants', () => {
   it('minute and hour', () => {
     expect(HOUR_MS).toBe(60 * MIN_MS);
+  });
+});
+
+describe('playbackStartFromQuery (Route History "Video Playback" link)', () => {
+  const now = new Date(2026, 10, 7, 14, 20).getTime();
+  it('returns the local hour start of a valid past day + hour', () => {
+    expect(playbackStartFromQuery('2026-11-06', '9', now)).toBe(new Date(2026, 10, 6, 9).getTime());
+    expect(playbackStartFromQuery('2026-11-06', 0, now)).toBe(new Date(2026, 10, 6, 0).getTime());
+  });
+  it('accepts the current hour of today', () => {
+    expect(playbackStartFromQuery('2026-11-07', '14', now)).toBe(new Date(2026, 10, 7, 14).getTime());
+  });
+  it('rejects a future hour or day', () => {
+    expect(playbackStartFromQuery('2026-11-07', '15', now)).toBeNull();
+    expect(playbackStartFromQuery('2026-11-08', '1', now)).toBeNull();
+  });
+  it('rejects malformed or impossible input', () => {
+    for (const [d, h] of [[undefined, '9'], ['2026-11-06', undefined], ['2026-11-06', ''], ['2026-11-6', '9'],
+      ['2026-02-30', '9'], ['2026-11-06', '24'], ['2026-11-06', '-1'], ['2026-11-06', '9.5'], ['2026-11-06', 'x']]) {
+      expect(playbackStartFromQuery(d, h, now)).toBeNull();
+    }
   });
 });

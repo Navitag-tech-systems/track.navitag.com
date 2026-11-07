@@ -5,6 +5,8 @@ import { useDevicesStore } from '@/stores/devices.js';
 import { hasScope } from '@/utils/scopes';
 import DatePicker from '@/components/datePicker.vue'; // Importing your component
 import SharedBadge from '@/components/SharedBadge.vue';
+import { isDashcam } from '@/utils/dashcam';
+import { HOUR_MS, fmtHourRange12 } from '@/utils/dashcamPlayback';
 
 const route = useRoute();
 const router = useRouter();
@@ -122,6 +124,41 @@ const generateReport = () => {
   
   router.push(`/history/${selectedDevice.value.uniqueId}/${selectedDate.value}/route`);
 };
+
+// --- Dashcam video playback ---
+// Dashcams also get an hour picker and a "Video Playback" button that opens the
+// dashcam page on its Playback tab at that day + hour (local time, read back by
+// utils/dashcamPlayback playbackStartFromQuery).
+const isCam = computed(() => isDashcam(selectedDevice.value));
+const videoHour = ref(new Date().getHours());
+
+const hourStartMs = (dateStr, h) => {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d, h, 0, 0, 0).getTime();
+};
+
+const hourOptions = computed(() => {
+  if (!selectedDate.value) return [];
+  const now = Date.now();
+  return Array.from({ length: 24 }, (_, h) => {
+    const start = hourStartMs(selectedDate.value, h);
+    return { value: h, label: fmtHourRange12(start, start + HOUR_MS), disabled: start > now };
+  });
+});
+
+// Today's hours after now are disabled; switching to today with one of them
+// selected falls back to the current hour.
+watch(hourOptions, (opts) => {
+  if (opts[videoHour.value]?.disabled) videoHour.value = new Date().getHours();
+});
+
+const openVideoPlayback = () => {
+  if (!selectedDevice.value || !selectedDate.value) return;
+  router.push({
+    path: `/dashcam/${selectedDevice.value.id}`,
+    query: { tab: 'playback', day: selectedDate.value, hour: String(videoHour.value) },
+  });
+};
 </script>
 
 <template>
@@ -210,8 +247,19 @@ const generateReport = () => {
           label="Report Date"
           :min="minDate"
           :max="today"
-          class="mb-8"
+          :class="isCam ? 'mb-5' : 'mb-8'"
         />
+
+        <div v-if="isCam" class="mb-8">
+          <label for="video-hour" class="block text-sm font-bold text-gray-700 mb-2">Video Hour</label>
+          <select
+            id="video-hour"
+            v-model.number="videoHour"
+            class="w-full px-4 py-3.5 bg-surface border border-gray-200 rounded-xl text-sm font-bold text-gray-700 outline-none focus:border-brand focus:ring-2 focus:ring-brand-light"
+          >
+            <option v-for="o in hourOptions" :key="o.value" :value="o.value" :disabled="o.disabled">{{ o.label }}</option>
+          </select>
+        </div>
 
         <button
           @click="generateReport"
@@ -226,6 +274,16 @@ const generateReport = () => {
         >
           Generate Report
           <i class="fa-solid fa-arrow-right"></i>
+        </button>
+
+        <button
+          v-if="isCam"
+          type="button"
+          @click="openVideoPlayback"
+          class="w-full mt-3 font-bold py-3.5 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 active:scale-[0.98] bg-brand-light text-brand hover:bg-brand hover:text-white"
+        >
+          <i class="fa-solid fa-video"></i>
+          Video Playback
         </button>
       </div>
 

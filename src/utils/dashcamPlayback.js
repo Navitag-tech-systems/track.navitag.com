@@ -93,6 +93,22 @@ export function fmtHourRange12(startMs, endMs) {
   return a[1] === b[1] ? `${a[0]} – ${b[0]} ${b[1]}` : `${a[0]} ${a[1]} – ${b[0]} ${b[1]}`;
 }
 
+// Playback start from a link (Route History page): ?day=YYYY-MM-DD&hour=0..23,
+// in the viewer's local time like every helper above. null when absent,
+// malformed, not a real date or in the future; the Playback tab then opens on
+// the latest driving hour as before.
+export function playbackStartFromQuery(day, hour, nowMs = Date.now()) {
+  if (typeof day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
+  if (hour === undefined || hour === null || hour === '') return null;
+  const h = Number(hour);
+  if (!Number.isInteger(h) || h < 0 || h > 23) return null;
+  const [y, m, d] = day.split('-').map(Number);
+  const dt = new Date(y, m - 1, d, h, 0, 0, 0);
+  if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) return null;
+  const ms = dt.getTime();
+  return ms > nowMs ? null : ms;
+}
+
 export function fmtDay(ms, opts = { weekday: 'short', day: 'numeric', month: 'short' }) {
   return new Date(ms).toLocaleDateString(undefined, opts);
 }

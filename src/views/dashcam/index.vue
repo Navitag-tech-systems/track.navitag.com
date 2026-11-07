@@ -13,6 +13,7 @@ import PlaybackView from '@/components/dashcam/PlaybackView.vue';
 import DashcamConfig from '@/components/dashcam/DashcamConfig.vue';
 import ChannelSelect from '@/components/dashcam/ChannelSelect.vue';
 import { demoEnabled, loadManifest } from '@/utils/dashcamDemo';
+import { playbackStartFromQuery } from '@/utils/dashcamPlayback';
 
 const route = useRoute();
 const router = useRouter();
@@ -41,6 +42,9 @@ watch(() => device.value?.uniqueId, async (uid) => {
 // 'clips' was the old Playback tab key; keep old links working.
 const initialTab = route.query.tab === 'clips' ? 'playback' : route.query.tab;
 const tab = ref(TABS.some((t) => t.key === initialTab) ? initialTab : 'live');
+// ?day=YYYY-MM-DD&hour=H (Route History page "Video Playback"): the hour the
+// Playback tab opens on. null = its default, the latest driving hour.
+const playbackStart = playbackStartFromQuery(route.query.day, route.query.hour);
 
 function pick(key) {
   tab.value = key;
@@ -99,7 +103,7 @@ function pick(key) {
       <ChannelSelect :device="device" :manifest="manifest" />
     </div>
 
-    <PlaybackView v-else-if="tab === 'playback'" :device="device" class="flex-1" />
+    <PlaybackView v-else-if="tab === 'playback'" :device="device" :start-at="playbackStart" class="flex-1" />
 
     <LiveStream v-else-if="tab === 'live'" :device="device" class="flex-1" />
 

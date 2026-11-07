@@ -11,6 +11,7 @@ const store = reactive({ devices: {}, deviceSelectedObject: null, deviceSelected
 vi.mock('@/stores/devices.js', () => ({ useDevicesStore: () => store }));
 
 import MapView from './index.vue';
+import { OWNER_SENTINEL } from '@/utils/scopes';
 
 const mountView = () => mount(MapView, { global: { stubs: { ShareModal: true, SharedBadge: true } } });
 
@@ -18,7 +19,7 @@ describe('map view selected-device panel: Video button', () => {
   beforeEach(() => push.mockReset());
 
   it('shows for a dashcam and opens its video page', async () => {
-    store.deviceSelectedObject = { id: 248, name: 'NLQ 2537', protocol: 'jt808', scopes: ['*'], attributes: {} };
+    store.deviceSelectedObject = { id: 248, name: 'NLQ 2537', protocol: 'jt808', scopes: [OWNER_SENTINEL], attributes: {} };
     const w = mountView();
     const btn = w.find('button[aria-label="Dashcam video"]');
     expect(btn.exists()).toBe(true);
@@ -32,7 +33,7 @@ describe('map view selected-device panel: Video button', () => {
   });
 
   it('is hidden for a regular tracker', () => {
-    store.deviceSelectedObject = { id: 227, name: 'Canter', protocol: 'startek', scopes: ['*'], attributes: {} };
+    store.deviceSelectedObject = { id: 227, name: 'Canter', protocol: 'startek', scopes: [OWNER_SENTINEL], attributes: {} };
     const w = mountView();
     expect(w.find('button[aria-label="Dashcam video"]').exists()).toBe(false);
     expect(w.text()).toContain('Details');

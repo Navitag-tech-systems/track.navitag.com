@@ -33,6 +33,9 @@ import {
 
 const props = defineProps({
   device: { type: Object, required: true },
+  // Hour to open on (ms, local hour start), from a ?day=&hour= link
+  // (utils/dashcamPlayback playbackStartFromQuery). null = latest driving hour.
+  startAt: { type: Number, default: null },
 });
 
 const userStore = useUserStore();
@@ -59,8 +62,8 @@ const camName = (index) => channels.value.find((c) => c.index === index)?.name |
 
 // --- time selection --------------------------------------------------------------
 
-const dayMs = ref(dayStart(Date.now()));
-const hourMs = ref(hourStart(Date.now()));
+const dayMs = ref(dayStart(props.startAt ?? Date.now()));
+const hourMs = ref(hourStart(props.startAt ?? Date.now()));
 const hourEnd = computed(() => hourMs.value + HOUR_MS);
 const t = ref(hourMs.value);
 const userPicked = ref(false);
@@ -672,10 +675,15 @@ onMounted(async () => {
   loadDailyKm();
   await Promise.all([loadDay(dayMs.value), refreshCache()]);
   if (userPicked.value) return;
-  // Open on the latest hour with driving today, else the current hour.
-  const now = Date.now();
-  const lastDriving = [...hours.value].reverse().find((h) => h.minutes > 0 && h.hour <= now);
-  selectHour(lastDriving ? lastDriving.hour : hourStart(now));
+  if (props.startAt != null) {
+    // Opened from a link with a day + hour (Route History page).
+    selectHour(hourStart(props.startAt));
+  } else {
+    // Open on the latest hour with driving today, else the current hour.
+    const now = Date.now();
+    const lastDriving = [...hours.value].reverse().find((h) => h.minutes > 0 && h.hour <= now);
+    selectHour(lastDriving ? lastDriving.hour : hourStart(now));
+  }
   cacheTimer = setInterval(refreshCache, 30_000);
 });
 
