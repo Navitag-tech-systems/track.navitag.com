@@ -104,7 +104,10 @@ async function attach(src) {
     // expects partial segments the server never sends, which fatals the LIVE
     // stream (bounded SD playback was unaffected). Standard live playback works.
     lowLatencyMode: false,
-    liveSyncDurationCount: 3,
+    // Live latency = liveSyncDurationCount x segment length (medusa hls_time=2 s).
+    // 2 keeps the player ~4 s behind the edge (was 3 = ~6 s) to cut live lag;
+    // one less segment of jitter cushion, so raise back to 3 if stalls return.
+    liveSyncDurationCount: 2,
     maxBufferLength: 20,
     nudgeMaxRetry: 30,
     // Send the Traccar session cookie with manifest/segment requests.
