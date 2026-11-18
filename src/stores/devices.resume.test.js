@@ -70,6 +70,53 @@ describe('devices store on reconnect', () => {
     expect(second.bearing).toBe(45);
   });
 
+  it('a 0,0 placeholder fix never moves the marker but still applies telemetry', () => {
+    // A valid fix establishes the marker + stored location.
+    store.processSocketData({ positions: [position(1, T0)] });
+    expect(store.devices[1].latlon).toEqual([15.5, 121]);
+    expect(store.deviceMarkers[1].latlon).toEqual([15.5, 121]);
+
+    // valid:false report at a 0,0 placeholder, carrying fresh non-GPS telemetry.
+    store.processSocketData({ positions: [{
+      ...position(1, T0 + 5000),
+      latitude: 0, longitude: 0, valid: false,
+      attributes: { ignition: true, alarm: 'sos' },
+    }] });
+
+    const d = store.devices[1];
+    // GPS fields frozen at the last valid fix — marker did NOT jump to 0,0.
+    expect(d.latlon).toEqual([15.5, 121]);
+    expect(store.deviceMarkers[1].latlon).toEqual([15.5, 121]);
+    // Non-GPS telemetry + flags updated from the invalid report.
+    expect(d.ignition).toBe(true);
+    expect(d.alarm).toBe('sos');
+    expect(d.valid).toBe(false);
+    expect(d.lastSeenMs).toBe(T0 + 5000);
+    // Alarm still colours the (stationary) marker red.
+    expect(store.deviceMarkers[1].color).toBe(MARKER_ALARM);
+  });
+
+  it('shows a valid=false device at its last-known coords on first sight', () => {
+    // No prior position; the only fix we have is valid=false but carries the
+    // last-known coords (Traccar copies them). Show it there, don't hide it.
+    store.processSocketData({ positions: [{ ...position(1, T0), valid: false }] });
+    expect(store.devices[1].latlon).toEqual([15.5, 121]);
+    expect(store.deviceMarkers[1].latlon).toEqual([15.5, 121]);
+    expect(store.devices[1].valid).toBe(false);
+  });
+
+  it('a valid=false fix never MOVES an already-positioned device', () => {
+    store.processSocketData({ positions: [position(1, T0)] });   // valid @ [15.5,121]
+    // A later invalid fix at different real coords must not drag the marker.
+    store.processSocketData({ positions: [{
+      ...position(1, T0 + 1000), latitude: 50, longitude: 50, valid: false,
+      attributes: { ignition: true },
+    }] });
+    expect(store.devices[1].latlon).toEqual([15.5, 121]);        // unchanged
+    expect(store.deviceMarkers[1].latlon).toEqual([15.5, 121]);
+    expect(store.devices[1].ignition).toBe(true);                // telemetry still applied
+  });
+
   it('turns red on an alarm and clears on the next normal position', () => {
     store.processSocketData({ positions: [position(1, T0, { alarm: 'sos' })] });
     expect(store.deviceMarkers[1].color).toBe(MARKER_ALARM);

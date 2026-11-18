@@ -211,11 +211,24 @@ export const useDevicesStore = defineStore('devices', () => {
           };
         }
 
+        // Every report carries fresh NON-GPS telemetry (ignition, power, alarm,
+        // signal, sat/hdop) which we apply unconditionally. The GPS fields
+        // (latlon/speed/bearing/accuracy/fixTime/address/geofences) and the map
+        // marker are only adopted when the fix gives a real location:
+        //   - realCoords: finite and not the 0,0 "no-fix" placeholder (that's
+        //     the device-at-Africa bug). 0,0 is NEVER shown.
+        //   - A valid=false report normally carries the device's LAST-KNOWN
+        //     coords (Traccar copies them), so we still show it there on first
+        //     sight — but we don't let a valid=false fix MOVE a device that
+        //     already has a position. Only a valid fix moves a positioned one.
+        const realCoords = Number.isFinite(pos.latitude) && Number.isFinite(pos.longitude)
+          && !(pos.latitude === 0 && pos.longitude === 0);
+        const adoptPosition = realCoords && (pos.valid !== false || !device.latlon);
+
         Object.assign(device, {
           // Protocol-aware (utils/telemetry.js): navtelecom reports ignition
           // on in1 only, so `attributes.ignition` alone left it always Off.
           ignition: readIgnition(pos) === true,
-          speed: pos.speed,
           event: pos.attributes?.event || pos.event,
           // Raw per-position attribute: present on an alarm report, absent on
           // the next normal one, which is exactly the clear rule for the red
@@ -223,46 +236,57 @@ export const useDevicesStore = defineStore('devices', () => {
           alarm: pos.attributes?.alarm ?? null,
           power: readPower(pos),
           battery: readBattery(pos),
-          sat: pos.attributes?.sat, 
-          hdop: pos.attributes?.hdop, 
-          latlon: [pos.latitude, pos.longitude],
-          bearing: pos.course,
-          accuracy: pos.accuracy,
-          fixTime: pos.fixTime,
+          sat: pos.attributes?.sat,
+          hdop: pos.attributes?.hdop,
           updateTime: pos.serverTime || pos.deviceTime,
           connectionType: pos.network?.radioType,
           // Cell-tower dBm as before, else attributes.rssi (jt808 CSQ 0..31
           // converted to dBm) so dashcams no longer read N/A.
           signalLevel: readSignalDbm(pos),
-          address: pos.address,
-          geofences: pos.geofenceIds,
           valid: pos.valid,
           lastSeenMs: toMs(pos.serverTime || pos.deviceTime || pos.fixTime),
+          // Position-derived fields only from a valid fix; otherwise the
+          // existing (last valid) values are left in place.
+          ...(adoptPosition ? {
+            latlon: [pos.latitude, pos.longitude],
+            speed: pos.speed,
+            bearing: pos.course,
+            accuracy: pos.accuracy,
+            fixTime: pos.fixTime,
+            address: pos.address,
+            geofences: pos.geofenceIds,
+          } : {}),
         });
 
-        const catObj = categoryMapping.find(category => category.server === device.category)
-          ?? categoryMapping.find(category => category.server === null);
+        if (adoptPosition) {
+          const catObj = categoryMapping.find(category => category.server === device.category)
+            ?? categoryMapping.find(category => category.server === null);
 
-        const markerData = {
-          id: deviceId,
-          latlon: [pos.latitude, pos.longitude],
-          bearing: pos.course,
-          color: markerColor(device),
-          label: device.name,
-          type: catObj.map
-        };
+          const markerData = {
+            id: deviceId,
+            latlon: [pos.latitude, pos.longitude],
+            bearing: pos.course,
+            color: markerColor(device),
+            label: device.name,
+            type: catObj.map
+          };
 
-        // ALWAYS replace the store entry. It used to be written only on
-        // create, with later moves going through the `mapUpdate` courier alone,
-        // so any remount of the map redrew every marker at its first-ever
-        // position. A new object (not an in-place latlon mutation) is what the
-        // map's `devices` watcher detects — and unlike the courier, which Vue
-        // collapses to the last write per tick, it applies every device in a
-        // batch. The courier stays for the self-location marker and for
-        // @burkaloo/leaflet-vue3 ≤ 2.3.5, where `devices` does not move
-        // existing markers.
-        deviceMarkers[deviceId] = markerData;
-        mapUpdate.value = markerData;
+          // ALWAYS replace the store entry. It used to be written only on
+          // create, with later moves going through the `mapUpdate` courier
+          // alone, so any remount of the map redrew every marker at its
+          // first-ever position. A new object (not an in-place latlon mutation)
+          // is what the map's `devices` watcher detects — and unlike the
+          // courier, which Vue collapses to the last write per tick, it applies
+          // every device in a batch. The courier stays for the self-location
+          // marker and for @burkaloo/leaflet-vue3 ≤ 2.3.5, where `devices` does
+          // not move existing markers.
+          deviceMarkers[deviceId] = markerData;
+          mapUpdate.value = markerData;
+        } else {
+          // Invalid fix: keep the marker where it last was, but reflect any
+          // status/alarm change in its colour (no-op if no marker exists yet).
+          refreshMarkerColor(deviceId);
+        }
       });
     }
     console.log('procced socket message', data)

@@ -26,6 +26,12 @@ Vue 3 + Capacitor 8 mobile app for GPS device tracking. Connects to `api.navitag
 
 ## Project Status
 
+### Invalid GPS fixes no longer move the map marker (2026-11-18, on `main`, web deployed by push; native apps not rebuilt)
+- `src/stores/devices.js` `processSocketData`: a position's GPS fields (latlon, speed, bearing, accuracy, fixTime, address, geofences) and its map marker are adopted only when the fix has real coordinates — `adoptPosition = realCoords && (pos.valid !== false || !device.latlon)`, where `realCoords` is finite lat/lon and not `0,0`. Non-GPS telemetry (ignition, power, battery, alarm, event, sat, hdop, signal, valid flag, lastSeen, connectionType) is applied unconditionally on every report.
+- Effect: a `valid:false` report (Traccar copies the last valid lat/lon into it) shows at the last valid fix, including first sight on a cold load; a later invalid or `0,0` fix never drags an already-positioned marker; alarm/offline colour still updates in place via `refreshMarkerColor`.
+- Positions enter only through the Traccar socket snapshot (no `/positions` fetch, no localStorage), so "last known" means the device's latest Traccar row. Gap: a device whose single newest Traccar row is a literal `0,0` with no valid fix behind it is list-only until a real fix (would need a history lookback to close).
+- Tests: `src/stores/devices.resume.test.js` (0,0 never moves marker + keeps telemetry; valid=false shown at last-known on first sight; valid=false never moves a positioned device). Full suite 221/221.
+
 ### Dashcam Playback starts by itself after "Looking for video" (2026-11-07, on `main`, web deployed by push; native apps not rebuilt)
 - `PlaybackView.vue`: new `autoPlay` flag, set when an hour is opened (page open, Route History link, hour picker, hour arrows, rolling into the next hour) or "Check again" is pressed. While set, video found for the hour plays without a tap, **including streaming it off the camera (0x9201, vehicle SIM data)** when that is its only copy. Before, opening an hour never woke the camera and stopped on "tap to play".
 - Cleared when playback starts, when the user takes over (play/pause, seek, skip, camera, download) and when the hour's video check finishes, so a camera that wakes later (vehicle switched on) never streams to an unattended page. A camera that is off is never woken.
