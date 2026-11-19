@@ -40,19 +40,26 @@ function isFresh(lastSeenMs, now = Date.now()) {
   return lastSeenMs > 0 && (now - lastSeenMs) < ONLINE_FRESH_MS;
 }
 
-// Marker palette. Priority: alarm > online > offline. Green no longer requires
-// ignition, and offline is grey rather than the old catch-all red (both were
-// deliberate visual changes, 2026-09-24; see README "Resume / offline fix").
+// Marker palette. Priority: alarm > online without a GPS fix > online > offline.
+// Green no longer requires ignition, and offline is grey rather than the old
+// catch-all red (both were deliberate visual changes, 2026-09-24; see README
+// "Resume / offline fix"). Light yellow = reporting, but the latest position has
+// no valid GPS fix (2026-11-19), so the marker sits at the last valid fix.
 export const MARKER_ALARM = '#fc3a3a';
+export const MARKER_NO_FIX = '#fde047';
 export const MARKER_ONLINE = '#57f491';
 export const MARKER_OFFLINE = '#d1d5db';
 
 // Single source of truth for a marker's colour. `alarm` is the raw Traccar
 // position attribute, stored per position, so it clears on the device's next
 // normal report. Freshness is the same recency gate as isDeviceOnline.
+// `valid` is applied from every report (processSocketData), so only an explicit
+// `false` turns the marker yellow; a missing position or flag leaves it green.
 export function markerColor(device, now = Date.now()) {
   if (device?.alarm) return MARKER_ALARM;
-  if (device?.status === 'online' && isFresh(device?.lastSeenMs || 0, now)) return MARKER_ONLINE;
+  if (device?.status === 'online' && isFresh(device?.lastSeenMs || 0, now)) {
+    return device?.valid === false ? MARKER_NO_FIX : MARKER_ONLINE;
+  }
   return MARKER_OFFLINE;
 }
 

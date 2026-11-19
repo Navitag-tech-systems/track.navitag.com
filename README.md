@@ -26,6 +26,11 @@ Vue 3 + Capacitor 8 mobile app for GPS device tracking. Connects to `api.navitag
 
 ## Project Status
 
+### Light-yellow marker for online devices without a GPS fix (2026-11-19, committed locally on `chore/live-sync-buffer`, NOT pushed or deployed; native apps not rebuilt)
+- `src/stores/devices.js` `markerColor`: new `MARKER_NO_FIX = '#fde047'` (Tailwind yellow-300). Priority is now alarm red > online with `device.valid === false` light yellow > online green > offline grey. Only an explicit `false` counts; a missing position or undefined `valid` stays green. Offline devices stay grey regardless of `valid`.
+- `valid` is already applied from every report (2026-11-18 change below), so the colour flips on the next invalid/valid report via the existing `refreshMarkerColor` path, and the marker stays at the last valid fix.
+- Tests: `src/stores/devices.resume.test.js` covers yellow, green for true/undefined, alarm over yellow, offline/stale over yellow. Full suite 222/222.
+
 ### Invalid GPS fixes no longer move the map marker (2026-11-18, on `main`, web deployed by push; native apps not rebuilt)
 - `src/stores/devices.js` `processSocketData`: a position's GPS fields (latlon, speed, bearing, accuracy, fixTime, address, geofences) and its map marker are adopted only when the fix has real coordinates — `adoptPosition = realCoords && (pos.valid !== false || !device.latlon)`, where `realCoords` is finite lat/lon and not `0,0`. Non-GPS telemetry (ignition, power, battery, alarm, event, sat, hdop, signal, valid flag, lastSeen, connectionType) is applied unconditionally on every report.
 - Effect: a `valid:false` report (Traccar copies the last valid lat/lon into it) shows at the last valid fix, including first sight on a cold load; a later invalid or `0,0` fix never drags an already-positioned marker; alarm/offline colour still updates in place via `refreshMarkerColor`.

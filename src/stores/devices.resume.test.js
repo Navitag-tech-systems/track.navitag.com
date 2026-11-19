@@ -15,7 +15,7 @@ vi.mock('@/utils/http', () => ({
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock('@/stores/user.js', () => ({ useUserStore: () => ({ idToken: 'tok' }) }));
 
-import { useDevicesStore, markerColor, MARKER_ALARM, MARKER_ONLINE, MARKER_OFFLINE } from './devices.js';
+import { useDevicesStore, markerColor, MARKER_ALARM, MARKER_NO_FIX, MARKER_ONLINE, MARKER_OFFLINE } from './devices.js';
 
 const T0 = new Date('2026-09-24T10:00:00Z').getTime();
 const iso = (ms) => new Date(ms).toISOString();
@@ -41,6 +41,16 @@ describe('markerColor', () => {
     const d = { status: 'online', lastSeenMs: T0, ignition: false };
     expect(markerColor(d, T0 + 4 * 60 * 1000)).toBe(MARKER_ONLINE);
     expect(markerColor(d, T0 + 6 * 60 * 1000)).toBe(MARKER_OFFLINE);
+  });
+
+  it('online without a valid GPS fix is light yellow; only an explicit false counts', () => {
+    const fresh = { status: 'online', lastSeenMs: T0 };
+    expect(markerColor({ ...fresh, valid: false }, T0)).toBe(MARKER_NO_FIX);
+    expect(markerColor({ ...fresh, valid: true }, T0)).toBe(MARKER_ONLINE);
+    expect(markerColor({ ...fresh, valid: undefined }, T0)).toBe(MARKER_ONLINE);
+    expect(markerColor({ ...fresh, valid: false, alarm: 'sos' }, T0)).toBe(MARKER_ALARM);
+    expect(markerColor({ status: 'offline', lastSeenMs: T0, valid: false }, T0)).toBe(MARKER_OFFLINE);
+    expect(markerColor({ ...fresh, valid: false }, T0 + 6 * 60 * 1000)).toBe(MARKER_OFFLINE);
   });
 });
 
