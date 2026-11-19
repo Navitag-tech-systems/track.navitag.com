@@ -26,7 +26,14 @@ Vue 3 + Capacitor 8 mobile app for GPS device tracking. Connects to `api.navitag
 
 ## Project Status
 
-### Light-yellow marker for online devices without a GPS fix (2026-11-19, committed locally on `chore/live-sync-buffer`, NOT pushed or deployed; native apps not rebuilt)
+### No-fix coordinates (device-in-Africa) + lighter no-fix marker (2026-11-19 PM, on `main`, web deployed by push; native apps not rebuilt)
+- Cause: the Tenet DCAM009 (jt808) sends no-fix reports at 0,0 AND at near-zero junk (e.g. lat 0.008068) with `valid:false`. The 2026-11-18 check rejected only exact 0,0 and adopts a `valid:false` position on first sight, so a cold load during a junk report put the marker in the Gulf of Guinea; every later report was also `valid:false`, so the marker never moved back.
+- `src/utils/gps.js` `hasRealCoords`: finite and outside the 1-degree box around 0,0. Used by `processSocketData`, the history route (`utils/reportProcessor.js`: junk points keep telemetry/events but take the last real coordinates; leading junk dropped) and dashcam playback (`utils/dashcamPlayback.js` `toTrack`).
+- Cold load on a no-fix report: `restoreLastFix` fetches `/api/positions` for the last 1 h, then 6 h, then 24 h and places the marker at the last usable fix (valid preferred). Once per device per session; owned devices only.
+- Yellow = online AND (`valid === false` OR Traccar `outdated` OR no usable coordinates). Colour lightened to `#fef08a` (Tailwind yellow-200).
+- Tests: `src/utils/gps.test.js` (new) + `devices.resume.test.js`. Full suite 230/230.
+
+### Light-yellow marker for online devices without a GPS fix (2026-11-19, on `main`, web deployed by push `deeb9db`; native apps not rebuilt)
 - `src/stores/devices.js` `markerColor`: new `MARKER_NO_FIX = '#fde047'` (Tailwind yellow-300). Priority is now alarm red > online with `device.valid === false` light yellow > online green > offline grey. Only an explicit `false` counts; a missing position or undefined `valid` stays green. Offline devices stay grey regardless of `valid`.
 - `valid` is already applied from every report (2026-11-18 change below), so the colour flips on the next invalid/valid report via the existing `refreshMarkerColor` path, and the marker stays at the last valid fix.
 - Tests: `src/stores/devices.resume.test.js` covers yellow, green for true/undefined, alarm over yellow, offline/stale over yellow. Full suite 222/222.

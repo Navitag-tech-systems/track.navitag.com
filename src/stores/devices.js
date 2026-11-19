@@ -8,6 +8,7 @@ import { baseUrl, categoryMapping } from '@/utils/variables';
 import { OWNER_SENTINEL } from '@/utils/scopes';
 import { readIgnition, readPower, readBattery, readSignalDbm } from '@/utils/telemetry';
 import { pointInPolygon, polygonBounds } from '@/utils/geofence';
+import { hasRealCoords } from '@/utils/gps';
 
 // Canonical plan_level is lowercase ('pro', 'basic'). Older API shapes shipped
 // 'Pro' / 'Basic', so normalize to lowercase on ingestion — the stored value
@@ -44,21 +45,25 @@ function isFresh(lastSeenMs, now = Date.now()) {
 // Green no longer requires ignition, and offline is grey rather than the old
 // catch-all red (both were deliberate visual changes, 2026-09-24; see README
 // "Resume / offline fix"). Light yellow = reporting, but the latest position has
-// no valid GPS fix (2026-11-19), so the marker sits at the last valid fix.
+// no usable GPS fix (2026-11-19): valid=false, Traccar `outdated` (it reused the
+// last location), or 0,0 / near-zero coordinates. The marker sits at the last
+// usable fix.
 export const MARKER_ALARM = '#fc3a3a';
-export const MARKER_NO_FIX = '#fde047';
+export const MARKER_NO_FIX = '#fef08a';
 export const MARKER_ONLINE = '#57f491';
 export const MARKER_OFFLINE = '#d1d5db';
 
 // Single source of truth for a marker's colour. `alarm` is the raw Traccar
 // position attribute, stored per position, so it clears on the device's next
 // normal report. Freshness is the same recency gate as isDeviceOnline.
-// `valid` is applied from every report (processSocketData), so only an explicit
-// `false` turns the marker yellow; a missing position or flag leaves it green.
+// `valid`, `outdated` and `noCoords` are applied from every report
+// (processSocketData), so only an explicit no-fix signal turns the marker
+// yellow; a missing position or flag leaves it green.
 export function markerColor(device, now = Date.now()) {
   if (device?.alarm) return MARKER_ALARM;
   if (device?.status === 'online' && isFresh(device?.lastSeenMs || 0, now)) {
-    return device?.valid === false ? MARKER_NO_FIX : MARKER_ONLINE;
+    const noFix = device?.valid === false || device?.outdated === true || device?.noCoords === true;
+    return noFix ? MARKER_NO_FIX : MARKER_ONLINE;
   }
   return MARKER_OFFLINE;
 }
@@ -176,6 +181,77 @@ export const useDevicesStore = defineStore('devices', () => {
   }
 
   // --- Socket Data Handler ---
+  function placeMarker(deviceId, pos) {
+    const device = devices[deviceId];
+    const catObj = categoryMapping.find(category => category.server === device.category)
+      ?? categoryMapping.find(category => category.server === null);
+
+    const markerData = {
+      id: deviceId,
+      latlon: [pos.latitude, pos.longitude],
+      bearing: pos.course,
+      color: markerColor(device),
+      label: device.name,
+      type: catObj.map
+    };
+
+    // ALWAYS replace the store entry. It used to be written only on
+    // create, with later moves going through the `mapUpdate` courier
+    // alone, so any remount of the map redrew every marker at its
+    // first-ever position. A new object (not an in-place latlon mutation)
+    // is what the map's `devices` watcher detects — and unlike the
+    // courier, which Vue collapses to the last write per tick, it applies
+    // every device in a batch. The courier stays for the self-location
+    // marker and for @burkaloo/leaflet-vue3 <= 2.3.5, where `devices` does
+    // not move existing markers.
+    deviceMarkers[deviceId] = markerData;
+    mapUpdate.value = markerData;
+  }
+
+  // Cold load where the latest report has no usable coordinates (Tenet no-fix
+  // at 0,0): fetch recent history and place the marker at the last usable fix,
+  // preferring a valid one. Widening windows keep the payload small for a unit
+  // reporting every 20 s. Once per device per session; owned devices only (a
+  // shared device's id belongs to the granter's Traccar server).
+  const lastFixLookups = new Set();
+  async function restoreLastFix(deviceId) {
+    const device = devices[deviceId];
+    if (!device || device.shared === true || lastFixLookups.has(deviceId) || !userStore.server_url) return;
+    lastFixLookups.add(deviceId);
+    const to = Date.now();
+    for (const hours of [1, 6, 24]) {
+      let list;
+      try {
+        list = await request.send({
+          url: `https://${userStore.server_url}/api/positions`,
+          params: {
+            deviceId: Number(deviceId),
+            from: new Date(to - hours * 3600e3).toISOString(),
+            to: new Date(to).toISOString(),
+          },
+          isTraccar: true,
+        });
+      } catch {
+        return;
+      }
+      const recent = Array.isArray(list) ? [...list].reverse() : [];
+      const p = recent.find(q => q.valid !== false && hasRealCoords(q.latitude, q.longitude))
+        ?? recent.find(q => hasRealCoords(q.latitude, q.longitude));
+      if (!p) continue;
+      const current = devices[deviceId];
+      if (!current || current.latlon) return; // a live report placed it meanwhile
+      Object.assign(current, {
+        latlon: [p.latitude, p.longitude],
+        bearing: p.course,
+        accuracy: p.accuracy,
+        fixTime: p.fixTime,
+        address: p.address,
+      });
+      placeMarker(deviceId, p);
+      return;
+    }
+  }
+
   function processSocketData(data) {
     if ("devices" in data) {
       data.devices.forEach((d) => {
@@ -222,14 +298,15 @@ export const useDevicesStore = defineStore('devices', () => {
         // signal, sat/hdop) which we apply unconditionally. The GPS fields
         // (latlon/speed/bearing/accuracy/fixTime/address/geofences) and the map
         // marker are only adopted when the fix gives a real location:
-        //   - realCoords: finite and not the 0,0 "no-fix" placeholder (that's
-        //     the device-at-Africa bug). 0,0 is NEVER shown.
+        //   - realCoords: finite and outside the 1-degree box around 0,0
+        //     (utils/gps.js). The Tenet DCAM009 sends 0,0 AND near-zero junk
+        //     such as 0.008068 on a no-fix report; the old exact-0,0 test let
+        //     the junk through on a cold load (device-in-Africa, 2026-11-19).
         //   - A valid=false report normally carries the device's LAST-KNOWN
         //     coords (Traccar copies them), so we still show it there on first
         //     sight — but we don't let a valid=false fix MOVE a device that
         //     already has a position. Only a valid fix moves a positioned one.
-        const realCoords = Number.isFinite(pos.latitude) && Number.isFinite(pos.longitude)
-          && !(pos.latitude === 0 && pos.longitude === 0);
+        const realCoords = hasRealCoords(pos.latitude, pos.longitude);
         const adoptPosition = realCoords && (pos.valid !== false || !device.latlon);
 
         Object.assign(device, {
@@ -251,6 +328,8 @@ export const useDevicesStore = defineStore('devices', () => {
           // converted to dBm) so dashcams no longer read N/A.
           signalLevel: readSignalDbm(pos),
           valid: pos.valid,
+          outdated: pos.attributes?.outdated === true,
+          noCoords: !realCoords,
           lastSeenMs: toMs(pos.serverTime || pos.deviceTime || pos.fixTime),
           // Position-derived fields only from a valid fix; otherwise the
           // existing (last valid) values are left in place.
@@ -266,33 +345,14 @@ export const useDevicesStore = defineStore('devices', () => {
         });
 
         if (adoptPosition) {
-          const catObj = categoryMapping.find(category => category.server === device.category)
-            ?? categoryMapping.find(category => category.server === null);
-
-          const markerData = {
-            id: deviceId,
-            latlon: [pos.latitude, pos.longitude],
-            bearing: pos.course,
-            color: markerColor(device),
-            label: device.name,
-            type: catObj.map
-          };
-
-          // ALWAYS replace the store entry. It used to be written only on
-          // create, with later moves going through the `mapUpdate` courier
-          // alone, so any remount of the map redrew every marker at its
-          // first-ever position. A new object (not an in-place latlon mutation)
-          // is what the map's `devices` watcher detects — and unlike the
-          // courier, which Vue collapses to the last write per tick, it applies
-          // every device in a batch. The courier stays for the self-location
-          // marker and for @burkaloo/leaflet-vue3 ≤ 2.3.5, where `devices` does
-          // not move existing markers.
-          deviceMarkers[deviceId] = markerData;
-          mapUpdate.value = markerData;
+          placeMarker(deviceId, pos);
         } else {
           // Invalid fix: keep the marker where it last was, but reflect any
           // status/alarm change in its colour (no-op if no marker exists yet).
           refreshMarkerColor(deviceId);
+          // Cold load on a no-fix report: nothing placed yet, so look up the
+          // last usable fix instead of showing nothing (or 0,0).
+          if (!device.latlon) restoreLastFix(deviceId);
         }
       });
     }

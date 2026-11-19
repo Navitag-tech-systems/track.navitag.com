@@ -15,6 +15,7 @@
 // the device clock zone only matters when talking to the device (BCD times)
 // and is handled by utils/dashcam.js.
 import { request } from '@/utils/http';
+import { hasRealCoords } from '@/utils/gps';
 import {
   LIVE_HLS_BASE, LIVE_MEDIA_IP, LIVE_MEDIA_PORT, DASHCAM_MEDIA_BASE, MAX_CHANNELS,
   terminalSim, parseMediaList, clipUrl, body9201, body9202, body9205, customCommand,
@@ -203,7 +204,7 @@ export function toTrack(positions) {
     const lat = Number(p?.latitude);
     const lng = Number(p?.longitude);
     if (!Number.isFinite(t) || !Number.isFinite(lat) || !Number.isFinite(lng)) continue;
-    if (lat === 0 && lng === 0) continue;
+    if (!hasRealCoords(lat, lng)) continue; // 0,0 / near-zero no-fix junk
     if (seen.has(t)) continue;
     seen.add(t);
     const kmh = (Number(p?.speed) || 0) * KNOTS_TO_KMH;

@@ -13,7 +13,8 @@ vi.mock('@/utils/http', () => ({
   CONNECT_TIMEOUT_MS: 15000,
 }));
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }) }));
-vi.mock('@/stores/user.js', () => ({ useUserStore: () => ({ idToken: 'tok' }) }));
+const userMock = vi.hoisted(() => ({ idToken: 'tok', server_url: undefined }));
+vi.mock('@/stores/user.js', () => ({ useUserStore: () => userMock }));
 
 import { useDevicesStore, markerColor, MARKER_ALARM, MARKER_NO_FIX, MARKER_ONLINE, MARKER_OFFLINE } from './devices.js';
 
@@ -51,6 +52,14 @@ describe('markerColor', () => {
     expect(markerColor({ ...fresh, valid: false, alarm: 'sos' }, T0)).toBe(MARKER_ALARM);
     expect(markerColor({ status: 'offline', lastSeenMs: T0, valid: false }, T0)).toBe(MARKER_OFFLINE);
     expect(markerColor({ ...fresh, valid: false }, T0 + 6 * 60 * 1000)).toBe(MARKER_OFFLINE);
+  });
+
+  it('Traccar outdated or unusable coordinates also count as no fix', () => {
+    const fresh = { status: 'online', lastSeenMs: T0 };
+    expect(markerColor({ ...fresh, outdated: true }, T0)).toBe(MARKER_NO_FIX);
+    expect(markerColor({ ...fresh, noCoords: true }, T0)).toBe(MARKER_NO_FIX);
+    expect(markerColor({ ...fresh, outdated: false, noCoords: false, valid: true }, T0)).toBe(MARKER_ONLINE);
+    expect(markerColor({ status: 'offline', lastSeenMs: T0, outdated: true }, T0)).toBe(MARKER_OFFLINE);
   });
 });
 
@@ -125,6 +134,48 @@ describe('devices store on reconnect', () => {
     expect(store.devices[1].latlon).toEqual([15.5, 121]);        // unchanged
     expect(store.deviceMarkers[1].latlon).toEqual([15.5, 121]);
     expect(store.devices[1].ignition).toBe(true);                // telemetry still applied
+  });
+
+  it('near-zero junk (Tenet no-fix) never places or moves a marker', () => {
+    // Cold load: the only report is valid=false at 0.008068,0.003.
+    store.processSocketData({ positions: [{ ...position(1, T0), latitude: 0.008068, longitude: 0.003, valid: false }] });
+    expect(store.devices[1].latlon).toBeUndefined();
+    expect(store.deviceMarkers[1]).toBeUndefined();
+    expect(store.devices[1].noCoords).toBe(true);
+    // After a real fix, more junk must not move it either.
+    store.processSocketData({ positions: [position(1, T0 + 1000)] });
+    store.processSocketData({ positions: [{ ...position(1, T0 + 2000), latitude: -0.004, longitude: 0.01, valid: false }] });
+    expect(store.deviceMarkers[1].latlon).toEqual([15.5, 121]);
+    expect(store.deviceMarkers[1].color).toBe(MARKER_NO_FIX);
+  });
+
+  it('cold load on a no-fix report places the marker at the last usable fix from history', async () => {
+    userMock.server_url = 'tserver1.example';
+    try {
+      send.mockResolvedValueOnce([
+        { deviceId: 1, latitude: 14.681934, longitude: 121.03043, valid: true, course: 10, fixTime: iso(T0 - 60000) },
+        { deviceId: 1, latitude: 0, longitude: 0, valid: false, fixTime: iso(T0 - 30000) },
+      ]);
+      store.processSocketData({ positions: [{ ...position(1, T0), latitude: 0, longitude: 0, valid: false }] });
+      await vi.waitFor(() => expect(store.deviceMarkers[1]).toBeDefined());
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(send.mock.calls[0][0].url).toBe('https://tserver1.example/api/positions');
+      expect(store.deviceMarkers[1].latlon).toEqual([14.681934, 121.03043]);
+      expect(store.deviceMarkers[1].color).toBe(MARKER_NO_FIX);
+      // Once per device per session.
+      store.processSocketData({ positions: [{ ...position(1, T0 + 1000), latitude: 0, longitude: 0, valid: false }] });
+      expect(send).toHaveBeenCalledTimes(1);
+    } finally {
+      userMock.server_url = undefined;
+    }
+  });
+
+  it('a position Traccar flags outdated turns the marker yellow', () => {
+    store.processSocketData({ positions: [position(1, T0)] });
+    store.processSocketData({ positions: [position(1, T0 + 1000, { outdated: true })] });
+    expect(store.deviceMarkers[1].color).toBe(MARKER_NO_FIX);
+    store.processSocketData({ positions: [position(1, T0 + 2000)] });
+    expect(store.deviceMarkers[1].color).toBe(MARKER_ONLINE);
   });
 
   it('turns red on an alarm and clears on the next normal position', () => {

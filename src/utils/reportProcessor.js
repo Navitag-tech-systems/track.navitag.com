@@ -17,6 +17,7 @@ import {
   usesStartekEventCodes,
 } from './telemetry.js';
 import { humanizeEvent } from './eventLabels.js';
+import { hasRealCoords } from './gps.js';
 
 // Traccar alarm keys that the stateful power/battery logic below consumes.
 const STATEFUL_ALARMS = new Set(['powerCut', 'powerRestored', 'lowBattery']);
@@ -102,9 +103,20 @@ class VT100MapProcessor {
       return { line: [], markers: {}, events: [] };
     }
 
+    // A no-fix report with 0,0 / near-zero coordinates (Tenet DCAM009) would
+    // draw the route to the Gulf of Guinea. Such a point keeps its telemetry
+    // and events but takes the last usable coordinates; points before the
+    // first usable fix have nowhere to go and are dropped.
+    let lastReal = null;
     const sortedPoints = [...rawPoints].sort(
       (a, b) => new Date(a.fixTime) - new Date(b.fixTime)
-    );
+    ).flatMap((p) => {
+      if (hasRealCoords(p.latitude, p.longitude)) { lastReal = p; return [p]; }
+      return lastReal ? [{ ...p, latitude: lastReal.latitude, longitude: lastReal.longitude }] : [];
+    });
+    if (sortedPoints.length === 0) {
+      return { line: [], markers: {}, events: [] };
+    }
 
     const line = [];
     const markers = {};
